@@ -6,6 +6,7 @@ import { Plus, Trash2, Utensils } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { Input } from "@/components/ui/input";
 import { useStore } from "@/store";
 import {
@@ -234,11 +235,12 @@ function SavedChip({
   onTap: () => void;
   onDelete: () => void;
 }) {
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
   const pressTimer = React.useRef<number | null>(null);
   const startPress = () => {
     pressTimer.current = window.setTimeout(() => {
       haptic("long");
-      if (confirm(`Delete "${meal.name}"?`)) onDelete();
+      setConfirmOpen(true);
     }, 600);
   };
   const cancelPress = () => {
@@ -246,19 +248,28 @@ function SavedChip({
   };
 
   return (
-    <button
-      type="button"
-      onClick={onTap}
-      onPointerDown={startPress}
-      onPointerUp={cancelPress}
-      onPointerLeave={cancelPress}
-      className="shrink-0 inline-flex items-center gap-1.5 h-7 px-3 rounded-full border border-[var(--color-stroke)] bg-[var(--color-elevated)] text-xs hover:border-[var(--color-stroke-strong)] active:scale-[0.97] transition"
-    >
-      <span className="truncate max-w-[120px]">{meal.name}</span>
-      <span className="text-[10px] text-[var(--color-fg-3)] tnum">
-        {meal.calories}c · {meal.protein}p
-      </span>
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={onTap}
+        onPointerDown={startPress}
+        onPointerUp={cancelPress}
+        onPointerLeave={cancelPress}
+        className="shrink-0 inline-flex items-center gap-1.5 h-7 px-3 rounded-full border border-[var(--color-stroke)] bg-[var(--color-elevated)] text-xs hover:border-[var(--color-stroke-strong)] active:scale-[0.97] transition"
+      >
+        <span className="truncate max-w-[120px]">{meal.name}</span>
+        <span className="text-[10px] text-[var(--color-fg-3)] tnum">
+          {meal.calories}c · {meal.protein}p
+        </span>
+      </button>
+      <ConfirmModal
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        onConfirm={onDelete}
+        title={`Delete "${meal.name}"?`}
+        description="It'll be removed from your favorites."
+      />
+    </>
   );
 }
 

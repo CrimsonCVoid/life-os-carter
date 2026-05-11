@@ -5,8 +5,9 @@ import { Camera, Download, GitCompareArrows, Trash2 } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { useStore } from "@/store";
-import { usePhotosRaw } from "@/store/selectors";
+import { usePhotosRaw, useBodyRaw } from "@/store/selectors";
 import {
   PhotoAngle,
   PhotoMeta,
@@ -28,6 +29,7 @@ type ObjUrlState = Record<string, string>;
 
 export function PhotosTab() {
   const photos = usePhotosRaw();
+  const body = useBodyRaw();
   const addPhotoMeta = useStore((s) => s.addPhotoMeta);
   const removePhotoMeta = useStore((s) => s.removePhotoMeta);
   const fileRef = React.useRef<HTMLInputElement>(null);
@@ -36,6 +38,7 @@ export function PhotosTab() {
   const [exporting, setExporting] = React.useState(false);
   const [compareOpen, setCompareOpen] = React.useState(false);
   const [viewing, setViewing] = React.useState<PhotoMeta | null>(null);
+  const [deleteTarget, setDeleteTarget] = React.useState<PhotoMeta | null>(null);
   const [urls, setUrls] = React.useState<ObjUrlState>({});
 
   // load object URLs for all photo metas
@@ -66,6 +69,12 @@ export function PhotosTab() {
     setPickAngle(true);
   };
 
+  const latestWeight = React.useMemo(() => {
+    const sorted = [...body].sort((a, b) => b.date.localeCompare(a.date));
+    const withWeight = sorted.find((m) => m.weight != null);
+    return withWeight?.weight;
+  }, [body]);
+
   const onAnglePicked = async (angle: PhotoAngle) => {
     if (!pending) return;
     setPickAngle(false);
@@ -77,6 +86,7 @@ export function PhotosTab() {
         date: todayStr(),
         angle,
         idbKey,
+        weightAtTime: latestWeight,
       });
       haptic("success");
     } catch (e) {
@@ -88,7 +98,6 @@ export function PhotosTab() {
   };
 
   const removePhoto = async (p: PhotoMeta) => {
-    if (!confirm("Delete this photo?")) return;
     await deletePhoto(p.idbKey).catch(() => {});
     removePhotoMeta(p.id);
     if (urls[p.id]) URL.revokeObjectURL(urls[p.id]);
@@ -272,10 +281,7 @@ export function PhotosTab() {
               variant="danger"
               size="sm"
               onClick={() => {
-                if (viewing) {
-                  removePhoto(viewing);
-                  setViewing(null);
-                }
+                if (viewing) setDeleteTarget(viewing);
               }}
             >
               <Trash2 size={12} />
@@ -300,6 +306,19 @@ export function PhotosTab() {
         onClose={() => setCompareOpen(false)}
         photos={photos}
         urls={urls}
+      />
+
+      <ConfirmModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          if (deleteTarget) {
+            removePhoto(deleteTarget);
+            if (viewing?.id === deleteTarget.id) setViewing(null);
+          }
+        }}
+        title="Delete this photo?"
+        description="The image and its metadata will be removed from your device."
       />
     </>
   );

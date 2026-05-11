@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Modal } from "@/components/ui/modal";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -314,6 +315,7 @@ function BlockCard({
   const colors = BLOCK_COLORS[block.type];
   const Icon = TYPE_ICON[block.type];
 
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
   const longPressTimer = React.useRef<number | null>(null);
   const dragRef = React.useRef<{
     mode: "none" | "move" | "resize";
@@ -325,7 +327,7 @@ function BlockCard({
   const startLongPress = () => {
     longPressTimer.current = window.setTimeout(() => {
       haptic("long");
-      if (confirm(`Delete "${block.title}"?`)) onDelete();
+      setConfirmOpen(true);
     }, 700);
   };
   const cancelLongPress = () => {
@@ -403,51 +405,60 @@ function BlockCard({
   };
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onPointerDown={onMovePointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={() => {
-        cancelLongPress();
-        dragRef.current = {
-          mode: "none",
-          startY: 0,
-          initialStart: 0,
-          initialEnd: 0,
-        };
-      }}
-      className="absolute left-10 right-0 rounded-lg px-2.5 py-1 select-none touch-none cursor-grab active:cursor-grabbing overflow-hidden"
-      style={{
-        top,
-        height,
-        background: colors.bg,
-        border: `1px solid ${colors.ring}`,
-        color: colors.fg,
-      }}
-    >
-      <div className="flex items-center gap-2 min-w-0">
-        {block.icon ? (
-          <span className="text-base leading-none shrink-0">{block.icon}</span>
-        ) : (
-          <Icon size={13} />
-        )}
-        <span className="text-[12px] font-medium truncate flex-1">
-          {block.title}
-        </span>
-        <span className="text-[10px] tnum opacity-70 shrink-0">
-          {minToHHMM(block.startMin)}
-        </span>
-      </div>
+    <>
       <div
-        data-resize-handle
-        onPointerDown={onResizePointerDown}
-        className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize"
+        role="button"
+        tabIndex={0}
+        onPointerDown={onMovePointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={() => {
+          cancelLongPress();
+          dragRef.current = {
+            mode: "none",
+            startY: 0,
+            initialStart: 0,
+            initialEnd: 0,
+          };
+        }}
+        className="absolute left-10 right-0 rounded-lg px-2.5 py-1 select-none touch-none cursor-grab active:cursor-grabbing overflow-hidden"
+        style={{
+          top,
+          height,
+          background: colors.bg,
+          border: `1px solid ${colors.ring}`,
+          color: colors.fg,
+        }}
       >
-        <div className="mx-auto w-8 h-[3px] mt-0.5 rounded-full opacity-40 bg-current" />
+        <div className="flex items-center gap-2 min-w-0">
+          {block.icon ? (
+            <span className="text-base leading-none shrink-0">{block.icon}</span>
+          ) : (
+            <Icon size={13} />
+          )}
+          <span className="text-[12px] font-medium truncate flex-1">
+            {block.title}
+          </span>
+          <span className="text-[10px] tnum opacity-70 shrink-0">
+            {minToHHMM(block.startMin)}
+          </span>
+        </div>
+        <div
+          data-resize-handle
+          onPointerDown={onResizePointerDown}
+          className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize"
+        >
+          <div className="mx-auto w-8 h-[3px] mt-0.5 rounded-full opacity-40 bg-current" />
+        </div>
       </div>
-    </div>
+      <ConfirmModal
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        onConfirm={onDelete}
+        title={`Delete "${block.title}"?`}
+        description="The block will be removed from today's schedule."
+      />
+    </>
   );
 }
 
