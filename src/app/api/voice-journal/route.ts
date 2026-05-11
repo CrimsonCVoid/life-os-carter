@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
+import { resolveGeminiApiKey, GEMINI_KEY_NAMES } from "@/lib/gemini-key";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -94,10 +95,13 @@ function parsePayload(raw: string): VoiceJournalPayload | null {
 }
 
 export async function POST(req: Request) {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = resolveGeminiApiKey();
   if (!apiKey) {
     return Response.json(
-      { error: "missing-key", message: "GEMINI_API_KEY is not configured." },
+      {
+        error: "missing-key",
+        message: `No Gemini API key found. Set one of: ${GEMINI_KEY_NAMES.join(", ")} in your Vercel env (Production + Preview) and redeploy.`,
+      },
       { status: 503 }
     );
   }

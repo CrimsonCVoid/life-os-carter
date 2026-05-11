@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { PERSONA_SYSTEM, buildContextBlock } from "@/lib/prompts";
+import { resolveGeminiApiKey } from "@/lib/gemini-key";
 import type { OverseerContext } from "@/store/selectors";
 
 export const runtime = "nodejs";
@@ -31,7 +32,7 @@ function extractText(chunk: StreamChunk): string {
 }
 
 export async function POST(req: Request) {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = resolveGeminiApiKey();
   if (!apiKey) {
     return new Response("missing-key", { status: 503 });
   }
