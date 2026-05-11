@@ -10,12 +10,23 @@ import {
   routineLongestStreak,
 } from "@/lib/score";
 import type {
+  Block,
+  BlockType,
+  BodyMeasurement,
   DateStr,
+  EnergyLog,
+  EnergyPeriod,
   Goal,
   Habit,
   JournalEntry,
+  LifeGoal,
+  Meal,
   MorningRoutineItem,
+  Person,
+  PhotoMeta,
+  SavedMeal,
 } from "@/lib/types";
+import { ENERGY_PERIODS, ENERGY_PERIOD_RANGES } from "@/lib/types";
 import { useStore } from "./index";
 
 export function useToday(): DateStr {
@@ -159,6 +170,222 @@ export function useHabitsRaw() {
 export function useRoutineRaw() {
   return useStore((s) => s.routine);
 }
+export function useBlocksRaw() {
+  return useStore((s) => s.blocks);
+}
+export function useEnergyRaw() {
+  return useStore((s) => s.energy);
+}
+export function usePeopleRaw() {
+  return useStore((s) => s.people);
+}
+export function useMealsRaw() {
+  return useStore((s) => s.meals);
+}
+export function useSavedMealsRaw() {
+  return useStore((s) => s.savedMeals);
+}
+export function useBodyRaw() {
+  return useStore((s) => s.body);
+}
+export function usePhotosRaw() {
+  return useStore((s) => s.photos);
+}
+export function useLifeGoalsRaw() {
+  return useStore((s) => s.lifeGoals);
+}
+
+/* ---------- TIME BLOCKING ---------- */
+
+export function useScheduleForDay(date: DateStr): Block[] {
+  return useStore(
+    useShallow((s) =>
+      s.blocks
+        .filter((b) => b.date === date)
+        .sort((a, b) => a.startMin - b.startMin)
+    )
+  );
+}
+
+export function useTotalScheduledMinutes(date: DateStr, type?: BlockType) {
+  return useStore((s) =>
+    s.blocks
+      .filter((b) => b.date === date && (!type || b.type === type))
+      .reduce((a, b) => a + (b.endMin - b.startMin), 0)
+  );
+}
+
+export function useUnscheduledGoals(date: DateStr) {
+  return useStore(
+    useShallow((s) => {
+      const scheduledIds = new Set(
+        s.blocks
+          .filter((b) => b.date === date && b.goalId)
+          .map((b) => b.goalId as string)
+      );
+      return s.goals
+        .filter((g) => g.date === date && !scheduledIds.has(g.id))
+        .sort((a, b) => a.order - b.order);
+    })
+  );
+}
+
+/* ---------- ENERGY ---------- */
+
+export function useEnergyForDay(date: DateStr): EnergyLog | undefined {
+  return useStore((s) => s.energy[date]);
+}
+
+/** Average per period, across the last N days. */
+export function computeAverageEnergyByPeriod(
+  energy: Record<DateStr, EnergyLog>,
+  dates: DateStr[]
+): Record<EnergyPeriod, number | null> {
+  const sums: Record<EnergyPeriod, { sum: number; n: number }> = {
+    morning: { sum: 0, n: 0 },
+    midday: { sum: 0, n: 0 },
+    afternoon: { sum: 0, n: 0 },
+    evening: { sum: 0, n: 0 },
+  };
+  for (const d of dates) {
+    const log = energy[d];
+    if (!log) continue;
+    for (const p of ENERGY_PERIODS) {
+      const v = log.values[p];
+      if (v != null) {
+        sums[p].sum += v;
+        sums[p].n += 1;
+      }
+    }
+  }
+  const out: Record<EnergyPeriod, number | null> = {
+    morning: null,
+    midday: null,
+    afternoon: null,
+    evening: null,
+  };
+  for (const p of ENERGY_PERIODS) {
+    out[p] = sums[p].n ? sums[p].sum / sums[p].n : null;
+  }
+  return out;
+}
+
+/** Return today's current period based on local hour. */
+export function currentPeriod(now = new Date()): EnergyPeriod {
+  const h = now.getHours();
+  for (const p of ENERGY_PERIODS) {
+    const [a, b] = ENERGY_PERIOD_RANGES[p];
+    if (h >= a && h < b) return p;
+  }
+  return "morning";
+}
+
+export function averageOfPeriodValues(values: EnergyLog["values"]): number | null {
+  const nums = Object.values(values).filter(
+    (v): v is number => typeof v === "number"
+  );
+  if (!nums.length) return null;
+  return nums.reduce((a, b) => a + b, 0) / nums.length;
+}
+
+/* ---------- PEOPLE ---------- */
+
+export function daysSinceLastContact(p: Person, now = new Date()): number {
+  const last = p.history[0];
+  const base = last ? new Date(last.date) : new Date(p.createdAt);
+  const diff = (now.getTime() - base.getTime()) / (1000 * 60 * 60 * 24);
+  return Math.floor(diff);
+}
+
+export function personStatus(
+  p: Person,
+  now = new Date()
+): "good" | "due-soon" | "overdue" {
+  const days = daysSinceLastContact(p, now);
+  if (days >= p.frequencyDays) return "overdue";
+  if (days >= p.frequencyDays * 0.8) return "due-soon";
+  return "good";
+}
+
+export function useOverduePeople() {
+  return useStore(
+    useShallow((s) => {
+      const now = new Date();
+      return s.people
+        .filter((p) => personStatus(p, now) === "overdue")
+        .sort(
+          (a, b) =>
+            daysSinceLastContact(b, now) - daysSinceLastContact(a, now)
+        );
+    })
+  );
+}
+
+/* ---------- NUTRITION ---------- */
+
+export function useMealsForDay(date: DateStr): Meal[] {
+  return useStore(
+    useShallow((s) =>
+      s.meals
+        .filter((m) => m.date === date)
+        .sort((a, b) => a.time.localeCompare(b.time))
+    )
+  );
+}
+
+export function computeTotalsForDay(meals: Meal[]) {
+  return meals.reduce(
+    (acc, m) => ({
+      calories: acc.calories + (m.calories || 0),
+      protein: acc.protein + (m.protein || 0),
+      carbs: acc.carbs + (m.carbs || 0),
+      fat: acc.fat + (m.fat || 0),
+    }),
+    { calories: 0, protein: 0, carbs: 0, fat: 0 }
+  );
+}
+
+/* ---------- BODY ---------- */
+
+export function useLatestMeasurement(): BodyMeasurement | undefined {
+  return useStore((s) => {
+    const sorted = [...s.body].sort((a, b) => b.date.localeCompare(a.date));
+    return sorted[0];
+  });
+}
+
+/* ---------- LIFE GOALS ---------- */
+
+export function useActiveLifeGoals() {
+  return useStore(
+    useShallow((s) =>
+      s.lifeGoals
+        .filter((g) => !g.completed)
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    )
+  );
+}
+
+export function useCompletedLifeGoals() {
+  return useStore(
+    useShallow((s) =>
+      s.lifeGoals
+        .filter((g) => g.completed)
+        .sort((a, b) =>
+          (b.completedAt ?? "").localeCompare(a.completedAt ?? "")
+        )
+    )
+  );
+}
+
+export function useLifeGoalById(id: string | null | undefined) {
+  return useStore((s) =>
+    id ? s.lifeGoals.find((g) => g.id === id) : undefined
+  );
+}
+
+/** Suppress unused-var warnings on types only re-exported for callers. */
+export type { Block, BlockType, EnergyPeriod, JournalEntry, Person, Meal, SavedMeal, PhotoMeta, BodyMeasurement, LifeGoal };
 
 export function useLastNHabitHistory(habit: Habit, n: number) {
   const dates = lastNDates(n);
@@ -241,6 +468,14 @@ export function computePerItemRate(
         pct: Math.round((done / dates.length) * 100),
       };
     });
+}
+
+function fmtMin(m: number): string {
+  const h = Math.floor(m / 60);
+  const mm = m % 60;
+  const ampm = h >= 12 ? "pm" : "am";
+  const hh = h % 12 || 12;
+  return `${hh}:${mm.toString().padStart(2, "0")}${ampm}`;
 }
 
 /**
@@ -352,6 +587,93 @@ export function getOverseerContext() {
       snippet: j.text.slice(0, 200),
       mood: j.mood,
     })),
+    scheduleToday: [...s.blocks]
+      .filter((b) => b.date === today)
+      .sort((a, b) => a.startMin - b.startMin)
+      .map((b) => {
+        const linkedGoal = b.goalId
+          ? s.goals.find((g) => g.id === b.goalId)
+          : undefined;
+        return {
+          start: fmtMin(b.startMin),
+          end: fmtMin(b.endMin),
+          type: b.type,
+          title: b.title,
+          done: linkedGoal?.completed ?? false,
+        };
+      }),
+    energyToday: s.energy[today]?.values ?? null,
+    nutritionToday: s.settings.nutrition.enabled
+      ? (() => {
+          const meals = s.meals.filter((m) => m.date === today);
+          const totals = meals.reduce(
+            (acc, m) => ({
+              calories: acc.calories + m.calories,
+              protein: acc.protein + m.protein,
+              carbs: acc.carbs + (m.carbs ?? 0),
+              fat: acc.fat + (m.fat ?? 0),
+            }),
+            { calories: 0, protein: 0, carbs: 0, fat: 0 }
+          );
+          const proteinByDay = last7.map((d) => {
+            const dm = s.meals.filter((m) => m.date === d);
+            return dm.reduce((a, m) => a + m.protein, 0);
+          });
+          const valid = proteinByDay.filter((n) => n > 0);
+          const proteinAvg7 = valid.length
+            ? Math.round(valid.reduce((a, b) => a + b, 0) / valid.length)
+            : null;
+          return {
+            totals,
+            targets: s.settings.nutrition,
+            proteinAvg7,
+          };
+        })()
+      : null,
+    peopleOverdue: (() => {
+      const now = new Date();
+      return s.people
+        .map((p) => {
+          const last = p.history[0];
+          const base = last ? new Date(last.date) : new Date(p.createdAt);
+          const days = Math.floor(
+            (now.getTime() - base.getTime()) / (1000 * 60 * 60 * 24)
+          );
+          return { p, days, overdue: days >= p.frequencyDays };
+        })
+        .filter((x) => x.overdue)
+        .sort((a, b) => b.days - a.days)
+        .slice(0, 5)
+        .map(({ p, days }) => ({
+          name: p.name,
+          relationship: p.relationship,
+          days,
+        }));
+    })(),
+    bodyLatest: (() => {
+      const sorted = [...s.body].sort((a, b) =>
+        b.date.localeCompare(a.date)
+      );
+      const m = sorted[0];
+      if (!m) return null;
+      return {
+        date: m.date,
+        weight: m.weight,
+        bodyFatPct: m.bodyFatPct,
+        chest: m.chest,
+        waist: m.waist,
+      };
+    })(),
+    activeLifeGoals: s.lifeGoals
+      .filter((g) => !g.completed)
+      .map((g) => ({
+        title: g.title,
+        emoji: g.emoji,
+        category: g.category,
+        measurable: g.measurable,
+        progress: g.progress,
+        targetYear: g.targetYear,
+      })),
   };
 }
 

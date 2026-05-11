@@ -22,6 +22,7 @@ export type Goal = {
   timeEstimateMin?: number;
   date: DateStr;
   order: number;
+  lifeGoalId?: string;
 };
 
 export type HabitIcon =
@@ -82,13 +83,233 @@ export type HealthLog = {
   sleepHours?: number;
   sleepQuality?: number; // 1..10
   mood?: number; // 1..10
-  energy?: number; // 1..10
+  /** Legacy single-value energy. Kept for backward-compat; new code reads
+   * from EnergyLog (`store.energy[date]`). */
+  energy?: number;
   waterOz?: number; // always stored in oz; display converted
   weight?: number; // always stored in lb; display converted
   steps?: number;
 };
 
-export type JournalSource = "manual" | "reflection" | "overseer";
+/* ---------- TIME BLOCKING ---------- */
+
+export type BlockType =
+  | "goal"
+  | "workout"
+  | "meal"
+  | "focus"
+  | "meeting"
+  | "rest"
+  | "other";
+
+export type Block = {
+  id: string;
+  date: DateStr;
+  startMin: number; // minutes since midnight
+  endMin: number;
+  type: BlockType;
+  title: string;
+  icon?: string;
+  notes?: string;
+  goalId?: string;
+  createdAt: string;
+};
+
+export const BLOCK_COLORS: Record<BlockType, { bg: string; fg: string; ring: string }> = {
+  goal: { bg: "var(--color-accent-soft)", fg: "var(--color-accent)", ring: "color-mix(in srgb, var(--color-accent) 32%, transparent)" },
+  workout: { bg: "color-mix(in srgb, #34D399 14%, transparent)", fg: "#34D399", ring: "color-mix(in srgb, #34D399 32%, transparent)" },
+  meal: { bg: "color-mix(in srgb, #FBBF24 14%, transparent)", fg: "#FBBF24", ring: "color-mix(in srgb, #FBBF24 32%, transparent)" },
+  focus: { bg: "color-mix(in srgb, #818CF8 14%, transparent)", fg: "#A5B4FC", ring: "color-mix(in srgb, #818CF8 32%, transparent)" },
+  meeting: { bg: "color-mix(in srgb, #FB7185 14%, transparent)", fg: "#FB7185", ring: "color-mix(in srgb, #FB7185 32%, transparent)" },
+  rest: { bg: "var(--color-elevated)", fg: "var(--color-fg-3)", ring: "var(--color-stroke-strong)" },
+  other: { bg: "var(--color-elevated)", fg: "var(--color-fg-2)", ring: "var(--color-stroke-strong)" },
+};
+
+export const BLOCK_TYPE_LABELS: Record<BlockType, string> = {
+  goal: "Goal",
+  workout: "Workout",
+  meal: "Meal",
+  focus: "Focus",
+  meeting: "Meeting",
+  rest: "Rest",
+  other: "Other",
+};
+
+/* ---------- ENERGY CURVE ---------- */
+
+export type EnergyPeriod = "morning" | "midday" | "afternoon" | "evening";
+
+export const ENERGY_PERIODS: EnergyPeriod[] = [
+  "morning",
+  "midday",
+  "afternoon",
+  "evening",
+];
+
+export const ENERGY_PERIOD_LABELS: Record<EnergyPeriod, string> = {
+  morning: "Morning",
+  midday: "Midday",
+  afternoon: "Afternoon",
+  evening: "Evening",
+};
+
+/** Period bounds in [startHour, endHour). Used to bucket timestamps. */
+export const ENERGY_PERIOD_RANGES: Record<EnergyPeriod, [number, number]> = {
+  morning: [5, 11],
+  midday: [11, 15],
+  afternoon: [15, 19],
+  evening: [19, 24],
+};
+
+export type EnergyLog = {
+  date: DateStr;
+  values: Partial<Record<EnergyPeriod, number>>; // 1..10
+};
+
+/* ---------- PEOPLE ---------- */
+
+export type ContactEvent = {
+  id: string;
+  /** ISO datetime */
+  date: string;
+  note?: string;
+};
+
+export type Person = {
+  id: string;
+  name: string;
+  relationship: string;
+  frequencyDays: number;
+  notes?: string;
+  history: ContactEvent[];
+  createdAt: string;
+};
+
+export const PEOPLE_RELATIONSHIP_PRESETS = [
+  "Family",
+  "Friend",
+  "Mentor",
+  "Colleague",
+  "Partner",
+  "Other",
+];
+
+export const FREQUENCY_PRESETS: Array<{ label: string; days: number }> = [
+  { label: "Weekly", days: 7 },
+  { label: "Biweekly", days: 14 },
+  { label: "Monthly", days: 30 },
+  { label: "Quarterly", days: 90 },
+];
+
+/* ---------- NUTRITION ---------- */
+
+export type Meal = {
+  id: string;
+  date: DateStr;
+  time: string; // "HH:MM"
+  name?: string;
+  calories: number;
+  protein: number;
+  carbs?: number;
+  fat?: number;
+  createdAt: string;
+};
+
+export type SavedMeal = {
+  id: string;
+  name: string;
+  calories: number;
+  protein: number;
+  carbs?: number;
+  fat?: number;
+};
+
+export type NutritionTargets = {
+  enabled: boolean;
+  calories?: number;
+  protein?: number;
+  carbs?: number;
+  fat?: number;
+};
+
+/* ---------- BODY ---------- */
+
+export type BodyMeasurement = {
+  id: string;
+  date: DateStr;
+  weight?: number; // stored in lb
+  chest?: number; // inches
+  waist?: number;
+  hips?: number;
+  bicep?: number;
+  thigh?: number;
+  bodyFatPct?: number;
+  notes?: string;
+  createdAt: string;
+};
+
+export type PhotoAngle = "front" | "side" | "back";
+
+export const PHOTO_ANGLES: PhotoAngle[] = ["front", "side", "back"];
+
+export const PHOTO_ANGLE_LABELS: Record<PhotoAngle, string> = {
+  front: "Front",
+  side: "Side",
+  back: "Back",
+};
+
+export type PhotoMeta = {
+  id: string;
+  date: DateStr;
+  angle: PhotoAngle;
+  weightAtTime?: number;
+  /** IndexedDB blob store key. */
+  idbKey: string;
+  createdAt: string;
+};
+
+/* ---------- LIFE GOALS ---------- */
+
+export type LifeGoalCategory =
+  | "travel"
+  | "experience"
+  | "learn"
+  | "health"
+  | "career"
+  | "financial"
+  | "relationships"
+  | "personal";
+
+export const LIFE_GOAL_CATEGORIES: Array<{
+  key: LifeGoalCategory;
+  label: string;
+  emoji: string;
+}> = [
+  { key: "travel", label: "Travel", emoji: "✈️" },
+  { key: "experience", label: "Experience", emoji: "🎉" },
+  { key: "learn", label: "Learn", emoji: "📚" },
+  { key: "health", label: "Health", emoji: "💪" },
+  { key: "career", label: "Career", emoji: "💼" },
+  { key: "financial", label: "Financial", emoji: "💰" },
+  { key: "relationships", label: "Relationships", emoji: "❤️" },
+  { key: "personal", label: "Personal", emoji: "🌱" },
+];
+
+export type LifeGoal = {
+  id: string;
+  title: string;
+  description?: string;
+  emoji?: string;
+  category: LifeGoalCategory;
+  targetYear?: number;
+  measurable: boolean;
+  progress: number; // 0..100
+  completed: boolean;
+  completedAt?: string;
+  createdAt: string;
+};
+
+export type JournalSource = "manual" | "reflection" | "overseer" | "lifeGoal";
 
 export type JournalEntry = {
   id: string;
@@ -160,6 +381,8 @@ export type Settings = {
   eveningSummary?: CachedBriefing;
   morningRoutine: MorningRoutineSettings;
   routineSeeded: boolean;
+  nutrition: NutritionTargets;
+  showNutritionOnToday: boolean;
 };
 
 export const DEFAULT_MORNING_ROUTINE: Array<{ name: string; icon: string }> = [
