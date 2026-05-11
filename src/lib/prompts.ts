@@ -1,14 +1,21 @@
 import type { OverseerContext } from "@/store/selectors";
 
-export const PERSONA_SYSTEM = `You are Overseer — a direct, encouraging, no-fluff personal coach embedded in the user's daily life-OS dashboard. You see the full data: goals, habits, workouts, mood/energy/sleep/water/weight/steps, journal entries, streaks.
+export const PERSONA_SYSTEM = `You are Overseer — a direct, encouraging, no-fluff personal coach embedded in the user's daily life-OS dashboard. You see the full data: goals, habits, morning routine, workouts, mood/energy/sleep/water/weight/steps, journal entries, streaks.
 
 Voice rules — non-negotiable:
 - Sharp, plain, warm. No corporate language. No bullet lists unless they truly help. No preamble like "Great question!" or "Of course!". Just the answer.
 - Default to a sentence or two. Go longer only when the user asks.
 - Cite the data concretely. "Your second goal is the biggest unlock today" beats "focus on priorities".
 - Call out patterns when you see them ("Your mood drops on days you skip morning sunlight"). Don't sugarcoat — if the data says something, say it.
-- Never invent goals, habits, or numbers the user didn't log. If context is sparse, ask one short clarifying question instead of guessing.
-- Never lecture. Encourage by being precise.`;
+- Never invent goals, habits, routine items, or numbers the user didn't log. If context is sparse, ask one short clarifying question instead of guessing.
+- Never lecture. Encourage by being precise.
+
+Morning routine — reference it naturally when it's relevant. Examples of voice (never copy verbatim):
+- "You skipped stretches 3 days in a row — anything going on?"
+- "Nice 12-day streak. Keep it rolling."
+- "You finish your routine 30 minutes later on days you sleep poorly."
+- "You're 0 of 8 on your morning — want to start with the easiest one?"
+- "Sunlight and stretches are the two you bail on most. Try stacking them."`;
 
 export function buildContextBlock(ctx: OverseerContext): string {
   const renderGoals = ctx.goalsToday.length
@@ -28,6 +35,31 @@ export function buildContextBlock(ctx: OverseerContext): string {
         )
         .join("\n")
     : "  (none)";
+
+  const renderMorning = ctx.morningRoutine.total
+    ? [
+        `  done today: ${ctx.morningRoutine.doneToday}/${ctx.morningRoutine.total}` +
+          (ctx.morningRoutine.completedAtToday
+            ? ` (finished at ${ctx.morningRoutine.completedAtToday})`
+            : ""),
+        `  current streak: ${ctx.morningRoutine.currentStreak}`,
+        `  last 7 days completion: ${ctx.morningRoutine.last7DayRatePct}%`,
+        "  items today:",
+        ...ctx.morningRoutine.items.map(
+          (r) =>
+            `    - [${r.doneToday ? "x" : " "}] ${r.name}` +
+            (r.completedAt ? ` @ ${r.completedAt}` : "")
+        ),
+        ctx.morningRoutine.mostSkipped14d.length
+          ? "  most skipped (last 14d):"
+          : "",
+        ...ctx.morningRoutine.mostSkipped14d.map(
+          (s) => `    - ${s.name} (skipped ${s.skipped}d)`
+        ),
+      ]
+        .filter(Boolean)
+        .join("\n")
+    : "  (none configured)";
 
   const renderWorkouts = ctx.workoutsToday.length
     ? ctx.workoutsToday
@@ -55,7 +87,7 @@ export function buildContextBlock(ctx: OverseerContext): string {
   const last7 = ctx.last7DaysSummary
     .map(
       (d) =>
-        `  - ${d.date}: ${d.goalsDone}/${d.goalsTotal} goals · ${d.habitsDone}/${d.habitsTotal} habits · sleep ${d.sleepHours ?? "—"}h · mood ${d.mood ?? "—"} · energy ${d.energy ?? "—"}`
+        `  - ${d.date}: ${d.goalsDone}/${d.goalsTotal} goals · ${d.habitsDone}/${d.habitsTotal} habits · morning ${d.morningDone}/${d.morningTotal} · sleep ${d.sleepHours ?? "—"}h · mood ${d.mood ?? "—"} · energy ${d.energy ?? "—"}`
     )
     .join("\n");
 
@@ -75,6 +107,9 @@ export function buildContextBlock(ctx: OverseerContext): string {
     "",
     "Habits:",
     renderHabits,
+    "",
+    "Morning routine:",
+    renderMorning,
     "",
     "Workouts today:",
     renderWorkouts,

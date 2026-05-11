@@ -130,6 +130,25 @@ export type CachedBriefing = {
   text: string;
 };
 
+export type MorningRoutineEntry = {
+  completed: boolean;
+  completedAt?: string; // ISO datetime
+};
+
+export type MorningRoutineItem = {
+  id: string;
+  name: string;
+  icon: string; // emoji
+  order: number;
+  history: Record<DateStr, MorningRoutineEntry>;
+};
+
+export type MorningRoutineSettings = {
+  showOnTodayScreen: boolean;
+  autoCollapseWhenDone: boolean;
+  showStreak: boolean;
+};
+
 export type Settings = {
   units: Units;
   accent: AccentColor;
@@ -139,6 +158,25 @@ export type Settings = {
   habitTemplates: Array<{ name: string; icon: HabitIcon }>;
   morningBriefing?: CachedBriefing;
   eveningSummary?: CachedBriefing;
+  morningRoutine: MorningRoutineSettings;
+  routineSeeded: boolean;
+};
+
+export const DEFAULT_MORNING_ROUTINE: Array<{ name: string; icon: string }> = [
+  { name: "Make the bed", icon: "🛏️" },
+  { name: "No phone for first 30 min", icon: "📵" },
+  { name: "Morning sunlight — 10 min", icon: "☀️" },
+  { name: "No coffee for first 30 min", icon: "☕" },
+  { name: "Morning stretches — 5 min", icon: "🧘" },
+  { name: "Creatine 10g", icon: "💊" },
+  { name: "Vitamins", icon: "💊" },
+  { name: "Set top 3 priorities for today", icon: "🎯" },
+];
+
+export const DEFAULT_MORNING_ROUTINE_SETTINGS: MorningRoutineSettings = {
+  showOnTodayScreen: true,
+  autoCollapseWhenDone: true,
+  showStreak: true,
 };
 
 export const DEFAULT_DAY_TYPES = [

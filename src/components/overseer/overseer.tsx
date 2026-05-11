@@ -16,6 +16,7 @@ type ChatMessage = {
 
 const EMPTY_PROMPTS = [
   "What should I focus on right now?",
+  "How's my morning routine going?",
   "How was my week?",
   "Help me plan tomorrow",
   "What patterns do you see?",

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Download, Upload, Trash2, Check, X, Plus } from "lucide-react";
+import { Download, Upload, Trash2, Check, X, Plus, Sunrise, RotateCcw } from "lucide-react";
 import { Screen } from "@/components/screen";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { Modal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
+import { ToggleRow } from "@/components/ui/toggle";
 import { useStore } from "@/store";
 import { AccentColor } from "@/lib/types";
 import { haptic } from "@/lib/haptics";
@@ -32,12 +33,15 @@ export default function SettingsPage() {
   const setWaterTarget = useStore((s) => s.setWaterTarget);
   const addDayType = useStore((s) => s.addDayType);
   const removeDayType = useStore((s) => s.removeDayType);
+  const setRoutineSettings = useStore((s) => s.setRoutineSettings);
+  const resetRoutine = useStore((s) => s.resetRoutineToDefaults);
   const exportAll = useStore((s) => s.exportAll);
   const importAll = useStore((s) => s.importAll);
   const clearAll = useStore((s) => s.clearAll);
 
   const fileRef = React.useRef<HTMLInputElement>(null);
   const [confirmClear, setConfirmClear] = React.useState(false);
+  const [confirmResetRoutine, setConfirmResetRoutine] = React.useState(false);
   const [status, setStatus] = React.useState<{
     kind: "ok" | "err";
     text: string;
@@ -200,6 +204,38 @@ export default function SettingsPage() {
 
       <Card>
         <CardHeader>
+          <CardTitle>Morning Routine</CardTitle>
+          <Sunrise size={14} className="text-[var(--color-accent)]" />
+        </CardHeader>
+        <div className="space-y-1">
+          <ToggleRow
+            label="Show on Today screen"
+            checked={settings.morningRoutine.showOnTodayScreen}
+            onChange={(v) => setRoutineSettings({ showOnTodayScreen: v })}
+          />
+          <ToggleRow
+            label="Auto-collapse when complete"
+            checked={settings.morningRoutine.autoCollapseWhenDone}
+            onChange={(v) => setRoutineSettings({ autoCollapseWhenDone: v })}
+          />
+          <ToggleRow
+            label="Show streak count"
+            checked={settings.morningRoutine.showStreak}
+            onChange={(v) => setRoutineSettings({ showStreak: v })}
+          />
+        </div>
+        <Button
+          variant="secondary"
+          className="w-full mt-3"
+          onClick={() => setConfirmResetRoutine(true)}
+        >
+          <RotateCcw size={14} />
+          Reset to defaults
+        </Button>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Backup</CardTitle>
           {status && (
             <span
@@ -249,6 +285,34 @@ export default function SettingsPage() {
           Clear all data
         </Button>
       </Card>
+
+      <Modal
+        open={confirmResetRoutine}
+        onClose={() => setConfirmResetRoutine(false)}
+        title="Reset morning routine?"
+        description="Replaces your current items with the original 8 defaults. History is kept."
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="ghost" onClick={() => setConfirmResetRoutine(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                resetRoutine();
+                setConfirmResetRoutine(false);
+                setStatus({ kind: "ok", text: "Routine reset." });
+                haptic("success");
+              }}
+            >
+              Reset
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm text-[var(--color-fg-2)]">
+          Your daily completion history stays in the device — only the list of items is replaced. You can still edit anything afterwards.
+        </p>
+      </Modal>
 
       <Modal
         open={confirmClear}

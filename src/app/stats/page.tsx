@@ -12,6 +12,7 @@ import {
   HabitRatesBars,
 } from "@/components/stats/charts";
 import { StreakLeaderboard } from "@/components/stats/streak-leaderboard";
+import { MorningRoutineStatsCard } from "@/components/stats/morning-routine-card";
 
 type Range = "7" | "30" | "90" | "365";
 
@@ -37,6 +38,7 @@ export default function StatsPage() {
         />
       </div>
       <Heatmap days={Math.min(days, 90)} />
+      <MorningRoutineStatsCard days={days} />
       <MoodEnergyChart days={days} />
       <SleepChart days={days} />
       <WeightChart days={days} />

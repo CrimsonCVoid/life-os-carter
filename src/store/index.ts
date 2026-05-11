@@ -6,6 +6,8 @@ import { todayStr } from "@/lib/date";
 import { uid } from "@/lib/utils";
 import {
   DEFAULT_DAY_TYPES,
+  DEFAULT_MORNING_ROUTINE,
+  DEFAULT_MORNING_ROUTINE_SETTINGS,
   Day,
   Goal,
   Habit,
@@ -13,6 +15,8 @@ import {
   HealthLog,
   JournalEntry,
   ListItem,
+  MorningRoutineItem,
+  MorningRoutineSettings,
   Plan,
   Settings,
   Struggle,
@@ -41,6 +45,7 @@ type State = {
   plans: Plan[];
   wins: Win[];
   struggles: Struggle[];
+  routine: MorningRoutineItem[];
 };
 
 type Actions = {
@@ -103,6 +108,15 @@ type Actions = {
   removeStruggle: (id: string) => void;
   updateStruggle: (id: string, text: string) => void;
 
+  // morning routine
+  addRoutineItem: (name: string, icon: string) => void;
+  toggleRoutineItem: (id: string, date?: DateStr) => void;
+  updateRoutineItem: (id: string, patch: Partial<MorningRoutineItem>) => void;
+  removeRoutineItem: (id: string) => void;
+  reorderRoutine: (orderedIds: string[]) => void;
+  resetRoutineToDefaults: (selectedNames?: string[]) => void;
+  setRoutineSettings: (patch: Partial<MorningRoutineSettings>) => void;
+
   // bulk
   exportAll: () => string;
   importAll: (raw: string) => boolean;
@@ -116,7 +130,24 @@ const defaultSettings = (): Settings => ({
   hasOnboarded: false,
   waterTargetOz: 96,
   habitTemplates: HABIT_TEMPLATES,
+  morningRoutine: { ...DEFAULT_MORNING_ROUTINE_SETTINGS },
+  routineSeeded: false,
 });
+
+function buildDefaultRoutine(
+  selected?: string[]
+): MorningRoutineItem[] {
+  const source = selected
+    ? DEFAULT_MORNING_ROUTINE.filter((d) => selected.includes(d.name))
+    : DEFAULT_MORNING_ROUTINE;
+  return source.map((d, i) => ({
+    id: uid(),
+    name: d.name,
+    icon: d.icon,
+    order: i,
+    history: {},
+  }));
+}
 
 const initialState: State = {
   hydrated: false,
@@ -130,6 +161,7 @@ const initialState: State = {
   plans: [],
   wins: [],
   struggles: [],
+  routine: [],
 };
 
 function nextOrder<T extends { order: number }>(arr: T[]) {
@@ -385,6 +417,67 @@ export const useStore = create<State & Actions>()(
           ),
         })),
 
+      addRoutineItem: (name, icon) =>
+        set((s) => ({
+          routine: [
+            ...s.routine,
+            {
+              id: uid(),
+              name,
+              icon,
+              order: nextOrder(s.routine),
+              history: {},
+            },
+          ],
+        })),
+      toggleRoutineItem: (id, date) =>
+        set((s) => ({
+          routine: s.routine.map((r) => {
+            if (r.id !== id) return r;
+            const key = date ?? todayStr();
+            const next = { ...r.history };
+            const current = next[key];
+            if (current?.completed) {
+              delete next[key];
+            } else {
+              next[key] = {
+                completed: true,
+                completedAt: new Date().toISOString(),
+              };
+            }
+            return { ...r, history: next };
+          }),
+        })),
+      updateRoutineItem: (id, patch) =>
+        set((s) => ({
+          routine: s.routine.map((r) => (r.id === id ? { ...r, ...patch } : r)),
+        })),
+      removeRoutineItem: (id) =>
+        set((s) => ({ routine: s.routine.filter((r) => r.id !== id) })),
+      reorderRoutine: (orderedIds) =>
+        set((s) => {
+          const byId = new Map(s.routine.map((r) => [r.id, r]));
+          const reordered = orderedIds
+            .map((id, i) => {
+              const r = byId.get(id);
+              return r ? { ...r, order: i } : null;
+            })
+            .filter(Boolean) as MorningRoutineItem[];
+          return { routine: reordered };
+        }),
+      resetRoutineToDefaults: (selectedNames) =>
+        set((s) => ({
+          routine: buildDefaultRoutine(selectedNames),
+          settings: { ...s.settings, routineSeeded: true },
+        })),
+      setRoutineSettings: (patch) =>
+        set((s) => ({
+          settings: {
+            ...s.settings,
+            morningRoutine: { ...s.settings.morningRoutine, ...patch },
+          },
+        })),
+
       exportAll: () => {
         const s = get();
         const payload = {
@@ -401,6 +494,7 @@ export const useStore = create<State & Actions>()(
             plans: s.plans,
             wins: s.wins,
             struggles: s.struggles,
+            routine: s.routine,
           },
         };
         return JSON.stringify(payload, null, 2);
@@ -410,7 +504,14 @@ export const useStore = create<State & Actions>()(
           const parsed = JSON.parse(raw);
           const state = parsed.state ?? parsed;
           set(() => ({
-            settings: { ...defaultSettings(), ...(state.settings ?? {}) },
+            settings: {
+              ...defaultSettings(),
+              ...(state.settings ?? {}),
+              morningRoutine: {
+                ...DEFAULT_MORNING_ROUTINE_SETTINGS,
+                ...((state.settings as Partial<Settings>)?.morningRoutine ?? {}),
+              },
+            },
             days: state.days ?? {},
             goals: state.goals ?? [],
             habits: state.habits ?? [],
@@ -420,6 +521,7 @@ export const useStore = create<State & Actions>()(
             plans: state.plans ?? [],
             wins: state.wins ?? [],
             struggles: state.struggles ?? [],
+            routine: state.routine ?? [],
           }));
           return true;
         } catch {
@@ -430,7 +532,12 @@ export const useStore = create<State & Actions>()(
         set(() => ({
           ...initialState,
           hydrated: true,
-          settings: { ...defaultSettings(), hasOnboarded: true },
+          settings: {
+            ...defaultSettings(),
+            hasOnboarded: true,
+            routineSeeded: true,
+          },
+          routine: buildDefaultRoutine(),
         })),
     }),
     {
@@ -442,8 +549,30 @@ export const useStore = create<State & Actions>()(
         void _hydrated;
         return rest;
       },
+      merge: (persisted, current) => {
+        // shallow merge with settings deep-merged so new fields get defaults
+        const p = (persisted ?? {}) as Partial<State>;
+        return {
+          ...current,
+          ...p,
+          settings: {
+            ...current.settings,
+            ...(p.settings ?? {}),
+            morningRoutine: {
+              ...current.settings.morningRoutine,
+              ...((p.settings as Partial<Settings>)?.morningRoutine ?? {}),
+            },
+          },
+          routine: p.routine ?? current.routine,
+        } as State & Actions;
+      },
       onRehydrateStorage: () => (state) => {
-        state?.setHydrated();
+        if (!state) return;
+        state.setHydrated();
+        // first-run seed (also fires for existing users upgrading)
+        if (!state.settings.routineSeeded) {
+          state.resetRoutineToDefaults();
+        }
       },
     }
   )

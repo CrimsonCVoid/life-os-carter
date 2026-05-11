@@ -8,7 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
 import { HabitGlyph } from "@/components/habit-icon";
 import { useStore } from "@/store";
-import { AccentColor, HABIT_TEMPLATES, Units } from "@/lib/types";
+import {
+  AccentColor,
+  DEFAULT_MORNING_ROUTINE,
+  HABIT_TEMPLATES,
+  Units,
+} from "@/lib/types";
 import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
 
@@ -30,15 +35,27 @@ export default function OnboardingPage() {
   const setAccent = useStore((s) => s.setAccent);
   const addHabit = useStore((s) => s.addHabit);
   const updateSettings = useStore((s) => s.updateSettings);
+  const resetRoutine = useStore((s) => s.resetRoutineToDefaults);
 
   const [step, setStep] = React.useState(0);
   const [weight, setWeight] = React.useState<"lb" | "kg">("lb");
   const [liquid, setLiquid] = React.useState<"oz" | "ml">("oz");
   const [accent, setAccentState] = React.useState<AccentColor>("violet");
   const [picked, setPicked] = React.useState<Set<string>>(new Set());
+  const [routinePicked, setRoutinePicked] = React.useState<Set<string>>(
+    () => new Set(DEFAULT_MORNING_ROUTINE.map((d) => d.name))
+  );
 
   const togglePick = (name: string) =>
     setPicked((s) => {
+      const next = new Set(s);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+
+  const toggleRoutinePick = (name: string) =>
+    setRoutinePicked((s) => {
       const next = new Set(s);
       if (next.has(name)) next.delete(name);
       else next.add(name);
@@ -52,6 +69,7 @@ export default function OnboardingPage() {
       const t = HABIT_TEMPLATES.find((x) => x.name === name);
       if (t) addHabit(t.name, t.icon);
     }
+    resetRoutine(Array.from(routinePicked));
     updateSettings({ hasOnboarded: true });
     haptic("success");
     router.replace("/");
@@ -175,6 +193,50 @@ export default function OnboardingPage() {
           <div className="mt-3 text-center text-xs text-[var(--color-fg-2)]">
             {picked.size} selected
             {picked.size === 0 && " · skip is fine"}
+          </div>
+        </StepShell>
+      ),
+      canNext: true,
+    },
+    {
+      render: (
+        <StepShell
+          title="Build your morning"
+          subtitle="Check the ones you actually want. You can change these anytime."
+        >
+          <div className="space-y-1.5">
+            {DEFAULT_MORNING_ROUTINE.map((r) => {
+              const on = routinePicked.has(r.name);
+              return (
+                <button
+                  key={r.name}
+                  type="button"
+                  onClick={() => toggleRoutinePick(r.name)}
+                  className={cn(
+                    "w-full flex items-center gap-3 p-3 rounded-xl border text-left transition active:scale-[0.99]",
+                    on
+                      ? "border-[var(--color-accent)] bg-[var(--color-accent-soft)]"
+                      : "border-[var(--color-stroke)] bg-[var(--color-elevated)] opacity-70"
+                  )}
+                >
+                  <span className="text-2xl leading-none">{r.icon}</span>
+                  <span className="flex-1 text-sm font-medium">{r.name}</span>
+                  <span
+                    className={cn(
+                      "h-5 w-5 grid place-items-center rounded-md border transition",
+                      on
+                        ? "bg-[var(--color-accent-strong)] border-[var(--color-accent-strong)] text-white"
+                        : "border-[var(--color-stroke-strong)]"
+                    )}
+                  >
+                    {on && <Check size={14} strokeWidth={3} />}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-3 text-center text-xs text-[var(--color-fg-2)]">
+            {routinePicked.size} of {DEFAULT_MORNING_ROUTINE.length} kept
           </div>
         </StepShell>
       ),
