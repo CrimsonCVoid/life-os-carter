@@ -4,32 +4,33 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-medium transition-colors active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 accent-ring",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium transition-all active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40 accent-ring select-none",
   {
     variants: {
       variant: {
-        default:
-          "bg-[var(--color-accent-strong)] text-white hover:bg-[var(--color-accent)]",
+        primary:
+          "bg-[var(--color-accent-strong)] text-white hover:bg-[var(--color-accent)] shadow-[var(--shadow-glow)]",
+        secondary:
+          "bg-[var(--color-elevated)] border border-[var(--color-stroke)] text-[var(--color-fg)] hover:border-[var(--color-stroke-strong)]",
         ghost:
-          "text-[var(--color-fg-muted)] hover:text-[var(--color-fg)] hover:bg-[var(--color-surface-2)]",
-        outline:
-          "control text-[var(--color-fg)] hover:bg-[var(--color-surface-2)]",
+          "text-[var(--color-fg-2)] hover:text-[var(--color-fg)] hover:bg-[var(--color-elevated)]",
         soft:
           "bg-[var(--color-accent-soft)] text-[var(--color-accent)] hover:brightness-110",
         danger:
-          "text-[var(--color-danger)] hover:bg-[color:color-mix(in_srgb,var(--color-danger)_12%,transparent)]",
+          "bg-[color:color-mix(in_srgb,var(--color-danger)_18%,transparent)] text-[var(--color-danger)] hover:brightness-110",
+        outline:
+          "border border-[var(--color-stroke-strong)] text-[var(--color-fg)] hover:bg-[var(--color-elevated)]",
       },
       size: {
-        default: "h-10 px-4 py-2",
-        sm: "h-8 px-3 text-xs",
-        icon: "h-9 w-9",
-        iconSm: "h-7 w-7",
+        sm: "h-8 px-3 text-xs rounded-[10px]",
+        default: "h-11 px-4 text-sm rounded-xl",
+        lg: "h-12 px-5 text-base rounded-xl",
+        icon: "h-10 w-10 rounded-xl",
+        iconSm: "h-8 w-8 rounded-lg",
+        pill: "h-9 px-4 text-xs rounded-full",
       },
     },
-    defaultVariants: {
-      variant: "default",
-      size: "default",
-    },
+    defaultVariants: { variant: "primary", size: "default" },
   }
 );
 

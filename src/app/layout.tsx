@@ -1,19 +1,25 @@
 import type { Metadata, Viewport } from "next";
+import { TopNav } from "@/components/nav/top-nav";
+import { HydrateGate } from "@/components/hydrate-gate";
+import { AccentProvider } from "@/components/accent-provider";
+import { Overseer } from "@/components/overseer/overseer";
+import { ServiceWorkerRegister } from "@/components/sw-register";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Life OS",
   description: "Your day at a glance.",
+  applicationName: "Life OS",
   appleWebApp: {
     capable: true,
     title: "Life OS",
     statusBarStyle: "black-translucent",
   },
-  manifest: undefined,
+  manifest: "/manifest.webmanifest",
 };
 
 export const viewport: Viewport = {
-  themeColor: "#08080A",
+  themeColor: "#050507",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -27,7 +33,15 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <AccentProvider />
+        <ServiceWorkerRegister />
+        <HydrateGate>
+          <TopNav />
+          {children}
+          <Overseer />
+        </HydrateGate>
+      </body>
     </html>
   );
 }
