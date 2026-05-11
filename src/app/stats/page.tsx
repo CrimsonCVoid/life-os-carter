@@ -13,6 +13,10 @@ import {
 } from "@/components/stats/charts";
 import { StreakLeaderboard } from "@/components/stats/streak-leaderboard";
 import { MorningRoutineStatsCard } from "@/components/stats/morning-routine-card";
+import { TimeSpentCard } from "@/components/stats/time-spent-card";
+import { EnergyCurveCard } from "@/components/stats/energy-curve-card";
+import { NutritionStatsCard } from "@/components/stats/nutrition-card";
+import { LifeGoalsCard } from "@/components/stats/life-goals-card";
 
 type Range = "7" | "30" | "90" | "365";
 
@@ -38,13 +42,17 @@ export default function StatsPage() {
         />
       </div>
       <Heatmap days={Math.min(days, 90)} />
+      <TimeSpentCard days={days} />
       <MorningRoutineStatsCard days={days} />
+      <EnergyCurveCard days={days} />
       <MoodEnergyChart days={days} />
       <SleepChart days={days} />
+      <NutritionStatsCard days={days} />
       <WeightChart days={days} />
       <WorkoutsDonut days={days} />
       <HabitRatesBars days={days} />
       <StreakLeaderboard />
+      <LifeGoalsCard />
     </Screen>
   );
 }
