@@ -22,7 +22,6 @@ export type Goal = {
   timeEstimateMin?: number;
   date: DateStr;
   order: number;
-  lifeGoalId?: string;
 };
 
 export type HabitIcon =
@@ -233,48 +232,8 @@ export type PhotoMeta = {
   createdAt: string;
 };
 
-/* ---------- LIFE GOALS ---------- */
 
-export type LifeGoalCategory =
-  | "travel"
-  | "experience"
-  | "learn"
-  | "health"
-  | "career"
-  | "financial"
-  | "relationships"
-  | "personal";
-
-export const LIFE_GOAL_CATEGORIES: Array<{
-  key: LifeGoalCategory;
-  label: string;
-  emoji: string;
-}> = [
-  { key: "travel", label: "Travel", emoji: "✈️" },
-  { key: "experience", label: "Experience", emoji: "🎉" },
-  { key: "learn", label: "Learn", emoji: "📚" },
-  { key: "health", label: "Health", emoji: "💪" },
-  { key: "career", label: "Career", emoji: "💼" },
-  { key: "financial", label: "Financial", emoji: "💰" },
-  { key: "relationships", label: "Relationships", emoji: "❤️" },
-  { key: "personal", label: "Personal", emoji: "🌱" },
-];
-
-export type LifeGoal = {
-  id: string;
-  title: string;
-  description?: string;
-  emoji?: string;
-  category: LifeGoalCategory;
-  targetYear?: number;
-  measurable: boolean;
-  progress: number; // 0..100
-  completed: boolean;
-  completedAt?: string;
-  createdAt: string;
-};
-
-export type JournalSource = "manual" | "reflection" | "overseer" | "lifeGoal";
+export type JournalSource = "manual" | "reflection" | "overseer";
 
 export type JournalEntry = {
   id: string;

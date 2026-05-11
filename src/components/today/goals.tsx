@@ -20,15 +20,11 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Plus, Tag, Timer } from "lucide-react";
 import { useStore } from "@/store";
-import {
-  useLifeGoalsRaw,
-  useTodayGoals,
-  useToday,
-} from "@/store/selectors";
+import { useTodayGoals, useToday } from "@/store/selectors";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Pill } from "@/components/ui/pill";
-import { Goal, LIFE_GOAL_CATEGORIES, Priority } from "@/lib/types";
+import { Goal, Priority } from "@/lib/types";
 import { haptic } from "@/lib/haptics";
 import { GoalEditModal } from "./goal-edit-modal";
 import { Confetti } from "@/components/confetti";
@@ -196,14 +192,6 @@ function GoalRow({
   onEdit: () => void;
   onRename: (text: string) => void;
 }) {
-  const lifeGoals = useLifeGoalsRaw();
-  const linkedLifeGoal = goal.lifeGoalId
-    ? lifeGoals.find((g) => g.id === goal.lifeGoalId)
-    : undefined;
-  const linkedEmoji =
-    linkedLifeGoal?.emoji ||
-    LIFE_GOAL_CATEGORIES.find((c) => c.key === linkedLifeGoal?.category)?.emoji;
-
   const {
     attributes,
     listeners,
@@ -278,16 +266,8 @@ function GoalRow({
             : "text-[var(--color-fg)]")
         }
       />
-      {(goal.timeEstimateMin || goal.category || linkedEmoji) && (
+      {(goal.timeEstimateMin || goal.category) && (
         <div className="flex items-center gap-1.5 shrink-0">
-          {linkedEmoji && (
-            <span
-              className="text-[12px] leading-none opacity-80"
-              title={`Linked to ${linkedLifeGoal?.title ?? "life goal"}`}
-            >
-              {linkedEmoji}
-            </span>
-          )}
           {goal.timeEstimateMin ? (
             <span className="inline-flex items-center gap-1 text-[10px] text-[var(--color-fg-2)] tnum">
               <Timer size={11} />

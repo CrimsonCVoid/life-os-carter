@@ -16,7 +16,6 @@ import { MorningRoutineStatsCard } from "@/components/stats/morning-routine-card
 import { TimeSpentCard } from "@/components/stats/time-spent-card";
 import { EnergyCurveCard } from "@/components/stats/energy-curve-card";
 import { NutritionStatsCard } from "@/components/stats/nutrition-card";
-import { LifeGoalsCard } from "@/components/stats/life-goals-card";
 
 type Range = "7" | "30" | "90" | "365";
 
@@ -52,7 +51,6 @@ export default function StatsPage() {
       <WorkoutsDonut days={days} />
       <HabitRatesBars days={days} />
       <StreakLeaderboard />
-      <LifeGoalsCard />
     </Screen>
   );
 }

@@ -19,7 +19,6 @@ import type {
   Goal,
   Habit,
   JournalEntry,
-  LifeGoal,
   Meal,
   MorningRoutineItem,
   PhotoMeta,
@@ -187,9 +186,6 @@ export function useBodyRaw() {
 export function usePhotosRaw() {
   return useStore((s) => s.photos);
 }
-export function useLifeGoalsRaw() {
-  return useStore((s) => s.lifeGoals);
-}
 
 /* ---------- TIME BLOCKING ---------- */
 
@@ -317,38 +313,8 @@ export function useLatestMeasurement(): BodyMeasurement | undefined {
   });
 }
 
-/* ---------- LIFE GOALS ---------- */
-
-export function useActiveLifeGoals() {
-  return useStore(
-    useShallow((s) =>
-      s.lifeGoals
-        .filter((g) => !g.completed)
-        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-    )
-  );
-}
-
-export function useCompletedLifeGoals() {
-  return useStore(
-    useShallow((s) =>
-      s.lifeGoals
-        .filter((g) => g.completed)
-        .sort((a, b) =>
-          (b.completedAt ?? "").localeCompare(a.completedAt ?? "")
-        )
-    )
-  );
-}
-
-export function useLifeGoalById(id: string | null | undefined) {
-  return useStore((s) =>
-    id ? s.lifeGoals.find((g) => g.id === id) : undefined
-  );
-}
-
 /** Suppress unused-var warnings on types only re-exported for callers. */
-export type { Block, BlockType, EnergyPeriod, JournalEntry, Meal, SavedMeal, PhotoMeta, BodyMeasurement, LifeGoal };
+export type { Block, BlockType, EnergyPeriod, JournalEntry, Meal, SavedMeal, PhotoMeta, BodyMeasurement };
 
 export function useLastNHabitHistory(habit: Habit, n: number) {
   const dates = lastNDates(n);
@@ -607,16 +573,6 @@ export function getOverseerContext() {
         waist: m.waist,
       };
     })(),
-    activeLifeGoals: s.lifeGoals
-      .filter((g) => !g.completed)
-      .map((g) => ({
-        title: g.title,
-        emoji: g.emoji,
-        category: g.category,
-        measurable: g.measurable,
-        progress: g.progress,
-        targetYear: g.targetYear,
-      })),
   };
 }
 

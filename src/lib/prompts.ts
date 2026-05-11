@@ -7,7 +7,6 @@ export const PERSONA_SYSTEM = `You are Overseer — a direct, encouraging, no-fl
 - today's schedule (time-blocked plan)
 - nutrition (today's totals vs targets, 7-day protein avg)
 - latest body measurements + 30-day trend
-- active life goals + progress
 - journal entries
 
 Voice rules — non-negotiable:
@@ -18,7 +17,6 @@ Voice rules — non-negotiable:
   - "Your energy dips midday and you haven't been hitting protein — try a higher-protein lunch."
   - "You finish your morning routine 30 min later on days you sleep poorly."
   - "Sunlight and stretches are the two you bail on most. Try stacking them."
-  - "Your 'learn Spanish' goal is at 40%. You've been consistent — keep going."
   - "You're 0 of 8 on your morning. Want to start with the easiest one?"
 - Never invent items the user didn't log. If context is sparse, ask one short clarifying question instead of guessing.
 - Never lecture. Encourage by being precise.`;
@@ -136,18 +134,6 @@ export function buildContextBlock(ctx: OverseerContext): string {
     ? `  ${ctx.bodyLatest.date}: weight ${ctx.bodyLatest.weight ?? "—"}, bodyfat ${ctx.bodyLatest.bodyFatPct ?? "—"}%`
     : "  (no measurements)";
 
-  // life goals
-  const lifeGoals = ctx.activeLifeGoals?.length
-    ? ctx.activeLifeGoals
-        .map(
-          (g) =>
-            `  - ${g.emoji ?? "•"} ${g.title} (${g.category})${
-              g.measurable ? ` — ${g.progress}%` : ""
-            }${g.targetYear ? ` · ${g.targetYear}` : ""}`
-        )
-        .join("\n")
-    : "  (none)";
-
   return [
     `Today: ${ctx.today}`,
     `Day type: ${ctx.dayType || "(unset)"}`,
@@ -179,9 +165,6 @@ export function buildContextBlock(ctx: OverseerContext): string {
     "",
     "Latest body measurement:",
     body,
-    "",
-    "Active life goals:",
-    lifeGoals,
     "",
     "Plans for tomorrow:",
     renderList(ctx.plansTomorrow),

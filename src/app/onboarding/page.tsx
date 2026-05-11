@@ -12,8 +12,6 @@ import {
   AccentColor,
   DEFAULT_MORNING_ROUTINE,
   HABIT_TEMPLATES,
-  LIFE_GOAL_CATEGORIES,
-  LifeGoalCategory,
   Units,
 } from "@/lib/types";
 import { haptic } from "@/lib/haptics";
@@ -40,7 +38,6 @@ export default function OnboardingPage() {
   const updateSettings = useStore((s) => s.updateSettings);
   const resetRoutine = useStore((s) => s.resetRoutineToDefaults);
   const setNutritionTargets = useStore((s) => s.setNutritionTargets);
-  const addLifeGoal = useStore((s) => s.addLifeGoal);
 
   const [step, setStep] = React.useState(0);
   const [weight, setWeight] = React.useState<"lb" | "kg">("lb");
@@ -55,9 +52,6 @@ export default function OnboardingPage() {
   const [proteinTarget, setProteinTarget] = React.useState("");
   const [carbsTarget, setCarbsTarget] = React.useState("");
   const [fatTarget, setFatTarget] = React.useState("");
-  const [lifeGoalTitle, setLifeGoalTitle] = React.useState("");
-  const [lifeGoalCat, setLifeGoalCat] =
-    React.useState<LifeGoalCategory>("personal");
 
   const togglePick = (name: string) =>
     setPicked((s) => {
@@ -100,13 +94,6 @@ export default function OnboardingPage() {
           fat: toNum(fatTarget),
         });
       }
-    }
-
-    if (lifeGoalTitle.trim()) {
-      addLifeGoal({
-        title: lifeGoalTitle.trim(),
-        category: lifeGoalCat,
-      });
     }
 
     updateSettings({ hasOnboarded: true });
@@ -345,47 +332,6 @@ export default function OnboardingPage() {
                   onChange={(e) => setFatTarget(e.target.value)}
                   placeholder="—"
                 />
-              </div>
-            </div>
-          )}
-        </StepShell>
-      ),
-      canNext: true,
-    },
-    {
-      render: (
-        <StepShell
-          title="Something for your lifetime?"
-          subtitle="Optional. One thing you want to do — start your bucket list."
-        >
-          <Input
-            value={lifeGoalTitle}
-            onChange={(e) => setLifeGoalTitle(e.target.value)}
-            placeholder="Visit Japan, learn to surf…"
-            className="text-base"
-          />
-          {lifeGoalTitle.trim().length > 0 && (
-            <div className="mt-3">
-              <div className="label mb-2">Category</div>
-              <div className="grid grid-cols-4 gap-1.5">
-                {LIFE_GOAL_CATEGORIES.map((c) => (
-                  <button
-                    key={c.key}
-                    type="button"
-                    onClick={() => setLifeGoalCat(c.key)}
-                    className={cn(
-                      "h-14 rounded-lg border flex flex-col items-center justify-center gap-0.5 transition",
-                      lifeGoalCat === c.key
-                        ? "border-[var(--color-accent)] bg-[var(--color-accent-soft)]"
-                        : "border-[var(--color-stroke)] bg-[var(--color-elevated)]"
-                    )}
-                  >
-                    <span className="text-base">{c.emoji}</span>
-                    <span className="text-[9px] text-[var(--color-fg-2)]">
-                      {c.label}
-                    </span>
-                  </button>
-                ))}
               </div>
             </div>
           )}

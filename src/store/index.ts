@@ -21,8 +21,6 @@ import {
   HABIT_TEMPLATES,
   HealthLog,
   JournalEntry,
-  LifeGoal,
-  LifeGoalCategory,
   ListItem,
   Meal,
   MorningRoutineItem,
@@ -66,7 +64,6 @@ type State = {
   savedMeals: SavedMeal[];
   body: BodyMeasurement[];
   photos: PhotoMeta[];
-  lifeGoals: LifeGoal[];
 };
 
 type Actions = {
@@ -168,15 +165,6 @@ type Actions = {
   addPhotoMeta: (p: Omit<PhotoMeta, "id" | "createdAt">) => void;
   removePhotoMeta: (id: string) => void;
 
-  // life goals
-  addLifeGoal: (
-    g: Omit<LifeGoal, "id" | "createdAt" | "completed" | "completedAt" | "progress" | "measurable"> &
-      Partial<Pick<LifeGoal, "measurable" | "progress">>
-  ) => string;
-  updateLifeGoal: (id: string, patch: Partial<LifeGoal>) => void;
-  removeLifeGoal: (id: string) => void;
-  completeLifeGoal: (id: string, reflection?: string) => void;
-
   // bulk
   exportAll: () => string;
   importAll: (raw: string) => boolean;
@@ -236,7 +224,6 @@ const initialState: State = {
   savedMeals: [],
   body: [],
   photos: [],
-  lifeGoals: [],
 };
 
 /** Pick the energy period from a clock hour. */
@@ -753,64 +740,6 @@ export const useStore = create<State & Actions>()(
       removePhotoMeta: (id) =>
         set((s) => ({ photos: s.photos.filter((p) => p.id !== id) })),
 
-      addLifeGoal: (g) => {
-        const id = uid();
-        set((s) => ({
-          lifeGoals: [
-            ...s.lifeGoals,
-            {
-              id,
-              title: g.title,
-              description: g.description,
-              emoji: g.emoji,
-              category: g.category,
-              targetYear: g.targetYear,
-              measurable: g.measurable ?? false,
-              progress: g.progress ?? 0,
-              completed: false,
-              createdAt: new Date().toISOString(),
-            },
-          ],
-        }));
-        return id;
-      },
-      updateLifeGoal: (id, patch) =>
-        set((s) => ({
-          lifeGoals: s.lifeGoals.map((g) =>
-            g.id === id ? { ...g, ...patch } : g
-          ),
-        })),
-      removeLifeGoal: (id) =>
-        set((s) => ({
-          lifeGoals: s.lifeGoals.filter((g) => g.id !== id),
-          // also unlink any daily goals pointing at it
-          goals: s.goals.map((dg) =>
-            dg.lifeGoalId === id ? { ...dg, lifeGoalId: undefined } : dg
-          ),
-        })),
-      completeLifeGoal: (id, reflection) =>
-        set((s) => {
-          const goal = s.lifeGoals.find((g) => g.id === id);
-          if (!goal) return s;
-          const completedAt = new Date().toISOString();
-          const journalEntry: JournalEntry = {
-            id: uid(),
-            date: todayStr(),
-            text: `**${goal.emoji ?? "✨"} ${goal.title}** — done.\n\n${
-              reflection?.trim() ?? ""
-            }`,
-            tags: ["life-goal", goal.category],
-            source: "lifeGoal",
-            createdAt: completedAt,
-          };
-          return {
-            lifeGoals: s.lifeGoals.map((g) =>
-              g.id === id ? { ...g, completed: true, completedAt, progress: 100 } : g
-            ),
-            journal: [journalEntry, ...s.journal],
-          };
-        }),
-
       exportAll: () => {
         const s = get();
         const payload = {
@@ -836,7 +765,6 @@ export const useStore = create<State & Actions>()(
             // photo metadata is included but actual image blobs live in
             // IndexedDB and are exported separately via the photos-zip flow.
             photos: s.photos,
-            lifeGoals: s.lifeGoals,
           },
         };
         return JSON.stringify(payload, null, 2);
@@ -874,7 +802,6 @@ export const useStore = create<State & Actions>()(
             savedMeals: state.savedMeals ?? [],
             body: state.body ?? [],
             photos: state.photos ?? [],
-            lifeGoals: state.lifeGoals ?? [],
           }));
           return true;
         } catch {
@@ -932,7 +859,6 @@ export const useStore = create<State & Actions>()(
           savedMeals: p.savedMeals ?? current.savedMeals,
           body: p.body ?? current.body,
           photos: p.photos ?? current.photos,
-          lifeGoals: p.lifeGoals ?? current.lifeGoals,
         } as State & Actions;
         return merged;
       },
