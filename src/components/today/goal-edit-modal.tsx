@@ -1,11 +1,19 @@
 "use client";
 
 import * as React from "react";
+import { Repeat } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { Goal, Priority } from "@/lib/types";
+import { useStore } from "@/store";
+import { todayStr } from "@/lib/date";
+import { haptic } from "@/lib/haptics";
+import {
+  RecurringGoalEditModal,
+  type RecurringGoalDraft,
+} from "./recurring-goal-edit-modal";
 
 const EMOJI_SET = [
   "💪",
@@ -33,6 +41,24 @@ type Props = {
 
 export function GoalEditModal({ goal, onClose, onSave, onDelete }: Props) {
   const open = !!goal;
+  const addRecurringGoal = useStore((s) => s.addRecurringGoal);
+  const updateGoal = useStore((s) => s.updateGoal);
+  const recurringGenAdd = useStore((s) => s.skipRecurringGeneration);
+  void recurringGenAdd;
+  // we hand-write the generation entry below to set status="generated"
+  const setGeneration = (
+    recurringGoalId: string,
+    date: string,
+    generatedGoalId: string
+  ) =>
+    useStore.setState((s) => ({
+      recurringGenerations: [
+        ...s.recurringGenerations,
+        { recurringGoalId, date, generatedGoalId, status: "generated" },
+      ],
+    }));
+
+  const [recurringOpen, setRecurringOpen] = React.useState(false);
   const [text, setText] = React.useState("");
   const [priority, setPriority] = React.useState<Priority>("P2");
   const [emoji, setEmoji] = React.useState<string | undefined>();
@@ -59,6 +85,18 @@ export function GoalEditModal({ goal, onClose, onSave, onDelete }: Props) {
       timeEstimateMin: time ? parseInt(time, 10) || undefined : undefined,
     });
   };
+
+  const initialRecurring: Partial<RecurringGoalDraft> | undefined = goal
+    ? {
+        text,
+        emoji,
+        priority,
+        category: category.trim() || undefined,
+        timeEstimateMin: time ? parseInt(time, 10) || undefined : undefined,
+        pattern: "daily",
+        startDate: todayStr(),
+      }
+    : undefined;
 
   if (!open) return null;
 
@@ -187,7 +225,41 @@ export function GoalEditModal({ goal, onClose, onSave, onDelete }: Props) {
           </div>
         </div>
 
+        {goal && !goal.recurringGoalId && (
+          <Button
+            variant="secondary"
+            className="w-full"
+            onClick={() => setRecurringOpen(true)}
+          >
+            <Repeat size={14} />
+            Make recurring
+          </Button>
+        )}
+        {goal?.recurringGoalId && (
+          <div className="text-[11px] text-[var(--color-fg-3)] inline-flex items-center gap-1">
+            <Repeat size={11} />
+            From a recurring template — edit the recurrence from Manage.
+          </div>
+        )}
+
       </div>
+
+      <RecurringGoalEditModal
+        open={recurringOpen}
+        initial={initialRecurring}
+        onClose={() => setRecurringOpen(false)}
+        onSave={(draft) => {
+          if (!goal) return;
+          const rgId = addRecurringGoal(draft);
+          // Link the current Goal so today's goal isn't duplicated by
+          // the next generation pass.
+          updateGoal(goal.id, { recurringGoalId: rgId });
+          setGeneration(rgId, goal.date, goal.id);
+          setRecurringOpen(false);
+          haptic("success");
+          onClose();
+        }}
+      />
     </Modal>
   );
 }

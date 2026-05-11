@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { todayStr } from "@/lib/date";
+import { shouldGenerateForDate } from "@/lib/recurrence";
 import { uid } from "@/lib/utils";
 import {
   DEFAULT_DAY_TYPES,
@@ -30,6 +31,8 @@ import {
   PhotoAngle,
   PhotoMeta,
   Plan,
+  RecurringGoal,
+  RecurringGoalGeneration,
   SavedMeal,
   Settings,
   VoiceJournalSettings,
@@ -66,6 +69,8 @@ type State = {
   savedMeals: SavedMeal[];
   body: BodyMeasurement[];
   photos: PhotoMeta[];
+  recurringGoals: RecurringGoal[];
+  recurringGenerations: RecurringGoalGeneration[];
 };
 
 type Actions = {
@@ -160,6 +165,22 @@ type Actions = {
   setNutritionTargets: (patch: Partial<NutritionTargets>) => void;
   setShowNutritionOnToday: (v: boolean) => void;
   setVoiceJournalSettings: (patch: Partial<VoiceJournalSettings>) => void;
+  setShowRecurringIcon: (v: boolean) => void;
+
+  // recurring goals
+  addRecurringGoal: (
+    g: Omit<RecurringGoal, "id" | "createdAt" | "active"> & { active?: boolean }
+  ) => string;
+  updateRecurringGoal: (id: string, patch: Partial<RecurringGoal>) => void;
+  removeRecurringGoal: (id: string) => void;
+  toggleRecurringGoalActive: (id: string) => void;
+  /** Idempotent generation pass for the given date (defaults to today). */
+  runRecurringGeneration: (date?: DateStr) => void;
+  /** Marks the generation for {recurringGoalId, date} as skipped so it
+   * won't regenerate on the next pass. */
+  skipRecurringGeneration: (recurringGoalId: string, date: DateStr) => void;
+  /** Clears all generation history (recurring goal templates kept). */
+  resetRecurringGenerations: () => void;
 
   // body measurements + photos
   addBodyMeasurement: (m: Omit<BodyMeasurement, "id" | "createdAt">) => void;
@@ -192,6 +213,7 @@ const defaultSettings = (): Settings => ({
   },
   showNutritionOnToday: true,
   voiceJournal: { ...DEFAULT_VOICE_JOURNAL_SETTINGS },
+  showRecurringIcon: true,
 });
 
 function buildDefaultRoutine(
@@ -228,6 +250,8 @@ const initialState: State = {
   savedMeals: [],
   body: [],
   photos: [],
+  recurringGoals: [],
+  recurringGenerations: [],
 };
 
 /** Pick the energy period from a clock hour. */
@@ -711,6 +735,128 @@ export const useStore = create<State & Actions>()(
             voiceJournal: { ...s.settings.voiceJournal, ...patch },
           },
         })),
+      setShowRecurringIcon: (v) =>
+        set((s) => ({
+          settings: { ...s.settings, showRecurringIcon: v },
+        })),
+
+      addRecurringGoal: (g) => {
+        const id = uid();
+        set((s) => ({
+          recurringGoals: [
+            ...s.recurringGoals,
+            {
+              id,
+              active: g.active ?? true,
+              createdAt: new Date().toISOString(),
+              text: g.text,
+              emoji: g.emoji,
+              priority: g.priority,
+              category: g.category,
+              timeEstimateMin: g.timeEstimateMin,
+              pattern: g.pattern,
+              daysOfWeek: g.daysOfWeek,
+              dayOfMonth: g.dayOfMonth,
+              monthlyLastDay: g.monthlyLastDay,
+              intervalDays: g.intervalDays,
+              startDate: g.startDate,
+            },
+          ],
+        }));
+        return id;
+      },
+      updateRecurringGoal: (id, patch) =>
+        set((s) => ({
+          recurringGoals: s.recurringGoals.map((r) =>
+            r.id === id ? { ...r, ...patch } : r
+          ),
+        })),
+      removeRecurringGoal: (id) =>
+        set((s) => ({
+          recurringGoals: s.recurringGoals.filter((r) => r.id !== id),
+          // keep generation history rows for orphaned recurring goals;
+          // already-generated Goal entries are independent and remain
+          // visible as plain goals.
+        })),
+      toggleRecurringGoalActive: (id) =>
+        set((s) => ({
+          recurringGoals: s.recurringGoals.map((r) =>
+            r.id === id ? { ...r, active: !r.active } : r
+          ),
+        })),
+      runRecurringGeneration: (dateArg) =>
+        set((s) => {
+          const date = dateArg ?? todayStr();
+          if (s.recurringGoals.length === 0) return s;
+
+          const genByKey = new Map<string, RecurringGoalGeneration>();
+          for (const g of s.recurringGenerations) {
+            genByKey.set(`${g.recurringGoalId}:${g.date}`, g);
+          }
+
+          const newGoals: Goal[] = [];
+          const newGenerations: RecurringGoalGeneration[] = [];
+          const sameDayGoals = s.goals.filter((g) => g.date === date);
+          let orderCursor = nextOrder(sameDayGoals);
+
+          for (const rg of s.recurringGoals) {
+            if (!rg.active) continue;
+            if (!shouldGenerateForDate(rg, date)) continue;
+            const key = `${rg.id}:${date}`;
+            if (genByKey.has(key)) continue;
+            const goal: Goal = {
+              id: uid(),
+              date,
+              completed: false,
+              order: orderCursor++,
+              text: rg.text,
+              priority: rg.priority,
+              emoji: rg.emoji,
+              category: rg.category,
+              timeEstimateMin: rg.timeEstimateMin,
+              recurringGoalId: rg.id,
+            };
+            newGoals.push(goal);
+            newGenerations.push({
+              recurringGoalId: rg.id,
+              date,
+              generatedGoalId: goal.id,
+              status: "generated",
+            });
+          }
+
+          if (newGoals.length === 0) return s;
+          return {
+            goals: [...s.goals, ...newGoals],
+            recurringGenerations: [
+              ...s.recurringGenerations,
+              ...newGenerations,
+            ],
+          };
+        }),
+      skipRecurringGeneration: (recurringGoalId, date) =>
+        set((s) => {
+          const idx = s.recurringGenerations.findIndex(
+            (g) => g.recurringGoalId === recurringGoalId && g.date === date
+          );
+          if (idx >= 0) {
+            const next = s.recurringGenerations.slice();
+            next[idx] = {
+              ...next[idx],
+              status: "skipped",
+              generatedGoalId: "",
+            };
+            return { recurringGenerations: next };
+          }
+          return {
+            recurringGenerations: [
+              ...s.recurringGenerations,
+              { recurringGoalId, date, generatedGoalId: "", status: "skipped" },
+            ],
+          };
+        }),
+      resetRecurringGenerations: () =>
+        set(() => ({ recurringGenerations: [] })),
 
       addBodyMeasurement: (m) =>
         set((s) => {
@@ -785,6 +931,8 @@ export const useStore = create<State & Actions>()(
             // photo metadata is included but actual image blobs live in
             // IndexedDB and are exported separately via the photos-zip flow.
             photos: s.photos,
+            recurringGoals: s.recurringGoals,
+            recurringGenerations: s.recurringGenerations,
           },
         };
         return JSON.stringify(payload, null, 2);
@@ -826,6 +974,8 @@ export const useStore = create<State & Actions>()(
             savedMeals: state.savedMeals ?? [],
             body: state.body ?? [],
             photos: state.photos ?? [],
+            recurringGoals: state.recurringGoals ?? [],
+            recurringGenerations: state.recurringGenerations ?? [],
           }));
           return true;
         } catch {
@@ -887,6 +1037,9 @@ export const useStore = create<State & Actions>()(
           savedMeals: p.savedMeals ?? current.savedMeals,
           body: p.body ?? current.body,
           photos: p.photos ?? current.photos,
+          recurringGoals: p.recurringGoals ?? current.recurringGoals,
+          recurringGenerations:
+            p.recurringGenerations ?? current.recurringGenerations,
         } as State & Actions;
         return merged;
       },

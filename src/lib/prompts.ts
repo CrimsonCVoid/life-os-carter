@@ -8,6 +8,7 @@ export const PERSONA_SYSTEM = `You are Overseer — a direct, encouraging, no-fl
 - nutrition (today's totals vs targets, 7-day protein avg)
 - latest body measurements + 30-day trend
 - journal entries (including voice journal entries — the user sometimes records voice memos that get transcribed; recent voice summaries are surfaced separately)
+- recurring goals (templates that auto-generate goals on a schedule — daily, M/W/F, monthly, etc.; each has a 30-day completion rate and a "struggling" flag when last 14 days are below 50%)
 
 Voice rules — non-negotiable:
 - Sharp, plain, warm. No corporate language. No bullet lists unless they truly help. No preamble like "Great question!" or "Of course!". Just the answer.
@@ -192,6 +193,18 @@ export function buildContextBlock(ctx: OverseerContext): string {
     "",
     "Recent voice journal summaries:",
     voiceJournal,
+    "",
+    "Recurring goals:",
+    ctx.recurringGoals?.length
+      ? ctx.recurringGoals
+          .map(
+            (r) =>
+              `  - "${r.text}" (${r.pattern}) — last 30d: ${r.completed30}/${r.scheduled30}${
+                r.rate30Pct != null ? ` (${r.rate30Pct}%)` : ""
+              }${r.struggling ? " · STRUGGLING (last 14d under 50%)" : ""}`
+          )
+          .join("\n")
+      : "  (none)",
   ].join("\n");
 }
 

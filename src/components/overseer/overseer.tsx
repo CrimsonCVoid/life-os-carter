@@ -17,7 +17,7 @@ type ChatMessage = {
 const EMPTY_PROMPTS = [
   "What should I focus on right now?",
   "Help me schedule the rest of today",
-  "What patterns did you share in your voice journals this week?",
+  "How are my recurring goals going?",
   "What patterns do you see?",
 ];
 

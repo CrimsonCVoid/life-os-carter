@@ -22,7 +22,71 @@ export type Goal = {
   timeEstimateMin?: number;
   date: DateStr;
   order: number;
+  /** Set when this goal was auto-generated from a RecurringGoal template. */
+  recurringGoalId?: string;
 };
+
+/* ---------- RECURRING GOALS ---------- */
+
+export type RecurrencePattern =
+  | "daily"
+  | "weekdays"
+  | "weekends"
+  | "weekly"
+  | "biweekly"
+  | "monthly"
+  | "custom";
+
+export type RecurringGoal = {
+  id: string;
+  text: string;
+  emoji?: string;
+  priority: Priority;
+  category?: string;
+  timeEstimateMin?: number;
+  pattern: RecurrencePattern;
+  /** 0=Sun..6=Sat. Used for weekly/biweekly. */
+  daysOfWeek?: number[];
+  /** 1-31. Used for monthly (unless monthlyLastDay is true). */
+  dayOfMonth?: number;
+  /** When true, monthly recurrence falls on the last day of each month. */
+  monthlyLastDay?: boolean;
+  /** Used for custom — every N days from startDate. N >= 1. */
+  intervalDays?: number;
+  startDate: DateStr;
+  active: boolean;
+  createdAt: string;
+};
+
+export type RecurringGoalGenerationStatus = "generated" | "skipped";
+
+export type RecurringGoalGeneration = {
+  recurringGoalId: string;
+  date: DateStr;
+  /** Empty string when status is "skipped" before any goal existed. */
+  generatedGoalId: string;
+  status: RecurringGoalGenerationStatus;
+};
+
+export const RECURRENCE_PATTERN_LABELS: Record<RecurrencePattern, string> = {
+  daily: "Daily",
+  weekdays: "Weekdays",
+  weekends: "Weekends",
+  weekly: "Weekly",
+  biweekly: "Biweekly",
+  monthly: "Monthly",
+  custom: "Custom",
+};
+
+export const RECURRENCE_PATTERNS: RecurrencePattern[] = [
+  "daily",
+  "weekdays",
+  "weekends",
+  "weekly",
+  "biweekly",
+  "monthly",
+  "custom",
+];
 
 export type HabitIcon =
   | "book"
@@ -330,6 +394,7 @@ export type Settings = {
   nutrition: NutritionTargets;
   showNutritionOnToday: boolean;
   voiceJournal: VoiceJournalSettings;
+  showRecurringIcon: boolean;
 };
 
 export const DEFAULT_MORNING_ROUTINE: Array<{ name: string; icon: string }> = [

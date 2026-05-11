@@ -52,6 +52,15 @@ export default function OnboardingPage() {
   const [proteinTarget, setProteinTarget] = React.useState("");
   const [carbsTarget, setCarbsTarget] = React.useState("");
   const [fatTarget, setFatTarget] = React.useState("");
+  const [recurringText, setRecurringText] = React.useState("");
+  const [recurringPattern, setRecurringPattern] = React.useState<
+    "daily" | "weekdays" | "weekly"
+  >("daily");
+  const [recurringDays, setRecurringDays] = React.useState<number[]>(() => [
+    new Date().getDay(),
+  ]);
+  const addRecurringGoal = useStore((s) => s.addRecurringGoal);
+  const runRecurringGeneration = useStore((s) => s.runRecurringGeneration);
 
   const togglePick = (name: string) =>
     setPicked((s) => {
@@ -94,6 +103,18 @@ export default function OnboardingPage() {
           fat: toNum(fatTarget),
         });
       }
+    }
+
+    if (recurringText.trim().length > 0) {
+      addRecurringGoal({
+        text: recurringText.trim(),
+        priority: "P2",
+        pattern: recurringPattern,
+        daysOfWeek:
+          recurringPattern === "weekly" ? recurringDays : undefined,
+        startDate: new Date().toISOString().slice(0, 10),
+      });
+      runRecurringGeneration();
     }
 
     updateSettings({ hasOnboarded: true });
@@ -263,6 +284,71 @@ export default function OnboardingPage() {
           </div>
           <div className="mt-3 text-center text-xs text-[var(--color-fg-2)]">
             {routinePicked.size} of {DEFAULT_MORNING_ROUTINE.length} kept
+          </div>
+        </StepShell>
+      ),
+      canNext: true,
+    },
+    {
+      render: (
+        <StepShell
+          title="Set a recurring goal"
+          subtitle="Something you want to do regularly — gym, journal, weekly meal prep. Skippable."
+        >
+          <div className="space-y-4">
+            <Input
+              value={recurringText}
+              onChange={(e) => setRecurringText(e.target.value)}
+              placeholder="e.g. Gym session"
+            />
+            <div>
+              <div className="label mb-2">Pattern</div>
+              <Segmented<"daily" | "weekdays" | "weekly">
+                value={recurringPattern}
+                onChange={setRecurringPattern}
+                options={[
+                  { value: "daily", label: "Daily" },
+                  { value: "weekdays", label: "Weekdays" },
+                  { value: "weekly", label: "Weekly" },
+                ]}
+                size="sm"
+              />
+            </div>
+            {recurringPattern === "weekly" && (
+              <div>
+                <div className="label mb-2">Days</div>
+                <div className="flex gap-1.5">
+                  {["S", "M", "T", "W", "T", "F", "S"].map((label, i) => {
+                    const active = recurringDays.includes(i);
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() =>
+                          setRecurringDays((cur) =>
+                            cur.includes(i)
+                              ? cur.filter((x) => x !== i)
+                              : [...cur, i].sort()
+                          )
+                        }
+                        className={cn(
+                          "h-9 w-9 rounded-full text-xs font-medium border transition",
+                          active
+                            ? "bg-[var(--color-accent-strong)] text-white border-transparent"
+                            : "border-[var(--color-stroke)] text-[var(--color-fg-2)]"
+                        )}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            <div className="text-[11px] text-[var(--color-fg-3)]">
+              Leave blank to skip — you can add recurring goals any time
+              from Today → Manage.
+            </div>
           </div>
         </StepShell>
       ),

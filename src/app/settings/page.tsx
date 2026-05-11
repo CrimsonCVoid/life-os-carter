@@ -10,6 +10,7 @@ import { Modal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { ToggleRow } from "@/components/ui/toggle";
+import { ManageRecurringModal } from "@/components/today/recurring-manage-modal";
 import { useStore } from "@/store";
 import { AccentColor } from "@/lib/types";
 import { haptic } from "@/lib/haptics";
@@ -237,6 +238,8 @@ export default function SettingsPage() {
       <NutritionSettingsCard />
 
       <VoiceJournalSettingsCard />
+
+      <RecurringGoalsSettingsCard />
 
       <Card>
         <CardHeader>
@@ -484,6 +487,76 @@ function VoiceJournalSettingsCard() {
         <div className="text-sm text-[var(--color-fg-2)]">
           This cannot be undone.
         </div>
+      </Modal>
+    </Card>
+  );
+}
+
+function RecurringGoalsSettingsCard() {
+  const showIcon = useStore((s) => s.settings.showRecurringIcon);
+  const setShowRecurringIcon = useStore((s) => s.setShowRecurringIcon);
+  const resetRecurringGenerations = useStore(
+    (s) => s.resetRecurringGenerations
+  );
+  const runRecurringGeneration = useStore((s) => s.runRecurringGeneration);
+  const [manageOpen, setManageOpen] = React.useState(false);
+  const [confirmReset, setConfirmReset] = React.useState(false);
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Recurring Goals</CardTitle>
+      </CardHeader>
+      <div className="space-y-1">
+        <ToggleRow
+          label="Show 🔁 icon on Today"
+          description="Marks goals that came from a recurring template."
+          checked={showIcon}
+          onChange={setShowRecurringIcon}
+        />
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <Button variant="secondary" onClick={() => setManageOpen(true)}>
+          Manage
+        </Button>
+        <Button variant="secondary" onClick={() => setConfirmReset(true)}>
+          Reset generations
+        </Button>
+      </div>
+      <p className="mt-3 text-[11px] text-[var(--color-fg-3)]">
+        Reset wipes the generation log so today’s scheduled recurrences run
+        again. Past goals already on your calendar are kept.
+      </p>
+
+      <ManageRecurringModal
+        open={manageOpen}
+        onClose={() => setManageOpen(false)}
+      />
+
+      <Modal
+        open={confirmReset}
+        onClose={() => setConfirmReset(false)}
+        title="Reset all generations?"
+        description="Clears the generation log. Today's recurring goals will regenerate. Existing past goals are untouched."
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="ghost" onClick={() => setConfirmReset(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                resetRecurringGenerations();
+                runRecurringGeneration();
+                setConfirmReset(false);
+                haptic("warn");
+              }}
+            >
+              Reset
+            </Button>
+          </div>
+        }
+      >
+        <div className="text-sm text-[var(--color-fg-2)]" />
       </Modal>
     </Card>
   );

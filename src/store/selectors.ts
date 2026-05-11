@@ -22,9 +22,12 @@ import type {
   Meal,
   MorningRoutineItem,
   PhotoMeta,
+  RecurringGoal,
+  RecurringGoalGeneration,
   SavedMeal,
 } from "@/lib/types";
 import { ENERGY_PERIODS, ENERGY_PERIOD_RANGES } from "@/lib/types";
+import { computeRecurringStats, shouldGenerateForDate, patternSummary } from "@/lib/recurrence";
 import { useStore } from "./index";
 
 export function useToday(): DateStr {
@@ -391,6 +394,80 @@ export function useRoutineAvgCompletionMin(days: number): number | null {
   });
 }
 
+/* ---------- RECURRING GOALS ---------- */
+
+export function useRecurringGoals(): RecurringGoal[] {
+  return useStore(useShallow((s) => s.recurringGoals));
+}
+
+export function useActiveRecurringGoals(): RecurringGoal[] {
+  return useStore(
+    useShallow((s) =>
+      s.recurringGoals
+        .filter((r) => r.active)
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    )
+  );
+}
+
+export function useRecurringGoalsForDate(date: DateStr): RecurringGoal[] {
+  return useStore(
+    useShallow((s) =>
+      s.recurringGoals.filter(
+        (r) => r.active && shouldGenerateForDate(r, date)
+      )
+    )
+  );
+}
+
+export function useRecurringGenerations(): RecurringGoalGeneration[] {
+  return useStore(useShallow((s) => s.recurringGenerations));
+}
+
+/**
+ * Get completion rate for a recurring goal over the last N days.
+ * Returns null when there were no scheduled days in the window.
+ */
+export function computeRecurringCompletionRate(
+  rg: RecurringGoal,
+  days: number,
+  generations: RecurringGoalGeneration[],
+  goals: Goal[]
+): { scheduled: number; completed: number; pct: number | null } {
+  const dates = lastNDates(days);
+  const completedById = new Map(goals.map((g) => [g.id, g.completed]));
+  const { scheduled, completed } = computeRecurringStats(
+    rg,
+    dates,
+    generations,
+    completedById
+  );
+  return {
+    scheduled,
+    completed,
+    pct: scheduled === 0 ? null : Math.round((completed / scheduled) * 100),
+  };
+}
+
+/** Hook variant — recomputes when relevant slices change. */
+export function useRecurringCompletionRate(
+  rg: RecurringGoal,
+  days: number
+): { scheduled: number; completed: number; pct: number | null } {
+  return useStore(
+    useShallow((s) =>
+      computeRecurringCompletionRate(
+        rg,
+        days,
+        s.recurringGenerations,
+        s.goals
+      )
+    )
+  );
+}
+
+export { patternSummary };
+
 export function computePerItemRate(
   routine: MorningRoutineItem[],
   days: number
@@ -591,6 +668,46 @@ export function getOverseerContext() {
         chest: m.chest,
         waist: m.waist,
       };
+    })(),
+    recurringGoals: (() => {
+      const goalCompletedById = new Map(
+        s.goals.map((g) => [g.id, g.completed])
+      );
+      const last30 = lastNDates(30);
+      const last14 = lastNDates(14);
+      return s.recurringGoals
+        .filter((r) => r.active)
+        .map((r) => {
+          const stats30 = computeRecurringStats(
+            r,
+            last30,
+            s.recurringGenerations,
+            goalCompletedById
+          );
+          const stats14 = computeRecurringStats(
+            r,
+            last14,
+            s.recurringGenerations,
+            goalCompletedById
+          );
+          const rate30 =
+            stats30.scheduled === 0
+              ? null
+              : Math.round((stats30.completed / stats30.scheduled) * 100);
+          const rate14 =
+            stats14.scheduled === 0
+              ? null
+              : Math.round((stats14.completed / stats14.scheduled) * 100);
+          return {
+            text: r.text,
+            pattern: patternSummary(r),
+            scheduled30: stats30.scheduled,
+            completed30: stats30.completed,
+            rate30Pct: rate30,
+            rate14Pct: rate14,
+            struggling: rate14 != null && rate14 < 50,
+          };
+        });
     })(),
   };
 }
