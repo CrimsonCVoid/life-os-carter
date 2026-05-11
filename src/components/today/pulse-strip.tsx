@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Moon, Smile, Zap, Droplet, Scale, Footprints } from "lucide-react";
+import { Moon, Smile, Droplet, Scale, Footprints } from "lucide-react";
 import { lastNDates, todayStr } from "@/lib/date";
 import { Sparkline } from "@/components/sparkline";
 import { useStore } from "@/store";
@@ -13,6 +13,7 @@ import { EnergyLogModal } from "./log-modals/energy-modal";
 import { WaterLogModal } from "./log-modals/water-modal";
 import { WeightLogModal } from "./log-modals/weight-modal";
 import { StepsLogModal } from "./log-modals/steps-modal";
+import { EnergyTile } from "./energy-tile";
 
 type Metric = "sleep" | "mood" | "energy" | "water" | "weight" | "steps";
 
@@ -27,7 +28,7 @@ export function PulseStrip() {
 
   const [open, setOpen] = React.useState<Metric | null>(null);
 
-  const get = (m: Metric, date: string): number | null => {
+  const get = (m: Exclude<Metric, "energy">, date: string): number | null => {
     const h = health[date];
     if (!h) return null;
     switch (m) {
@@ -35,8 +36,6 @@ export function PulseStrip() {
         return h.sleepHours ?? null;
       case "mood":
         return h.mood ?? null;
-      case "energy":
-        return h.energy ?? null;
       case "water":
         return h.waterOz ?? null;
       case "weight":
@@ -46,10 +45,11 @@ export function PulseStrip() {
     }
   };
 
-  const sparkValues = (m: Metric) => dates.map((d) => get(m, d));
+  const sparkValues = (m: Exclude<Metric, "energy">) =>
+    dates.map((d) => get(m, d));
 
   const tile = (
-    m: Metric,
+    m: Exclude<Metric, "energy">,
     label: string,
     Icon: typeof Moon,
     value: React.ReactNode,
@@ -131,12 +131,7 @@ export function PulseStrip() {
           Smile,
           todayHealth?.mood != null ? `${todayHealth.mood}/10` : "—"
         )}
-        {tile(
-          "energy",
-          "Energy",
-          Zap,
-          todayHealth?.energy != null ? `${todayHealth.energy}/10` : "—"
-        )}
+        <EnergyTile onTap={() => setOpen("energy")} />
         {tile(
           "water",
           "Water",
