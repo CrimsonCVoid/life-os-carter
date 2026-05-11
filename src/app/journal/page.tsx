@@ -33,9 +33,8 @@ export default function JournalPage() {
   const entries = useJournal();
   const removeJournal = useStore((s) => s.removeJournal);
   const [query, setQuery] = React.useState("");
-  const [moodMin, setMoodMin] = React.useState(1);
-  const [moodMax, setMoodMax] = React.useState(10);
-  const [activeTag, setActiveTag] = React.useState<string | null>(null);
+  const [moodMin] = React.useState(1);
+  const [moodMax] = React.useState(10);
   const [newOpen, setNewOpen] = React.useState(false);
   const [voiceOpen, setVoiceOpen] = React.useState(false);
   const [voiceSupported, setVoiceSupported] = React.useState(true);
@@ -48,14 +47,7 @@ export default function JournalPage() {
     setVoiceSupported(ok);
   }, []);
 
-  const allTags = React.useMemo(() => {
-    const set = new Set<string>();
-    entries.forEach((e) => e.tags.forEach((t) => set.add(t)));
-    return Array.from(set);
-  }, [entries]);
-
   const filtered = entries.filter((e) => {
-    if (activeTag && !e.tags.includes(activeTag)) return false;
     if (
       e.mood != null &&
       (e.mood < moodMin || e.mood > moodMax)
@@ -63,9 +55,7 @@ export default function JournalPage() {
       return false;
     const q = query.trim().toLowerCase();
     if (q) {
-      const haystack = [e.text, e.summary ?? "", e.tags.join(" ")]
-        .join(" ")
-        .toLowerCase();
+      const haystack = [e.text, e.summary ?? ""].join(" ").toLowerCase();
       if (!haystack.includes(q)) return false;
     }
     return true;
@@ -114,38 +104,6 @@ export default function JournalPage() {
           New
         </Button>
       </div>
-
-      {allTags.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          <button
-            type="button"
-            onClick={() => setActiveTag(null)}
-            className={
-              "h-7 px-2.5 rounded-full text-xs border " +
-              (activeTag == null
-                ? "bg-[var(--color-accent-soft)] text-[var(--color-accent)] border-[color:color-mix(in_srgb,var(--color-accent)_24%,transparent)]"
-                : "border-[var(--color-stroke)] text-[var(--color-fg-2)]")
-            }
-          >
-            All
-          </button>
-          {allTags.map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setActiveTag(t)}
-              className={
-                "h-7 px-2.5 rounded-full text-xs border " +
-                (activeTag === t
-                  ? "bg-[var(--color-accent-soft)] text-[var(--color-accent)] border-[color:color-mix(in_srgb,var(--color-accent)_24%,transparent)]"
-                  : "border-[var(--color-stroke)] text-[var(--color-fg-2)]")
-              }
-            >
-              #{t}
-            </button>
-          ))}
-        </div>
-      )}
 
       {filtered.length === 0 ? (
         <Card className="text-center py-10">
@@ -303,19 +261,6 @@ function EntryCard({
       )}
 
       {isVoice && entry.audioId && <VoicePlayback audioId={entry.audioId} />}
-
-      {entry.tags.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-3">
-          {entry.tags.map((t) => (
-            <span
-              key={t}
-              className="text-[10px] text-[var(--color-fg-3)]"
-            >
-              #{t}
-            </span>
-          ))}
-        </div>
-      )}
     </Card>
   );
 }
@@ -388,7 +333,6 @@ function NewEntryModal({
   const [text, setText] = React.useState("");
   const [mood, setMood] = React.useState(7);
   const [energy, setEnergy] = React.useState(6);
-  const [tags, setTags] = React.useState("");
   const [includeStats, setIncludeStats] = React.useState<"yes" | "no">("yes");
 
   React.useEffect(() => {
@@ -396,7 +340,6 @@ function NewEntryModal({
       setText("");
       setMood(7);
       setEnergy(6);
-      setTags("");
     }
   }, [open]);
 
@@ -407,10 +350,7 @@ function NewEntryModal({
       text: text.trim(),
       mood: includeStats === "yes" ? mood : undefined,
       energy: includeStats === "yes" ? energy : undefined,
-      tags: tags
-        .split(",")
-        .map((t) => t.trim().replace(/^#/, ""))
-        .filter(Boolean),
+      tags: [],
       source: "manual",
     });
     haptic("success");
@@ -471,14 +411,6 @@ function NewEntryModal({
             </div>
           </div>
         )}
-        <div>
-          <div className="label mb-2">Tags (comma separated)</div>
-          <Input
-            value={tags}
-            onChange={(e) => setTags(e.target.value)}
-            placeholder="work, family, lifting"
-          />
-        </div>
       </div>
     </Modal>
   );
