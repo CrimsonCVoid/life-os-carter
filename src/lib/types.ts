@@ -319,6 +319,75 @@ export const DEFAULT_PHOTO_FOOD_SETTINGS: PhotoFoodSettings = {
   seenTooltip: false,
 };
 
+/* ---------- INSIGHTS (pattern detection) ---------- */
+
+export type PatternTone = "positive" | "neutral" | "nudge";
+
+export type PatternInsight = {
+  headline: string;
+  /** Lowercased + stripped fingerprint, used for dismiss tracking. */
+  fingerprint: string;
+  /** Metric key from metric-colors.ts when one fits, used for card tint. */
+  metric?: string;
+  /** Inline data point — e.g. "6.4 avg" / "3 of 7 days". */
+  dataPoint?: string;
+  tone: PatternTone;
+};
+
+export type CachedPatterns = {
+  /** Date string for the day this batch was generated. */
+  date: DateStr;
+  patterns: PatternInsight[];
+  /** Which pattern in the batch is currently surfaced. */
+  currentIndex: number;
+};
+
+export type DismissedPattern = {
+  fingerprint: string;
+  headline: string;
+  dismissedAt: string;
+};
+
+export type InsightsFrequency = "daily" | "every-3" | "weekly";
+
+export type InsightsSettings = {
+  enabled: boolean;
+  frequency: InsightsFrequency;
+};
+
+export const DEFAULT_INSIGHTS_SETTINGS: InsightsSettings = {
+  enabled: true,
+  frequency: "daily",
+};
+
+/* ---------- WEEKLY REVIEW ---------- */
+
+export type WeeklyReviewData = {
+  weekStart: DateStr; // Sunday
+  weekEnd: DateStr;
+  summary: string;
+  wins: string[];
+  struggles: string[];
+  trends: string[];
+  nextWeekPriorities: string[];
+  generatedAt: string;
+  dismissed?: boolean;
+  /** True once the user has written this review to the journal. */
+  savedToJournal?: boolean;
+};
+
+export type WeeklyReviewSettings = {
+  enabled: boolean;
+  triggerDay: number; // 0=Sun..6=Sat
+  triggerHour: number; // 0..23 (local)
+};
+
+export const DEFAULT_WEEKLY_REVIEW_SETTINGS: WeeklyReviewSettings = {
+  enabled: true,
+  triggerDay: 0, // Sunday
+  triggerHour: 19, // 7pm
+};
+
 /* ---------- BODY ---------- */
 
 export type BodyMeasurement = {
@@ -358,7 +427,12 @@ export type PhotoMeta = {
 };
 
 
-export type JournalSource = "manual" | "reflection" | "overseer" | "voice";
+export type JournalSource =
+  | "manual"
+  | "reflection"
+  | "overseer"
+  | "voice"
+  | "weekly-review";
 
 export type JournalEntry = {
   id: string;
@@ -483,6 +557,8 @@ export type Settings = {
   voiceJournal: VoiceJournalSettings;
   showRecurringIcon: boolean;
   photoFood: PhotoFoodSettings;
+  insights: InsightsSettings;
+  weeklyReview: WeeklyReviewSettings;
 };
 
 export const DEFAULT_MORNING_ROUTINE: Array<{ name: string; icon: string }> = [

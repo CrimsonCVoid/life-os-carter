@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import {
+  CalendarRange,
   ChevronDown,
   Mic,
   Play,
@@ -35,6 +36,9 @@ export default function JournalPage() {
   const [query, setQuery] = React.useState("");
   const [moodMin] = React.useState(1);
   const [moodMax] = React.useState(10);
+  const [sourceFilter, setSourceFilter] = React.useState<
+    "all" | "manual" | "voice" | "reflection" | "overseer" | "weekly-review"
+  >("all");
   const [newOpen, setNewOpen] = React.useState(false);
   const [voiceOpen, setVoiceOpen] = React.useState(false);
   const [voiceSupported, setVoiceSupported] = React.useState(true);
@@ -53,6 +57,10 @@ export default function JournalPage() {
       (e.mood < moodMin || e.mood > moodMax)
     )
       return false;
+    if (sourceFilter !== "all") {
+      const src = e.source ?? "manual";
+      if (src !== sourceFilter) return false;
+    }
     const q = query.trim().toLowerCase();
     if (q) {
       const haystack = [e.text, e.summary ?? ""].join(" ").toLowerCase();
@@ -60,6 +68,26 @@ export default function JournalPage() {
     }
     return true;
   });
+
+  const sourceCounts = React.useMemo(() => {
+    const acc: Record<string, number> = {};
+    for (const e of entries) {
+      const src = e.source ?? "manual";
+      acc[src] = (acc[src] ?? 0) + 1;
+    }
+    return acc;
+  }, [entries]);
+
+  const FILTER_OPTIONS: Array<{
+    value: typeof sourceFilter;
+    label: string;
+  }> = [
+    { value: "all", label: `All` },
+    { value: "manual", label: `Written` },
+    { value: "voice", label: `Voice` },
+    { value: "reflection", label: `Reflection` },
+    { value: "weekly-review", label: `Reviews` },
+  ];
 
   return (
     <Screen title="Journal" subtitle="What you noticed">
@@ -103,6 +131,38 @@ export default function JournalPage() {
           <Plus size={14} />
           New
         </Button>
+      </div>
+
+      <div className="flex items-center gap-1.5 overflow-x-auto nice-scroll -mx-1 px-1">
+        {FILTER_OPTIONS.map((opt) => {
+          const active = sourceFilter === opt.value;
+          const count =
+            opt.value === "all" ? entries.length : sourceCounts[opt.value] ?? 0;
+          if (opt.value !== "all" && count === 0) return null;
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setSourceFilter(opt.value)}
+              className={cn(
+                "h-7 px-3 inline-flex items-center gap-1.5 rounded-full text-[11px] font-medium shrink-0 transition",
+                active
+                  ? "bg-[var(--color-accent-strong)] text-white"
+                  : "bg-[var(--color-elevated)] text-[var(--color-fg-2)] hover:text-[var(--color-fg)]"
+              )}
+            >
+              {opt.label}
+              <span
+                className={cn(
+                  "tnum",
+                  active ? "opacity-80" : "opacity-50"
+                )}
+              >
+                {count}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {filtered.length === 0 ? (
@@ -174,6 +234,12 @@ function EntryCard({
             <Pill tone="accent" className="h-6 px-2">
               <Sparkles size={10} />
               Reflection
+            </Pill>
+          )}
+          {entry.source === "weekly-review" && (
+            <Pill tone="accent" className="h-6 px-2">
+              <CalendarRange size={10} />
+              Weekly review
             </Pill>
           )}
           <div className="text-sm font-medium">

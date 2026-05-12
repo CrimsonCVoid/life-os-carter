@@ -9,10 +9,12 @@ import {
   DEFAULT_DAY_TYPES,
   DEFAULT_EVENING_ROUTINE,
   DEFAULT_EVENING_ROUTINE_SETTINGS,
+  DEFAULT_INSIGHTS_SETTINGS,
   DEFAULT_MORNING_ROUTINE,
   DEFAULT_MORNING_ROUTINE_SETTINGS,
   DEFAULT_PHOTO_FOOD_SETTINGS,
   DEFAULT_VOICE_JOURNAL_SETTINGS,
+  DEFAULT_WEEKLY_REVIEW_SETTINGS,
   Block,
   BlockType,
   BodyMeasurement,
@@ -37,10 +39,15 @@ import {
   PhotoAngle,
   PhotoMeta,
   Plan,
+  CachedPatterns,
+  DismissedPattern,
+  InsightsSettings,
   LiftSession,
   RecurringGoal,
   RecurringGoalGeneration,
   SavedMeal,
+  WeeklyReviewData,
+  WeeklyReviewSettings,
   Settings,
   VoiceJournalSettings,
   Struggle,
@@ -80,6 +87,9 @@ type State = {
   recurringGoals: RecurringGoal[];
   recurringGenerations: RecurringGoalGeneration[];
   liftSessions: LiftSession[];
+  cachedPatterns?: CachedPatterns;
+  dismissedPatterns: DismissedPattern[];
+  weeklyReviews: WeeklyReviewData[];
 };
 
 type Actions = {
@@ -212,6 +222,20 @@ type Actions = {
   removeLiftSession: (id: string) => void;
   updateLiftSession: (id: string, patch: Partial<LiftSession>) => void;
 
+  // insights / patterns
+  setCachedPatterns: (p: CachedPatterns | undefined) => void;
+  nextPattern: () => void;
+  dismissCurrentPattern: () => void;
+  clearDismissedPatterns: () => void;
+  restoreDismissedPattern: (fingerprint: string) => void;
+  setInsightsSettings: (patch: Partial<InsightsSettings>) => void;
+
+  // weekly review
+  saveWeeklyReview: (r: WeeklyReviewData) => void;
+  updateWeeklyReview: (weekStart: DateStr, patch: Partial<WeeklyReviewData>) => void;
+  dismissWeeklyReview: (weekStart: DateStr) => void;
+  setWeeklyReviewSettings: (patch: Partial<WeeklyReviewSettings>) => void;
+
   // body measurements + photos
   addBodyMeasurement: (m: Omit<BodyMeasurement, "id" | "createdAt">) => void;
   updateBodyMeasurement: (id: string, patch: Partial<BodyMeasurement>) => void;
@@ -247,6 +271,8 @@ const defaultSettings = (): Settings => ({
   voiceJournal: { ...DEFAULT_VOICE_JOURNAL_SETTINGS },
   showRecurringIcon: true,
   photoFood: { ...DEFAULT_PHOTO_FOOD_SETTINGS },
+  insights: { ...DEFAULT_INSIGHTS_SETTINGS },
+  weeklyReview: { ...DEFAULT_WEEKLY_REVIEW_SETTINGS },
 });
 
 function buildDefaultRoutine(
@@ -300,6 +326,9 @@ const initialState: State = {
   recurringGoals: [],
   recurringGenerations: [],
   liftSessions: [],
+  cachedPatterns: undefined,
+  dismissedPatterns: [],
+  weeklyReviews: [],
 };
 
 /** Pick the energy period from a clock hour. */
@@ -1035,6 +1064,101 @@ export const useStore = create<State & Actions>()(
           ),
         })),
 
+      setCachedPatterns: (p) => set(() => ({ cachedPatterns: p })),
+      nextPattern: () =>
+        set((s) => {
+          if (!s.cachedPatterns) return s;
+          const len = s.cachedPatterns.patterns.length;
+          if (len === 0) return s;
+          return {
+            cachedPatterns: {
+              ...s.cachedPatterns,
+              currentIndex:
+                (s.cachedPatterns.currentIndex + 1) % len,
+            },
+          };
+        }),
+      dismissCurrentPattern: () =>
+        set((s) => {
+          const cp = s.cachedPatterns;
+          if (!cp || cp.patterns.length === 0) return s;
+          const current = cp.patterns[cp.currentIndex];
+          if (!current) return s;
+          const exists = s.dismissedPatterns.some(
+            (d) => d.fingerprint === current.fingerprint
+          );
+          const dismissed = exists
+            ? s.dismissedPatterns
+            : [
+                ...s.dismissedPatterns,
+                {
+                  fingerprint: current.fingerprint,
+                  headline: current.headline,
+                  dismissedAt: new Date().toISOString(),
+                },
+              ];
+          const remaining = cp.patterns.filter(
+            (_, i) => i !== cp.currentIndex
+          );
+          return {
+            dismissedPatterns: dismissed,
+            cachedPatterns: {
+              ...cp,
+              patterns: remaining,
+              currentIndex: 0,
+            },
+          };
+        }),
+      clearDismissedPatterns: () =>
+        set(() => ({ dismissedPatterns: [] })),
+      restoreDismissedPattern: (fingerprint) =>
+        set((s) => ({
+          dismissedPatterns: s.dismissedPatterns.filter(
+            (d) => d.fingerprint !== fingerprint
+          ),
+        })),
+      setInsightsSettings: (patch) =>
+        set((s) => ({
+          settings: {
+            ...s.settings,
+            insights: { ...s.settings.insights, ...patch },
+          },
+        })),
+
+      saveWeeklyReview: (r) =>
+        set((s) => {
+          const existing = s.weeklyReviews.find(
+            (x) => x.weekStart === r.weekStart
+          );
+          if (existing) {
+            return {
+              weeklyReviews: s.weeklyReviews.map((x) =>
+                x.weekStart === r.weekStart ? r : x
+              ),
+            };
+          }
+          return { weeklyReviews: [...s.weeklyReviews, r] };
+        }),
+      updateWeeklyReview: (weekStart, patch) =>
+        set((s) => ({
+          weeklyReviews: s.weeklyReviews.map((x) =>
+            x.weekStart === weekStart ? { ...x, ...patch } : x
+          ),
+        })),
+      dismissWeeklyReview: (weekStart) =>
+        set((s) => ({
+          weeklyReviews: s.weeklyReviews.map((x) =>
+            x.weekStart === weekStart ? { ...x, dismissed: true } : x
+          ),
+        })),
+      setWeeklyReviewSettings: (patch) =>
+        set((s) => ({
+          settings: {
+            ...s.settings,
+            weeklyReview: { ...s.settings.weeklyReview, ...patch },
+          },
+        })),
+
       addBodyMeasurement: (m) =>
         set((s) => {
           const entry: BodyMeasurement = {
@@ -1112,6 +1236,8 @@ export const useStore = create<State & Actions>()(
             recurringGoals: s.recurringGoals,
             recurringGenerations: s.recurringGenerations,
             liftSessions: s.liftSessions,
+            dismissedPatterns: s.dismissedPatterns,
+            weeklyReviews: s.weeklyReviews,
           },
         };
         return JSON.stringify(payload, null, 2);
@@ -1144,6 +1270,14 @@ export const useStore = create<State & Actions>()(
                 ...DEFAULT_PHOTO_FOOD_SETTINGS,
                 ...((state.settings as Partial<Settings>)?.photoFood ?? {}),
               },
+              insights: {
+                ...DEFAULT_INSIGHTS_SETTINGS,
+                ...((state.settings as Partial<Settings>)?.insights ?? {}),
+              },
+              weeklyReview: {
+                ...DEFAULT_WEEKLY_REVIEW_SETTINGS,
+                ...((state.settings as Partial<Settings>)?.weeklyReview ?? {}),
+              },
             },
             days: state.days ?? {},
             goals: state.goals ?? [],
@@ -1165,6 +1299,8 @@ export const useStore = create<State & Actions>()(
             recurringGoals: state.recurringGoals ?? [],
             recurringGenerations: state.recurringGenerations ?? [],
             liftSessions: state.liftSessions ?? [],
+            dismissedPatterns: state.dismissedPatterns ?? [],
+            weeklyReviews: state.weeklyReviews ?? [],
           }));
           return true;
         } catch {
@@ -1228,6 +1364,14 @@ export const useStore = create<State & Actions>()(
               ...current.settings.photoFood,
               ...((p.settings as Partial<Settings>)?.photoFood ?? {}),
             },
+            insights: {
+              ...current.settings.insights,
+              ...((p.settings as Partial<Settings>)?.insights ?? {}),
+            },
+            weeklyReview: {
+              ...current.settings.weeklyReview,
+              ...((p.settings as Partial<Settings>)?.weeklyReview ?? {}),
+            },
           },
           routine: p.routine ?? current.routine,
           evening: p.evening ?? current.evening,
@@ -1241,6 +1385,10 @@ export const useStore = create<State & Actions>()(
           recurringGenerations:
             p.recurringGenerations ?? current.recurringGenerations,
           liftSessions: p.liftSessions ?? current.liftSessions,
+          cachedPatterns: p.cachedPatterns ?? current.cachedPatterns,
+          dismissedPatterns:
+            p.dismissedPatterns ?? current.dismissedPatterns,
+          weeklyReviews: p.weeklyReviews ?? current.weeklyReviews,
         } as State & Actions;
         return merged;
       },

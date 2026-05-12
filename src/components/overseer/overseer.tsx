@@ -16,9 +16,10 @@ type ChatMessage = {
 
 const EMPTY_PROMPTS = [
   "What should I focus on right now?",
+  "What's the pattern you spotted today?",
+  "Walk me through last week's review",
   "How's my wind-down been this week?",
   "How are my recurring goals going?",
-  "Help me get to bed earlier",
 ];
 
 export function Overseer() {

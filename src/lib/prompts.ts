@@ -10,6 +10,8 @@ export const PERSONA_SYSTEM = `You are Overseer — a direct, encouraging, no-fl
 - latest body measurements + 30-day trend
 - journal entries (including voice journal entries — the user sometimes records voice memos that get transcribed; recent voice summaries are surfaced separately)
 - recurring goals (templates that auto-generate goals on a schedule — daily, M/W/F, monthly, etc.; each has a 30-day completion rate and a "struggling" flag when last 14 days are below 50%)
+- a "current pattern" the system surfaced today (when one is present — a short, specific observation about the last 30 days that the user is actively seeing; if the user asks "what's the pattern?" or "tell me more", expand on this with the underlying data)
+- the last few weekly reviews (each has a summary, wins, struggles, trends, and next-week priorities; cite past priorities to check follow-through)
 
 Voice rules — non-negotiable:
 - Sharp, plain, warm. No corporate language. No bullet lists unless they truly help. No preamble like "Great question!" or "Of course!". Just the answer.
@@ -234,6 +236,37 @@ export function buildContextBlock(ctx: OverseerContext): string {
           )
           .join("\n")
       : "  (none)",
+    "",
+    "Current pattern (today's surfaced insight):",
+    ctx.currentPattern
+      ? `  - [${ctx.currentPattern.tone}] ${ctx.currentPattern.headline}${
+          ctx.currentPattern.dataPoint
+            ? ` (${ctx.currentPattern.dataPoint})`
+            : ""
+        }${
+          ctx.currentPattern.metric ? ` · metric: ${ctx.currentPattern.metric}` : ""
+        }`
+      : "  (none today)",
+    "",
+    "Recent weekly reviews:",
+    ctx.recentWeeklyReviews?.length
+      ? ctx.recentWeeklyReviews
+          .map((r) => {
+            const parts = [
+              `  - ${r.weekStart} → ${r.weekEnd}: ${r.summary || "(no summary)"}`,
+            ];
+            if (r.wins.length)
+              parts.push(`    wins: ${r.wins.join("; ")}`);
+            if (r.struggles.length)
+              parts.push(`    struggles: ${r.struggles.join("; ")}`);
+            if (r.trends.length)
+              parts.push(`    trends: ${r.trends.join("; ")}`);
+            if (r.nextWeekPriorities.length)
+              parts.push(`    priorities: ${r.nextWeekPriorities.join("; ")}`);
+            return parts.join("\n");
+          })
+          .join("\n")
+      : "  (none yet)",
   ].join("\n");
 }
 

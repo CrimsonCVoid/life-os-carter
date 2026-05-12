@@ -822,6 +822,31 @@ export function getOverseerContext() {
         waist: m.waist,
       };
     })(),
+    currentPattern: (() => {
+      const c = s.cachedPatterns;
+      if (!c || c.patterns.length === 0) return null;
+      const p = c.patterns[c.currentIndex];
+      if (!p) return null;
+      return {
+        headline: p.headline,
+        tone: p.tone,
+        metric: p.metric,
+        dataPoint: p.dataPoint,
+        generatedOn: c.date,
+      };
+    })(),
+    recentWeeklyReviews: [...s.weeklyReviews]
+      .sort((a, b) => b.weekStart.localeCompare(a.weekStart))
+      .slice(0, 4)
+      .map((r) => ({
+        weekStart: r.weekStart,
+        weekEnd: r.weekEnd,
+        summary: r.summary,
+        wins: r.wins,
+        struggles: r.struggles,
+        trends: r.trends,
+        nextWeekPriorities: r.nextWeekPriorities,
+      })),
     recurringGoals: (() => {
       const goalCompletedById = new Map(
         s.goals.map((g) => [g.id, g.completed])
