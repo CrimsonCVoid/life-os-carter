@@ -18,7 +18,10 @@ export function Screen({ children, className, title, subtitle }: Props) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
       className={cn(
-        "mx-auto w-full max-w-[640px] px-4 pt-4 pb-[7.5rem]",
+        // Mobile: clear the safe-area top + floating Settings gear, and
+        // leave ~6rem at the bottom for the BottomNav (which is itself
+        // safe-area-padded). Desktop: smaller paddings, no bottom bar.
+        "mx-auto w-full max-w-[640px] px-4 pt-[calc(env(safe-area-inset-top)+3.5rem)] md:pt-4 pb-[calc(env(safe-area-inset-bottom)+6rem)] md:pb-[7.5rem]",
         className
       )}
     >

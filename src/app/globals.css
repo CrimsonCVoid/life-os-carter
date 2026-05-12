@@ -172,6 +172,29 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+
+  /* Containment: prevents rubber-band scroll bleed from inner scrollers
+   * into the body when a modal/sheet is open. */
+  .nice-scroll {
+    overscroll-behavior: contain;
+  }
+}
+
+/* Respect the user's motion preference. Functional transitions (snap,
+ * color) stay; bouncy springs and shimmer animations are suppressed. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .shimmer,
+  .animate-pulse-dot {
+    animation: none !important;
+  }
 }
 
 @layer utilities {

@@ -67,14 +67,24 @@ export function Modal({
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: "100%", opacity: 0 }}
             transition={{ type: "spring", stiffness: 320, damping: 32 }}
+            drag="y"
+            dragConstraints={{ top: 0, bottom: 0 }}
+            dragElastic={0.18}
+            onDragEnd={(_, info) => {
+              if (info.offset.y > 120 || info.velocity.y > 600) onClose();
+            }}
             className={cn(
-              "relative w-full card rounded-b-none sm:rounded-b-[var(--radius-card)] sm:mb-0 flex flex-col max-h-[90dvh]",
+              "relative w-full card rounded-b-none sm:rounded-b-[var(--radius-card)] sm:mb-0 flex flex-col max-h-[90dvh] touch-pan-y",
               sizeClasses[size],
               className
             )}
             style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
           >
-            <header className="flex items-start justify-between gap-3 px-5 pt-5 pb-1">
+            {/* Drag-handle pill — visible on mobile, decorative on desktop */}
+            <div className="pt-2 pb-1 grid place-items-center sm:hidden">
+              <div className="h-1 w-9 rounded-full bg-[var(--color-stroke-strong)]" />
+            </div>
+            <header className="flex items-start justify-between gap-3 px-5 pt-3 sm:pt-5 pb-1">
               <div className="min-w-0">
                 {title && (
                   <div className="text-base font-semibold tracking-tight">

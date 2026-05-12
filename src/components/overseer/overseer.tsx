@@ -136,7 +136,7 @@ export function Overseer() {
         type="button"
         onClick={() => openPanel()}
         aria-label="Open Overseer"
-        className="fixed z-40 right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] h-14 w-14 grid place-items-center rounded-full grad-hero text-white shadow-[var(--shadow-glow)] hover:brightness-110 active:scale-95 transition"
+        className="fixed z-40 right-4 bottom-[calc(env(safe-area-inset-bottom)+4.5rem)] md:bottom-[max(1rem,env(safe-area-inset-bottom))] h-14 w-14 grid place-items-center rounded-full grad-hero text-white shadow-[var(--shadow-glow)] hover:brightness-110 active:scale-95 transition"
       >
         <Sparkles size={22} strokeWidth={2.2} />
       </button>

@@ -42,7 +42,7 @@ export function TopNav() {
 
   return (
     <nav
-      className="sticky top-0 z-30 bg-[var(--color-base)]/85 backdrop-blur-md border-b border-[var(--color-stroke)]"
+      className="sticky top-0 z-30 bg-[var(--color-base)]/85 backdrop-blur-md border-b border-[var(--color-stroke)] hidden md:block"
       style={{ paddingTop: "env(safe-area-inset-top)" }}
     >
       <div className="mx-auto max-w-[640px] px-4 h-14 flex items-center gap-2">

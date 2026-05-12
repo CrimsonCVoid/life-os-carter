@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { TopNav } from "@/components/nav/top-nav";
+import { BottomNav } from "@/components/nav/bottom-nav";
+import { MobileTopBar } from "@/components/nav/mobile-top-bar";
 import { HydrateGate } from "@/components/hydrate-gate";
 import { AccentProvider } from "@/components/accent-provider";
 import { Overseer } from "@/components/overseer/overseer";
@@ -38,7 +40,9 @@ export default function RootLayout({
         <ServiceWorkerRegister />
         <HydrateGate>
           <TopNav />
+          <MobileTopBar />
           {children}
+          <BottomNav />
           <Overseer />
         </HydrateGate>
       </body>
