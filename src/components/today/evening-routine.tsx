@@ -230,6 +230,8 @@ export function EveningRoutine() {
                   key={r.id}
                   item={r}
                   done={!!r.history[today]?.completed}
+                  /** Soft separator above the tomorrow-prep item. */
+                  spaceAbove={r.name === "Set tomorrow's goals"}
                   onToggle={() => {
                     toggle(r.id, today);
                     haptic(r.history[today]?.completed ? "soft" : "success");
@@ -287,11 +289,13 @@ export function EveningRoutine() {
 function RoutineRow({
   item,
   done,
+  spaceAbove,
   onToggle,
   onEdit,
 }: {
   item: EveningRoutineItem;
   done: boolean;
+  spaceAbove?: boolean;
   onToggle: () => void;
   onEdit: () => void;
 }) {
@@ -327,7 +331,8 @@ function RoutineRow({
       className={cn(
         "group flex items-center gap-2 rounded-xl px-1 py-1",
         isDragging && "bg-[var(--color-elevated)] shadow-[var(--shadow-float)]",
-        done && "opacity-70"
+        done && "opacity-70",
+        spaceAbove && "mt-3 pt-3 border-t border-[var(--color-stroke)]"
       )}
     >
       <button
@@ -339,9 +344,11 @@ function RoutineRow({
       >
         <GripVertical size={16} />
       </button>
-      <span className="text-[22px] leading-none shrink-0 select-none">
-        {item.icon}
-      </span>
+      {item.icon && (
+        <span className="text-[22px] leading-none shrink-0 select-none">
+          {item.icon}
+        </span>
+      )}
       <button
         type="button"
         onPointerDown={startPress}

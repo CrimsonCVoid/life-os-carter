@@ -395,12 +395,11 @@ export type EveningRoutineItem = {
 export type EveningRoutineSettings = MorningRoutineSettings;
 
 export const DEFAULT_EVENING_ROUTINE: Array<{ name: string; icon: string }> = [
-  { name: "No screens 20 min before bed", icon: "📵" },
-  { name: "Dim the lights", icon: "💡" },
-  { name: "Set tomorrow's top 3", icon: "🎯" },
-  { name: "Read 15 min", icon: "📖" },
-  { name: "Magnesium", icon: "💊" },
-  { name: "Lights out by target time", icon: "🌙" },
+  { name: "No screens 20 min before bed", icon: "" },
+  { name: "Read 15 min", icon: "" },
+  { name: "Magnesium", icon: "" },
+  { name: "Set tomorrow's goals", icon: "" },
+  { name: "Lights out by target time", icon: "" },
 ];
 
 export const DEFAULT_EVENING_ROUTINE_SETTINGS: EveningRoutineSettings = {
