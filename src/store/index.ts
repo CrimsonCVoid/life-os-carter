@@ -11,6 +11,7 @@ import {
   DEFAULT_EVENING_ROUTINE_SETTINGS,
   DEFAULT_MORNING_ROUTINE,
   DEFAULT_MORNING_ROUTINE_SETTINGS,
+  DEFAULT_PHOTO_FOOD_SETTINGS,
   DEFAULT_VOICE_JOURNAL_SETTINGS,
   Block,
   BlockType,
@@ -32,6 +33,7 @@ import {
   MorningRoutineItem,
   MorningRoutineSettings,
   NutritionTargets,
+  PhotoFoodSettings,
   PhotoAngle,
   PhotoMeta,
   Plan,
@@ -182,6 +184,7 @@ type Actions = {
   setShowNutritionOnToday: (v: boolean) => void;
   setVoiceJournalSettings: (patch: Partial<VoiceJournalSettings>) => void;
   setShowRecurringIcon: (v: boolean) => void;
+  setPhotoFoodSettings: (patch: Partial<PhotoFoodSettings>) => void;
 
   // recurring goals
   addRecurringGoal: (
@@ -237,6 +240,7 @@ const defaultSettings = (): Settings => ({
   showNutritionOnToday: true,
   voiceJournal: { ...DEFAULT_VOICE_JOURNAL_SETTINGS },
   showRecurringIcon: true,
+  photoFood: { ...DEFAULT_PHOTO_FOOD_SETTINGS },
 });
 
 function buildDefaultRoutine(
@@ -838,6 +842,13 @@ export const useStore = create<State & Actions>()(
         set((s) => ({
           settings: { ...s.settings, showRecurringIcon: v },
         })),
+      setPhotoFoodSettings: (patch) =>
+        set((s) => ({
+          settings: {
+            ...s.settings,
+            photoFood: { ...s.settings.photoFood, ...patch },
+          },
+        })),
 
       addRecurringGoal: (g) => {
         const id = uid();
@@ -1091,6 +1102,10 @@ export const useStore = create<State & Actions>()(
                 ...DEFAULT_VOICE_JOURNAL_SETTINGS,
                 ...((state.settings as Partial<Settings>)?.voiceJournal ?? {}),
               },
+              photoFood: {
+                ...DEFAULT_PHOTO_FOOD_SETTINGS,
+                ...((state.settings as Partial<Settings>)?.photoFood ?? {}),
+              },
             },
             days: state.days ?? {},
             goals: state.goals ?? [],
@@ -1170,6 +1185,10 @@ export const useStore = create<State & Actions>()(
             voiceJournal: {
               ...current.settings.voiceJournal,
               ...((p.settings as Partial<Settings>)?.voiceJournal ?? {}),
+            },
+            photoFood: {
+              ...current.settings.photoFood,
+              ...((p.settings as Partial<Settings>)?.photoFood ?? {}),
             },
           },
           routine: p.routine ?? current.routine,

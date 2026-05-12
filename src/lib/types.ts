@@ -261,6 +261,12 @@ export type EnergyLog = {
 
 /* ---------- NUTRITION ---------- */
 
+export type MealAiAnalysis = {
+  overallConfidence: "high" | "medium" | "low";
+  identifiedItems: Array<{ name: string; estimatedGrams: number }>;
+  notes: string;
+};
+
 export type Meal = {
   id: string;
   date: DateStr;
@@ -272,6 +278,12 @@ export type Meal = {
   fat?: number;
   /** Set when this meal originated from a SavedMeal chip tap. */
   savedMealId?: string;
+  /** IndexedDB key for the full-resolution photo (life-os-meal-photos). */
+  photoId?: string;
+  /** Inline base64 thumbnail for fast list rendering (~80px wide). */
+  thumbnailDataUrl?: string;
+  /** AI analysis metadata if this meal was logged via the photo flow. */
+  aiAnalysis?: MealAiAnalysis;
   createdAt: string;
 };
 
@@ -292,6 +304,18 @@ export type NutritionTargets = {
   protein?: number;
   carbs?: number;
   fat?: number;
+};
+
+export type PhotoFoodSettings = {
+  saveMealPhotos: boolean;
+  autoFillName: boolean;
+  seenTooltip: boolean;
+};
+
+export const DEFAULT_PHOTO_FOOD_SETTINGS: PhotoFoodSettings = {
+  saveMealPhotos: true,
+  autoFillName: true,
+  seenTooltip: false,
 };
 
 /* ---------- BODY ---------- */
@@ -457,6 +481,7 @@ export type Settings = {
   showNutritionOnToday: boolean;
   voiceJournal: VoiceJournalSettings;
   showRecurringIcon: boolean;
+  photoFood: PhotoFoodSettings;
 };
 
 export const DEFAULT_MORNING_ROUTINE: Array<{ name: string; icon: string }> = [

@@ -239,6 +239,8 @@ export default function SettingsPage() {
 
       <NutritionSettingsCard />
 
+      <PhotoFoodSettingsCard />
+
       <VoiceJournalSettingsCard />
 
       <RecurringGoalsSettingsCard />
@@ -623,6 +625,92 @@ function EveningRoutineSettingsCard() {
         }
       >
         <div className="text-sm text-[var(--color-fg-2)]" />
+      </Modal>
+    </Card>
+  );
+}
+
+
+function PhotoFoodSettingsCard() {
+  const photoFood = useStore((s) => s.settings.photoFood);
+  const setPhotoFoodSettings = useStore((s) => s.setPhotoFoodSettings);
+  const [confirmClear, setConfirmClear] = React.useState(false);
+  const [status, setStatus] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!status) return;
+    const t = window.setTimeout(() => setStatus(null), 2400);
+    return () => window.clearTimeout(t);
+  }, [status]);
+
+  const onClearAll = async () => {
+    setConfirmClear(false);
+    try {
+      const { clearAllMealPhotos } = await import("@/lib/meal-photo-store");
+      await clearAllMealPhotos();
+      setStatus("Cleared.");
+      haptic("success");
+    } catch {
+      setStatus("Couldn't clear.");
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Photo Food Logging</CardTitle>
+        {status && (
+          <span className="text-xs text-[var(--color-success)]">{status}</span>
+        )}
+      </CardHeader>
+      <div className="space-y-1">
+        <ToggleRow
+          label="Save meal photos"
+          description="Store the original photo on this device. Uses more storage."
+          checked={photoFood.saveMealPhotos}
+          onChange={(v) => setPhotoFoodSettings({ saveMealPhotos: v })}
+        />
+        <ToggleRow
+          label="Auto-fill meal name from AI"
+          description="Pre-fills the meal name with the AI's suggestion."
+          checked={photoFood.autoFillName}
+          onChange={(v) => setPhotoFoodSettings({ autoFillName: v })}
+        />
+      </div>
+      <Button
+        variant="secondary"
+        className="w-full mt-3"
+        onClick={() => setConfirmClear(true)}
+      >
+        <Trash2 size={14} />
+        Clear all saved meal photos
+      </Button>
+      <p className="mt-3 text-[11px] text-[var(--color-fg-3)] leading-relaxed">
+        Photos are sent to Google's Gemini API for analysis. On the free
+        tier, Google may use your data to improve their models. Avoid
+        photographing anything sensitive in frame.
+      </p>
+
+      <Modal
+        open={confirmClear}
+        onClose={() => setConfirmClear(false)}
+        title="Clear all saved meal photos?"
+        description="Removes every meal photo stored on this device. Meal entries (names, macros) are kept."
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="ghost" onClick={() => setConfirmClear(false)}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={onClearAll}>
+              <Trash2 size={14} />
+              Clear
+            </Button>
+          </div>
+        }
+      >
+        <div className="text-sm text-[var(--color-fg-2)]">
+          This cannot be undone.
+        </div>
       </Modal>
     </Card>
   );

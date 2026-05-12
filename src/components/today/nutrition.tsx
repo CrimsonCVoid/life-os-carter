@@ -2,12 +2,13 @@
 
 import * as React from "react";
 import { motion } from "motion/react";
-import { Plus, Trash2, Utensils } from "lucide-react";
+import { Camera, Plus, Trash2, Utensils, X } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { Input } from "@/components/ui/input";
+import { Pill } from "@/components/ui/pill";
 import { useStore } from "@/store";
 import {
   computeTotalsForDay,
@@ -18,6 +19,8 @@ import { Meal, NutritionTargets, SavedMeal } from "@/lib/types";
 import { todayStr } from "@/lib/date";
 import { cn } from "@/lib/utils";
 import { haptic } from "@/lib/haptics";
+import { PhotoFoodModal } from "./photo-food-modal";
+import { getMealPhoto } from "@/lib/meal-photo-store";
 
 export function Nutrition() {
   const today = todayStr();
@@ -36,6 +39,19 @@ export function Nutrition() {
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Meal | null>(null);
   const [targetsOpen, setTargetsOpen] = React.useState(false);
+  const [photoOpen, setPhotoOpen] = React.useState(false);
+  const [photoSupported, setPhotoSupported] = React.useState(true);
+  const photoFoodSettings = useStore((s) => s.settings.photoFood);
+  const setPhotoFoodSettings = useStore((s) => s.setPhotoFoodSettings);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const input = document.createElement("input");
+    setPhotoSupported(input.type === "file");
+  }, []);
+
+  const dismissTooltip = () =>
+    setPhotoFoodSettings({ seenTooltip: true });
 
   const totals = computeTotalsForDay(meals);
 
@@ -52,12 +68,42 @@ export function Nutrition() {
           >
             Targets
           </Button>
-          <Button size="sm" variant="soft" onClick={() => setOpen(true)}>
+          {photoSupported && (
+            <Button
+              size="sm"
+              onClick={() => {
+                dismissTooltip();
+                setPhotoOpen(true);
+              }}
+            >
+              <Camera size={12} />
+              Photo
+            </Button>
+          )}
+          <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>
             <Plus size={12} />
             Log meal
           </Button>
         </div>
       </CardHeader>
+
+      {photoSupported && !photoFoodSettings.seenTooltip && (
+        <div className="mb-3 px-3 py-2.5 rounded-xl bg-[var(--color-accent-soft)] border border-[color:color-mix(in_srgb,var(--color-accent)_24%,transparent)] flex items-center justify-between gap-3">
+          <div className="text-[11px] text-[var(--color-accent)] leading-snug">
+            <span className="font-semibold">New:</span> tap{" "}
+            <Camera size={11} className="inline" /> Photo to log a meal from a
+            picture — AI estimates macros for you.
+          </div>
+          <button
+            type="button"
+            onClick={dismissTooltip}
+            aria-label="Dismiss"
+            className="h-7 w-7 grid place-items-center rounded-md text-[var(--color-accent)] hover:bg-[var(--color-accent-soft)]"
+          >
+            <X size={12} />
+          </button>
+        </div>
+      )}
 
       {!targets.enabled && (
         <div className="mb-3 px-3 py-2.5 rounded-xl border border-dashed border-[var(--color-stroke-strong)] flex items-center justify-between gap-3">
@@ -127,15 +173,29 @@ export function Nutrition() {
               key={m.id}
               className="group flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-[var(--color-elevated)]"
             >
-              <span className="text-[11px] text-[var(--color-fg-3)] tnum w-12 shrink-0">
-                {m.time}
-              </span>
+              {m.thumbnailDataUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={m.thumbnailDataUrl}
+                  alt=""
+                  className="h-10 w-10 rounded-lg object-cover shrink-0 border border-[var(--color-stroke)]"
+                />
+              ) : (
+                <span className="text-[11px] text-[var(--color-fg-3)] tnum w-12 shrink-0">
+                  {m.time}
+                </span>
+              )}
               <button
                 type="button"
                 onClick={() => setEditing(m)}
                 className="flex-1 text-left text-sm truncate"
               >
                 {m.name || "Meal"}
+                {m.thumbnailDataUrl && (
+                  <span className="block text-[10px] text-[var(--color-fg-3)] tnum">
+                    {m.time}
+                  </span>
+                )}
               </button>
               <span className="text-xs tnum text-[var(--color-fg-2)] shrink-0">
                 {m.calories} cal · {m.protein}g
@@ -203,6 +263,10 @@ export function Nutrition() {
           setTargetsOpen(false);
           haptic("success");
         }}
+      />
+      <PhotoFoodModal
+        open={photoOpen}
+        onClose={() => setPhotoOpen(false)}
       />
     </Card>
   );
@@ -637,6 +701,7 @@ function EditMealModal({
       }
     >
       <div className="space-y-3">
+        {meal.photoId && <MealPhotoView photoId={meal.photoId} />}
         <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" />
         <div className="grid grid-cols-2 gap-3">
           <NumField label="Calories" value={calories} onChange={setCalories} />
@@ -645,8 +710,93 @@ function EditMealModal({
           <NumField label="Fat (g)" value={fat} onChange={setFat} />
         </div>
         <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+        {meal.aiAnalysis && (
+          <div className="rounded-xl border border-[var(--color-stroke)] bg-[var(--color-elevated)] p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] uppercase tracking-wider text-[var(--color-fg-3)]">
+                AI analysis
+              </span>
+              <Pill
+                tone={
+                  meal.aiAnalysis.overallConfidence === "high"
+                    ? "success"
+                    : meal.aiAnalysis.overallConfidence === "medium"
+                    ? "warn"
+                    : "danger"
+                }
+                className="h-5 px-2 text-[10px] capitalize"
+              >
+                {meal.aiAnalysis.overallConfidence} confidence
+              </Pill>
+            </div>
+            {meal.aiAnalysis.identifiedItems.length > 0 && (
+              <ul className="text-[11px] text-[var(--color-fg-2)] space-y-0.5">
+                {meal.aiAnalysis.identifiedItems.map((it, i) => (
+                  <li key={i}>
+                    • {it.name}{" "}
+                    <span className="text-[var(--color-fg-3)] tnum">
+                      ({it.estimatedGrams}g)
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {meal.aiAnalysis.notes && (
+              <div className="text-[11px] italic text-[var(--color-fg-3)] leading-relaxed">
+                {meal.aiAnalysis.notes}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </Modal>
+  );
+}
+
+function MealPhotoView({ photoId }: { photoId: string }) {
+  const [url, setUrl] = React.useState<string | null>(null);
+  const [missing, setMissing] = React.useState(false);
+
+  React.useEffect(() => {
+    let alive = true;
+    let created: string | null = null;
+    getMealPhoto(photoId)
+      .then((blob) => {
+        if (!blob) {
+          if (alive) setMissing(true);
+          return;
+        }
+        created = URL.createObjectURL(blob);
+        if (alive) setUrl(created);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+      if (created) URL.revokeObjectURL(created);
+    };
+  }, [photoId]);
+
+  if (missing) {
+    return (
+      <div className="text-[11px] text-[var(--color-fg-3)] italic">
+        Original photo not found on this device.
+      </div>
+    );
+  }
+  if (!url) {
+    return (
+      <div className="h-40 rounded-xl bg-[var(--color-elevated)] grid place-items-center text-[11px] text-[var(--color-fg-3)]">
+        loading photo…
+      </div>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={url}
+      alt="Meal"
+      className="w-full max-h-64 object-contain rounded-xl bg-[var(--color-elevated)]"
+    />
   );
 }
 
