@@ -42,15 +42,8 @@ export function Nutrition() {
   const [editing, setEditing] = React.useState<Meal | null>(null);
   const [targetsOpen, setTargetsOpen] = React.useState(false);
   const [photoOpen, setPhotoOpen] = React.useState(false);
-  const [photoSupported, setPhotoSupported] = React.useState(true);
   const photoFoodSettings = useStore((s) => s.settings.photoFood);
   const setPhotoFoodSettings = useStore((s) => s.setPhotoFoodSettings);
-
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    const input = document.createElement("input");
-    setPhotoSupported(input.type === "file");
-  }, []);
 
   const dismissTooltip = () =>
     setPhotoFoodSettings({ seenTooltip: true });
@@ -70,18 +63,16 @@ export function Nutrition() {
           >
             Targets
           </Button>
-          {photoSupported && (
-            <Button
-              size="sm"
-              onClick={() => {
-                dismissTooltip();
-                setPhotoOpen(true);
-              }}
-            >
-              <Camera size={12} />
-              Photo
-            </Button>
-          )}
+          <Button
+            size="sm"
+            onClick={() => {
+              dismissTooltip();
+              setPhotoOpen(true);
+            }}
+          >
+            <Camera size={12} />
+            Photo
+          </Button>
           <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>
             <Plus size={12} />
             Log meal
@@ -89,7 +80,7 @@ export function Nutrition() {
         </div>
       </CardHeader>
 
-      {photoSupported && !photoFoodSettings.seenTooltip && (
+      {!photoFoodSettings.seenTooltip && (
         <div className="mb-3 px-3 py-2.5 rounded-xl bg-[var(--color-accent-soft)] border border-[color:color-mix(in_srgb,var(--color-accent)_24%,transparent)] flex items-center justify-between gap-3">
           <div className="text-[11px] text-[var(--color-accent)] leading-snug">
             <span className="font-semibold">New:</span> tap{" "}
