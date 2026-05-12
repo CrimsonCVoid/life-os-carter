@@ -10,6 +10,7 @@ import { metricColors, type Metric } from "@/lib/metric-colors";
 import { todayStr } from "@/lib/date";
 import { haptic } from "@/lib/haptics";
 import type { PatternInsight } from "@/lib/types";
+import { useIsActualToday } from "./day-context";
 
 const METRIC_FALLBACK: Metric = "protein";
 
@@ -44,6 +45,7 @@ function staleByFrequency(
 }
 
 export function PatternCard() {
+  const isToday = useIsActualToday();
   const settings = useStore((s) => s.settings.insights);
   const cached = useStore((s) => s.cachedPatterns);
   const dismissed = useStore((s) => s.dismissedPatterns);
@@ -107,6 +109,7 @@ export function PatternCard() {
   }, [settings.enabled, settings.frequency, cached]);
 
   if (!settings.enabled) return null;
+  if (!isToday) return null;
   if (!cached || cached.patterns.length === 0) {
     if (loading) {
       return (

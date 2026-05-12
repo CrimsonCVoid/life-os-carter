@@ -8,8 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
 import { Segmented } from "@/components/ui/segmented";
-import { todayStr } from "@/lib/date";
 import { useStore } from "@/store";
+import { useSelectedDate } from "./day-context";
 import { Exercise, WorkoutType } from "@/lib/types";
 import { uid } from "@/lib/utils";
 import { haptic } from "@/lib/haptics";
@@ -23,7 +23,7 @@ export function WorkoutLogModal({
   open: boolean;
   onClose: () => void;
 }) {
-  const today = todayStr();
+  const date = useSelectedDate();
   const addWorkout = useStore((s) => s.addWorkout);
 
   const [type, setType] = React.useState<WorkoutType>("Push");
@@ -50,7 +50,7 @@ export function WorkoutLogModal({
 
   const save = () => {
     addWorkout({
-      date: today,
+      date,
       type,
       durationMin: Math.max(0, parseInt(duration, 10) || 0),
       intensity,

@@ -18,14 +18,14 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, Plus, Repeat, Tag, Timer } from "lucide-react";
+import { CalendarClock, GripVertical, Plus, Repeat, Tag, Timer } from "lucide-react";
 import { useStore } from "@/store";
 import { useTodayGoals, useToday } from "@/store/selectors";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Pill } from "@/components/ui/pill";
 import { Goal, Priority } from "@/lib/types";
-import { patternSummary } from "@/lib/recurrence";
+import { patternSummary, shouldGenerateForDate } from "@/lib/recurrence";
 import { haptic } from "@/lib/haptics";
 import { GoalEditModal } from "./goal-edit-modal";
 import { Confetti } from "@/components/confetti";
@@ -33,6 +33,7 @@ import { ManageRecurringModal } from "./recurring-manage-modal";
 import { RecurringGoalEditModal } from "./recurring-goal-edit-modal";
 import { useRecurrenceTicker } from "./useRecurrenceTicker";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
+import { useDay } from "./day-context";
 
 const PRIO_COLOR: Record<Priority, string> = {
   P1: "var(--color-p1)",
@@ -43,6 +44,7 @@ const PRIO_COLOR: Record<Priority, string> = {
 export function Goals() {
   useRecurrenceTicker();
   const today = useToday();
+  const { isFuture } = useDay();
   const goals = useTodayGoals();
   const addGoal = useStore((s) => s.addGoal);
   const toggleGoal = useStore((s) => s.toggleGoal);
@@ -76,6 +78,15 @@ export function Goals() {
   const done = goals.filter((g) => g.completed).length;
   const total = goals.length;
 
+  // Future days: surface recurring goals that *will* generate on this date
+  // (without creating real Goal records — the generation pass owns that).
+  const futurePreviews = React.useMemo(() => {
+    if (!isFuture) return [];
+    return recurringGoals
+      .filter((r) => r.active && shouldGenerateForDate(r, today))
+      .filter((r) => !goals.some((g) => g.recurringGoalId === r.id));
+  }, [isFuture, recurringGoals, today, goals]);
+
   React.useEffect(() => {
     const allDone = total > 0 && done === total;
     if (allDone && !allDoneRef.current) {
@@ -89,7 +100,7 @@ export function Goals() {
   const submit = () => {
     const text = draft.trim();
     if (!text) return;
-    addGoal({ text, priority: "P2" });
+    addGoal({ text, priority: "P2", date: today });
     setDraft("");
     haptic("tap");
   };
@@ -167,14 +178,42 @@ export function Goals() {
                 />
               );
             })}
-            {goals.length === 0 && (
+            {goals.length === 0 && futurePreviews.length === 0 && (
               <li className="py-4 text-center text-sm text-[var(--color-fg-3)]">
-                What needs doing today?
+                {isFuture
+                  ? "Nothing planned yet — add goals to set this day's intent."
+                  : "What needs doing today?"}
               </li>
             )}
           </ul>
         </SortableContext>
       </DndContext>
+
+      {futurePreviews.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-[var(--color-stroke)]">
+          <div className="label mb-2 text-[10px]">Will generate</div>
+          <ul className="space-y-1">
+            {futurePreviews.map((r) => (
+              <li
+                key={r.id}
+                className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-[var(--color-elevated)] text-xs"
+              >
+                <CalendarClock
+                  size={12}
+                  className="text-[var(--color-accent)] shrink-0"
+                />
+                {r.emoji && <span className="shrink-0">{r.emoji}</span>}
+                <span className="flex-1 truncate text-[var(--color-fg-2)]">
+                  {r.text}
+                </span>
+                <span className="text-[10px] text-[var(--color-fg-3)] shrink-0">
+                  {patternSummary(r)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <form
         onSubmit={(e) => {

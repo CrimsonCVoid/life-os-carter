@@ -31,9 +31,9 @@ import { Button } from "@/components/ui/button";
 import { useStore } from "@/store";
 import { useRoutine, useRoutineStreak } from "@/store/selectors";
 import { MorningRoutineItem } from "@/lib/types";
-import { todayStr } from "@/lib/date";
 import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
+import { useDay } from "./day-context";
 
 const EMOJI_PICKER = [
   "🛏️","📵","☀️","☕","🧘","💊","🎯","🚿","💧","🍳","🌱","🚶","📖","🧠","✍️","🧊","🌅","🪞","🦷","💪","🥗","🏃","🪥","🥛","🧴","⏰","🌿","🍵","📝","🧹",
@@ -49,7 +49,7 @@ function formatTime(iso: string): string {
 }
 
 export function MorningRoutine() {
-  const today = todayStr();
+  const { date: today, isToday, isFuture } = useDay();
   const items = useRoutine();
   const streak = useRoutineStreak();
   const settings = useStore((s) => s.settings.morningRoutine);
@@ -76,9 +76,11 @@ export function MorningRoutine() {
   const done = items.filter((r) => r.history[today]?.completed).length;
   const total = items.length;
   const allDone = total > 0 && done === total;
+  // Time-gated behaviors (auto-collapse, "moment has passed" copy) only
+  // apply when viewing actual today.
   const now = React.useMemo(() => new Date(), []);
-  const past11 = now.getHours() >= 11;
-  const past2pm = now.getHours() >= 14;
+  const past11 = isToday && now.getHours() >= 11;
+  const past2pm = isToday && now.getHours() >= 14;
 
   const lastCompletedAt = React.useMemo(() => {
     if (!allDone) return null;
@@ -96,6 +98,8 @@ export function MorningRoutine() {
   }, [allDone]);
 
   if (!showOnTodayScreen) return null;
+  // Hide entirely on future days — there's nothing to mark done yet.
+  if (isFuture) return null;
 
   const isCollapsed =
     allDone && settings.autoCollapseWhenDone && past11 && !expanded;

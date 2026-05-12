@@ -5,9 +5,9 @@ import { Modal } from "@/components/ui/modal";
 import { Slider } from "@/components/ui/slider";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { todayStr } from "@/lib/date";
 import { useStore } from "@/store";
 import { haptic } from "@/lib/haptics";
+import { useSelectedDate } from "../day-context";
 
 /**
  * Returns "10:42pm" given a "HH:MM" wake time and decimal hours slept.
@@ -38,8 +38,8 @@ export function SleepLogModal({
   open: boolean;
   onClose: () => void;
 }) {
-  const today = todayStr();
-  const log = useStore((s) => s.health[today]);
+  const date = useSelectedDate();
+  const log = useStore((s) => s.health[date]);
   const setHealth = useStore((s) => s.setHealth);
 
   const [hours, setHours] = React.useState(log?.sleepHours ?? 7.5);
@@ -57,7 +57,7 @@ export function SleepLogModal({
   const bedtime = formatBedtime(wakeTime, hours);
 
   const save = () => {
-    setHealth(today, {
+    setHealth(date, {
       sleepHours: hours,
       sleepQuality: quality,
       wakeTime,

@@ -1,3 +1,7 @@
+"use client";
+
+import * as React from "react";
+import { motion, PanInfo } from "motion/react";
 import { Screen } from "@/components/screen";
 import { TodayHeader } from "@/components/today/header";
 import { SleepCard } from "@/components/today/sleep-card";
@@ -8,19 +12,81 @@ import { Goals } from "@/components/today/goals";
 import { ReflectionCard } from "@/components/today/reflection";
 import { WeeklyReviewCard } from "@/components/today/weekly-review-card";
 import { PatternCard } from "@/components/today/pattern-card";
+import { DayProvider, useDay } from "@/components/today/day-context";
+import { useStore } from "@/store";
+import { haptic } from "@/lib/haptics";
 
 export default function Page() {
   return (
-    <Screen>
-      <MorningBriefing />
-      <TodayHeader />
-      <WeeklyReviewCard />
-      <PatternCard />
+    <DayProvider>
+      <DaySurface />
+    </DayProvider>
+  );
+}
+
+function DaySurface() {
+  const { isFuture, step, canGoBack, canGoForward } = useDay();
+  const swipeEnabled = useStore((s) => s.settings.dayNavigation.swipeEnabled);
+
+  const onPanEnd = (
+    _e: PointerEvent | MouseEvent | TouchEvent,
+    info: PanInfo
+  ) => {
+    if (!swipeEnabled) return;
+    // Require a decisive horizontal swipe; ignore drift / vertical motion.
+    const dx = info.offset.x;
+    const dy = info.offset.y;
+    const vx = info.velocity.x;
+    if (Math.abs(dy) > Math.abs(dx)) return;
+    const fast = Math.abs(vx) > 400;
+    const far = Math.abs(dx) > 80;
+    if (!fast && !far) return;
+    if (dx < 0 && canGoForward) {
+      haptic("tap");
+      step(1);
+    } else if (dx > 0 && canGoBack) {
+      haptic("tap");
+      step(-1);
+    }
+  };
+
+  return (
+    <motion.div
+      onPanEnd={swipeEnabled ? onPanEnd : undefined}
+      // Allow vertical scroll; only intercept horizontal pans
+      style={{ touchAction: "pan-y" }}
+    >
+      <Screen>
+        <MorningBriefing />
+        <TodayHeader />
+        <WeeklyReviewCard />
+        <PatternCard />
+        {isFuture ? <FutureBody /> : <PresentOrPastBody />}
+      </Screen>
+    </motion.div>
+  );
+}
+
+function PresentOrPastBody() {
+  return (
+    <>
       <SleepCard />
       <MorningRoutine />
       <Goals />
       <EveningRoutine />
       <ReflectionCard />
-    </Screen>
+    </>
+  );
+}
+
+/**
+ * Future days only show planning surfaces. Recurring goals that *will*
+ * generate on this date are surfaced in the Goals card itself.
+ */
+function FutureBody() {
+  return (
+    <>
+      <Goals />
+    </>
   );
 }

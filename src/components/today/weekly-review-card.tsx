@@ -9,6 +9,7 @@ import { format, fromDateStr, todayStr } from "@/lib/date";
 import { haptic } from "@/lib/haptics";
 import type { WeeklyReviewData } from "@/lib/types";
 import { WeeklyReviewModal } from "./weekly-review-modal";
+import { useIsActualToday } from "./day-context";
 
 /** True when local time has passed {triggerDay, triggerHour} for the current week. */
 function isTriggerPast(triggerDay: number, triggerHour: number): boolean {
@@ -36,6 +37,7 @@ function lastReviewWeekStart(triggerDay: number, triggerHour: number): string {
 }
 
 export function WeeklyReviewCard() {
+  const isToday = useIsActualToday();
   const settings = useStore((s) => s.settings.weeklyReview);
   const reviews = useStore((s) => s.weeklyReviews);
   const saveWeeklyReview = useStore((s) => s.saveWeeklyReview);
@@ -89,6 +91,7 @@ export function WeeklyReviewCard() {
   }, [eligible, existing, targetWeekStart]);
 
   if (!eligible) return null;
+  if (!isToday) return null;
   if (loading) {
     return (
       <div className="card p-3 flex items-center gap-2 animate-pulse">

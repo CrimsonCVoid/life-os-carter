@@ -4,9 +4,9 @@ import * as React from "react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { todayStr } from "@/lib/date";
 import { useStore } from "@/store";
 import { haptic } from "@/lib/haptics";
+import { useSelectedDate } from "../day-context";
 
 const MOOD_EMOJI = [
   "😭",
@@ -28,8 +28,8 @@ export function MoodLogModal({
   open: boolean;
   onClose: () => void;
 }) {
-  const today = todayStr();
-  const log = useStore((s) => s.health[today]);
+  const date = useSelectedDate();
+  const log = useStore((s) => s.health[date]);
   const setHealth = useStore((s) => s.setHealth);
 
   const [val, setVal] = React.useState(log?.mood ?? 7);
@@ -39,7 +39,7 @@ export function MoodLogModal({
   }, [open, log]);
 
   const save = () => {
-    setHealth(today, { mood: val });
+    setHealth(date, { mood: val });
     haptic("success");
     onClose();
   };

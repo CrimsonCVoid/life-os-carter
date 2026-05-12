@@ -63,6 +63,39 @@ export function formatHeader(d: Date = new Date()) {
   };
 }
 
+/** Days between two date strings, positive when b is after a. */
+export function diffDays(a: DateStr, b: DateStr): number {
+  return differenceInCalendarDays(fromDateStr(b), fromDateStr(a));
+}
+
+/** Shift a date string by `days` calendar days. */
+export function shiftDate(d: DateStr, days: number): DateStr {
+  return toDateStr(addDays(fromDateStr(d), days));
+}
+
+/** Clamp a date to [todayStr - back, todayStr + forward] window. */
+export function clampDateWithin(
+  d: DateStr,
+  back: number,
+  forward: number
+): DateStr {
+  const min = shiftDate(todayStr(), -back);
+  const max = shiftDate(todayStr(), forward);
+  if (d < min) return min;
+  if (d > max) return max;
+  return d;
+}
+
+/** Human-readable offset from today. "Today" / "Yesterday" / "Tomorrow" / "in 3 days" / "2 days ago". */
+export function describeOffset(d: DateStr, today: DateStr = todayStr()): string {
+  const n = diffDays(today, d);
+  if (n === 0) return "Today";
+  if (n === -1) return "Yesterday";
+  if (n === 1) return "Tomorrow";
+  if (n < 0) return `${-n} days ago`;
+  return `in ${n} days`;
+}
+
 export function isPast8pm(d: Date = new Date()) {
   return d.getHours() >= 20;
 }

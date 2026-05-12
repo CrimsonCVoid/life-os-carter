@@ -388,6 +388,20 @@ export const DEFAULT_WEEKLY_REVIEW_SETTINGS: WeeklyReviewSettings = {
   triggerHour: 19, // 7pm
 };
 
+/* ---------- DAY NAVIGATION ---------- */
+
+export type DayNavigationSettings = {
+  daysBack: number; // 7..365
+  daysForward: number; // 0..30
+  swipeEnabled: boolean;
+};
+
+export const DEFAULT_DAY_NAVIGATION_SETTINGS: DayNavigationSettings = {
+  daysBack: 30,
+  daysForward: 7,
+  swipeEnabled: true,
+};
+
 /* ---------- BODY ---------- */
 
 export type BodyMeasurement = {
@@ -559,6 +573,7 @@ export type Settings = {
   photoFood: PhotoFoodSettings;
   insights: InsightsSettings;
   weeklyReview: WeeklyReviewSettings;
+  dayNavigation: DayNavigationSettings;
 };
 
 export const DEFAULT_MORNING_ROUTINE: Array<{ name: string; icon: string }> = [

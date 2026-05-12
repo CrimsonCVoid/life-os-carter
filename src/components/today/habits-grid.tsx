@@ -11,7 +11,7 @@ import { HabitGlyph } from "@/components/habit-icon";
 import { cn } from "@/lib/utils";
 import { haptic } from "@/lib/haptics";
 import { Habit, DateStr } from "@/lib/types";
-import { lastNDates, todayStr } from "@/lib/date";
+import { lastNDates } from "@/lib/date";
 import { streakForHabit } from "@/lib/score";
 
 export function HabitsGrid() {

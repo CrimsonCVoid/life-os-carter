@@ -7,8 +7,10 @@ import { useStore } from "@/store";
 import { getOverseerContext } from "@/store/selectors";
 import { todayStr, isPast5am } from "@/lib/date";
 import { cn } from "@/lib/utils";
+import { useIsActualToday } from "./day-context";
 
 export function MorningBriefing() {
+  const isToday = useIsActualToday();
   const today = todayStr();
   const cached = useStore((s) => s.settings.morningBriefing);
   const setBriefing = useStore((s) => s.setMorningBriefing);
@@ -18,6 +20,7 @@ export function MorningBriefing() {
   const [dismissed, setDismissed] = React.useState(false);
 
   React.useEffect(() => {
+    if (!isToday) return;
     if (dismissed) return;
     if (!isPast5am()) return;
     if (cached?.date === today) return;
@@ -59,6 +62,7 @@ export function MorningBriefing() {
 
   const text = cached?.date === today ? cached.text : null;
 
+  if (!isToday) return null;
   if (dismissed) return null;
   if (!loading && !text && !error) return null;
   if (!isPast5am()) return null;

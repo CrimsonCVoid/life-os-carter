@@ -9,6 +9,7 @@ import {
   DEFAULT_DAY_TYPES,
   DEFAULT_EVENING_ROUTINE,
   DEFAULT_EVENING_ROUTINE_SETTINGS,
+  DEFAULT_DAY_NAVIGATION_SETTINGS,
   DEFAULT_INSIGHTS_SETTINGS,
   DEFAULT_MORNING_ROUTINE,
   DEFAULT_MORNING_ROUTINE_SETTINGS,
@@ -41,6 +42,7 @@ import {
   Plan,
   CachedPatterns,
   DismissedPattern,
+  DayNavigationSettings,
   InsightsSettings,
   LiftSession,
   RecurringGoal,
@@ -111,7 +113,9 @@ type Actions = {
   setReminder: (date: DateStr, reminder: string) => void;
 
   // goals
-  addGoal: (input: Omit<Goal, "id" | "date" | "completed" | "order">) => void;
+  addGoal: (
+    input: Omit<Goal, "id" | "date" | "completed" | "order"> & { date?: DateStr }
+  ) => void;
   toggleGoal: (id: string) => void;
   updateGoal: (id: string, patch: Partial<Goal>) => void;
   removeGoal: (id: string) => void;
@@ -195,7 +199,7 @@ type Actions = {
   addSavedMeal: (m: Omit<SavedMeal, "id" | "useCount">) => void;
   updateSavedMeal: (id: string, patch: Partial<SavedMeal>) => void;
   removeSavedMeal: (id: string) => void;
-  logSavedMeal: (savedId: string) => void;
+  logSavedMeal: (savedId: string, date?: DateStr) => void;
   setNutritionTargets: (patch: Partial<NutritionTargets>) => void;
   setShowNutritionOnToday: (v: boolean) => void;
   setVoiceJournalSettings: (patch: Partial<VoiceJournalSettings>) => void;
@@ -236,6 +240,9 @@ type Actions = {
   dismissWeeklyReview: (weekStart: DateStr) => void;
   setWeeklyReviewSettings: (patch: Partial<WeeklyReviewSettings>) => void;
 
+  // day navigation
+  setDayNavSettings: (patch: Partial<DayNavigationSettings>) => void;
+
   // body measurements + photos
   addBodyMeasurement: (m: Omit<BodyMeasurement, "id" | "createdAt">) => void;
   updateBodyMeasurement: (id: string, patch: Partial<BodyMeasurement>) => void;
@@ -273,6 +280,7 @@ const defaultSettings = (): Settings => ({
   photoFood: { ...DEFAULT_PHOTO_FOOD_SETTINGS },
   insights: { ...DEFAULT_INSIGHTS_SETTINGS },
   weeklyReview: { ...DEFAULT_WEEKLY_REVIEW_SETTINGS },
+  dayNavigation: { ...DEFAULT_DAY_NAVIGATION_SETTINGS },
 });
 
 function buildDefaultRoutine(
@@ -414,14 +422,15 @@ export const useStore = create<State & Actions>()(
 
       addGoal: (input) =>
         set((s) => {
-          const date = todayStr();
+          const { date: inputDate, ...rest } = input;
+          const date = inputDate ?? todayStr();
           const sameDay = s.goals.filter((g) => g.date === date);
           const goal: Goal = {
             id: uid(),
             date,
             completed: false,
             order: nextOrder(sameDay),
-            ...input,
+            ...rest,
           };
           return { goals: [...s.goals, goal] };
         }),
@@ -855,7 +864,7 @@ export const useStore = create<State & Actions>()(
         })),
       removeSavedMeal: (id) =>
         set((s) => ({ savedMeals: s.savedMeals.filter((m) => m.id !== id) })),
-      logSavedMeal: (savedId) =>
+      logSavedMeal: (savedId, date) =>
         set((s) => {
           const sm = s.savedMeals.find((x) => x.id === savedId);
           if (!sm) return s;
@@ -869,7 +878,7 @@ export const useStore = create<State & Actions>()(
               ...s.meals,
               {
                 id: uid(),
-                date: todayStr(),
+                date: date ?? todayStr(),
                 time,
                 name: sm.name,
                 calories: sm.calories,
@@ -1159,6 +1168,14 @@ export const useStore = create<State & Actions>()(
           },
         })),
 
+      setDayNavSettings: (patch) =>
+        set((s) => ({
+          settings: {
+            ...s.settings,
+            dayNavigation: { ...s.settings.dayNavigation, ...patch },
+          },
+        })),
+
       addBodyMeasurement: (m) =>
         set((s) => {
           const entry: BodyMeasurement = {
@@ -1278,6 +1295,10 @@ export const useStore = create<State & Actions>()(
                 ...DEFAULT_WEEKLY_REVIEW_SETTINGS,
                 ...((state.settings as Partial<Settings>)?.weeklyReview ?? {}),
               },
+              dayNavigation: {
+                ...DEFAULT_DAY_NAVIGATION_SETTINGS,
+                ...((state.settings as Partial<Settings>)?.dayNavigation ?? {}),
+              },
             },
             days: state.days ?? {},
             goals: state.goals ?? [],
@@ -1371,6 +1392,10 @@ export const useStore = create<State & Actions>()(
             weeklyReview: {
               ...current.settings.weeklyReview,
               ...((p.settings as Partial<Settings>)?.weeklyReview ?? {}),
+            },
+            dayNavigation: {
+              ...current.settings.dayNavigation,
+              ...((p.settings as Partial<Settings>)?.dayNavigation ?? {}),
             },
           },
           routine: p.routine ?? current.routine,

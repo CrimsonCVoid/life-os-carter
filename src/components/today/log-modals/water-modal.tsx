@@ -4,9 +4,9 @@ import * as React from "react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Droplet, Minus, Plus } from "lucide-react";
-import { todayStr } from "@/lib/date";
 import { useStore } from "@/store";
 import { haptic } from "@/lib/haptics";
+import { useSelectedDate } from "../day-context";
 
 export function WaterLogModal({
   open,
@@ -15,8 +15,8 @@ export function WaterLogModal({
   open: boolean;
   onClose: () => void;
 }) {
-  const today = todayStr();
-  const log = useStore((s) => s.health[today]);
+  const date = useSelectedDate();
+  const log = useStore((s) => s.health[date]);
   const target = useStore((s) => s.settings.waterTargetOz);
   const unit = useStore((s) => s.settings.units.liquid);
   const addWater = useStore((s) => s.addWater);
@@ -43,7 +43,7 @@ export function WaterLogModal({
             variant="ghost"
             size="sm"
             onClick={() => {
-              setHealth(today, { waterOz: 0 });
+              setHealth(date, { waterOz: 0 });
               haptic("warn");
             }}
           >
@@ -93,7 +93,7 @@ export function WaterLogModal({
               key={oz}
               type="button"
               onClick={() => {
-                addWater(today, oz);
+                addWater(date, oz);
                 haptic("tap");
               }}
               className="h-12 rounded-xl border border-[var(--color-stroke)] bg-[var(--color-elevated)] text-[var(--color-fg)] text-sm font-medium hover:border-[var(--color-stroke-strong)] active:scale-[0.97] transition flex items-center justify-center gap-1.5"
@@ -108,7 +108,7 @@ export function WaterLogModal({
           <button
             type="button"
             onClick={() => {
-              addWater(today, -8);
+              addWater(date, -8);
               haptic("soft");
             }}
             disabled={current <= 0}
@@ -120,7 +120,7 @@ export function WaterLogModal({
           <button
             type="button"
             onClick={() => {
-              addWater(today, 8);
+              addWater(date, 8);
               haptic("tap");
             }}
             className="h-9 w-9 grid place-items-center rounded-full border border-[var(--color-stroke)] text-[var(--color-fg-2)] hover:text-[var(--color-fg)]"

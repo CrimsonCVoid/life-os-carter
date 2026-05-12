@@ -4,8 +4,8 @@ import * as React from "react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { todayStr } from "@/lib/date";
 import { useStore } from "@/store";
+import { useSelectedDate } from "../day-context";
 import { haptic } from "@/lib/haptics";
 import {
   EnergyPeriod,
@@ -22,12 +22,12 @@ export function EnergyLogModal({
   open: boolean;
   onClose: () => void;
 }) {
-  const today = todayStr();
+  const date = useSelectedDate();
   const energyMap = useStore((s) => s.energy);
   const setEnergy = useStore((s) => s.setEnergy);
   const clearEnergy = useStore((s) => s.clearEnergy);
 
-  const log = energyMap[today];
+  const log = energyMap[date];
   const period = React.useMemo(() => currentPeriod(), []);
   const [val, setVal] = React.useState<number>(
     log?.values[period] ?? 6
@@ -40,7 +40,7 @@ export function EnergyLogModal({
   }, [open, log, period]);
 
   const save = () => {
-    setEnergy(today, period, val);
+    setEnergy(date, period, val);
     haptic("success");
     onClose();
   };
@@ -86,8 +86,8 @@ export function EnergyLogModal({
                 key={p}
                 period={p}
                 value={log?.values[p]}
-                onChange={(v) => setEnergy(today, p, v)}
-                onClear={() => clearEnergy(today, p)}
+                onChange={(v) => setEnergy(date, p, v)}
+                onClear={() => clearEnergy(date, p)}
               />
             ))}
           </ul>

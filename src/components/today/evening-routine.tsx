@@ -31,9 +31,9 @@ import { Button } from "@/components/ui/button";
 import { useStore } from "@/store";
 import { useEveningRoutine, useEveningStreak } from "@/store/selectors";
 import { EveningRoutineItem } from "@/lib/types";
-import { todayStr } from "@/lib/date";
 import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
+import { useDay } from "./day-context";
 
 const EMOJI_PICKER = [
   "🌙","📵","💡","🎯","📖","💊","🛁","☕","🧘","🚿","💧","📝","🪥","🦷","🧴","🛏️","🌿","🍵","🌌","⏰","🪞","🎧","🧠","✍️","📓","🥛","🍪","🌅","☁️","🌖",
@@ -49,7 +49,7 @@ function formatTime(iso: string): string {
 }
 
 export function EveningRoutine() {
-  const today = todayStr();
+  const { date: today, isToday, isFuture } = useDay();
   const items = useEveningRoutine();
   const streak = useEveningStreak();
   const settings = useStore((s) => s.settings.eveningRoutine);
@@ -79,15 +79,16 @@ export function EveningRoutine() {
   const total = items.length;
   const allDone = total > 0 && done === total;
 
+  // Time-gated collapse rules apply only on actual today.
   const now = new Date();
   const hour = now.getHours();
   // Before 5pm: collapsed header (haven't started wind-down)
   // 5pm–10pm: full default
   // 10pm onwards: full
   // After 2am AND incomplete: dim treatment
-  const before5pm = hour < 17;
-  const past2am = hour >= 2 && hour < 5;
-  const pastMidnight = hour < 5; // 00:00–05:00 counts as "past midnight"
+  const before5pm = isToday && hour < 17;
+  const past2am = isToday && hour >= 2 && hour < 5;
+  const pastMidnight = isToday && hour < 5; // 00:00–05:00 counts as "past midnight"
 
   // Auto-collapsed cases:
   // 1. All done + autoCollapse + past midnight → single pill (collapsed by default)
@@ -116,6 +117,7 @@ export function EveningRoutine() {
   }, [allDone]);
 
   if (!showOnTodayScreen) return null;
+  if (isFuture) return null;
 
   const onDragEnd = (e: DragEndEvent) => {
     const { active, over } = e;

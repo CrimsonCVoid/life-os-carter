@@ -2,8 +2,8 @@
 
 import * as React from "react";
 import { Zap } from "lucide-react";
-import { todayStr } from "@/lib/date";
 import { useStore } from "@/store";
+import { useSelectedDate } from "./day-context";
 import {
   averageOfPeriodValues,
   currentPeriod,
@@ -54,9 +54,9 @@ export function EnergyTile({
 }: {
   onTap: () => void;
 }) {
-  const today = todayStr();
+  const date = useSelectedDate();
   const energyMap = useStore((s) => s.energy);
-  const log = energyMap[today];
+  const log = energyMap[date];
   const period = React.useMemo(() => currentPeriod(), []);
   const avg = averageOfPeriodValues(log?.values ?? {});
   const loggedCount = log

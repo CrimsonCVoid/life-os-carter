@@ -5,11 +5,11 @@ import { Moon, Plus, Sunrise } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/store";
-import { todayStr } from "@/lib/date";
 import { round1 } from "@/lib/utils";
 import { haptic } from "@/lib/haptics";
 import { metricColors } from "@/lib/metric-colors";
 import { SleepLogModal } from "./log-modals/sleep-modal";
+import { useSelectedDate } from "./day-context";
 
 function formatBedtime(wakeTime: string, hours: number): string | null {
   const [hStr, mStr] = wakeTime.split(":");
@@ -37,8 +37,8 @@ function formatWake(wakeTime: string): string {
 }
 
 export function SleepCard() {
-  const today = todayStr();
-  const log = useStore((s) => s.health[today]);
+  const date = useSelectedDate();
+  const log = useStore((s) => s.health[date]);
   const [open, setOpen] = React.useState(false);
 
   const c = metricColors("sleep");

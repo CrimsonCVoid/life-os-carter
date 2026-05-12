@@ -9,6 +9,7 @@ import {
   useWins,
 } from "@/store/selectors";
 import { ListSection } from "./list-section";
+import { useDay } from "./day-context";
 
 /**
  * Evening Reflection — three quick lists to close out the day:
@@ -21,7 +22,7 @@ import { ListSection } from "./list-section";
  * Same store data, just collected under one heading.
  */
 export function ReflectionCard() {
-  const today = useToday();
+  const { date: today, isFuture } = useDay();
   const wins = useWins(today);
   const struggles = useStruggles(today);
   const plans = usePlans(today);
@@ -38,6 +39,10 @@ export function ReflectionCard() {
   const removePlan = useStore((s) => s.removePlan);
   const updatePlan = useStore((s) => s.updatePlan);
 
+  // Evening reflection only applies after-the-fact (or live for today).
+  // Hide for future days — handled at the page level too, but defensive.
+  if (isFuture) return null;
+
   return (
     <section className="space-y-3">
       <div className="flex items-center gap-2 px-1">
@@ -50,7 +55,7 @@ export function ReflectionCard() {
         placeholder="What went well?"
         bullet="plus"
         items={wins}
-        onAdd={(text) => addWin(text)}
+        onAdd={(text) => addWin(text, today)}
         onRemove={removeWin}
         onUpdate={updateWin}
         emptyText="Worth noting even small ones."
@@ -61,7 +66,7 @@ export function ReflectionCard() {
         placeholder="What's hard right now?"
         bullet="minus"
         items={struggles}
-        onAdd={(text) => addStruggle(text)}
+        onAdd={(text) => addStruggle(text, today)}
         onRemove={removeStruggle}
         onUpdate={updateStruggle}
         emptyText="It's okay if nothing's hard."

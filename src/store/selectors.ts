@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useShallow } from "zustand/react/shallow";
+import { useSelectedDate } from "@/components/today/day-context";
 import { lastNDates, todayStr } from "@/lib/date";
 import {
   dayScore,
@@ -34,16 +35,21 @@ import { ENERGY_PERIODS, ENERGY_PERIOD_RANGES } from "@/lib/types";
 import { computeRecurringStats, shouldGenerateForDate, patternSummary } from "@/lib/recurrence";
 import { useStore } from "./index";
 
+/**
+ * The "selected" date — what the Day screen is currently focused on.
+ * Equals actual today by default; the Day screen wraps content in a
+ * DayProvider that swaps this for the user-navigated date.
+ */
 export function useToday(): DateStr {
-  return todayStr();
+  return useSelectedDate();
 }
 
 export function useTodayGoals(): Goal[] {
-  const today = todayStr();
+  const date = useToday();
   return useStore(
     useShallow((s) =>
       s.goals
-        .filter((g) => g.date === today)
+        .filter((g) => g.date === date)
         .sort((a, b) => a.order - b.order)
     )
   );
@@ -66,6 +72,8 @@ export function useHabits(): Habit[] {
 }
 
 export function useHabitStreak(id: string) {
+  // Always relative to actual today — streaks don't make sense
+  // when computed from a viewed past/future day.
   const today = todayStr();
   return useStore((s) => {
     const h = s.habits.find((x) => x.id === id);
@@ -87,11 +95,11 @@ export function useHealth(date: DateStr) {
 }
 
 export function useTodayWorkouts() {
-  const today = todayStr();
+  const date = useToday();
   return useStore(
     useShallow((s) =>
       s.workouts
-        .filter((w) => w.date === today)
+        .filter((w) => w.date === date)
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
     )
   );

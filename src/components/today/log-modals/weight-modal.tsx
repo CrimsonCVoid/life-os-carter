@@ -4,10 +4,11 @@ import * as React from "react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Sparkline } from "@/components/sparkline";
-import { lastNDates, todayStr } from "@/lib/date";
+import { lastNDates } from "@/lib/date";
 import { useStore } from "@/store";
 import { round1 } from "@/lib/utils";
 import { haptic } from "@/lib/haptics";
+import { useSelectedDate } from "../day-context";
 
 export function WeightLogModal({
   open,
@@ -16,8 +17,8 @@ export function WeightLogModal({
   open: boolean;
   onClose: () => void;
 }) {
-  const today = todayStr();
-  const log = useStore((s) => s.health[today]);
+  const date = useSelectedDate();
+  const log = useStore((s) => s.health[date]);
   const health = useStore((s) => s.health);
   const unit = useStore((s) => s.settings.units.weight);
   const setHealth = useStore((s) => s.setHealth);
@@ -49,7 +50,7 @@ export function WeightLogModal({
       return;
     }
     const lbs = unit === "kg" ? numeric / 0.453592 : numeric;
-    setHealth(today, { weight: lbs });
+    setHealth(date, { weight: lbs });
     haptic("success");
     onClose();
   };

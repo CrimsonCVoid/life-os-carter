@@ -16,8 +16,8 @@ import {
   useTopSavedMeals,
 } from "@/store/selectors";
 import { Meal, NutritionTargets, SavedMeal } from "@/lib/types";
-import { todayStr } from "@/lib/date";
 import { cn } from "@/lib/utils";
+import { useSelectedDate } from "./day-context";
 import { haptic } from "@/lib/haptics";
 import { PhotoFoodModal } from "./photo-food-modal";
 import { getMealPhoto } from "@/lib/meal-photo-store";
@@ -25,7 +25,7 @@ import { metricColors } from "@/lib/metric-colors";
 import { MetricBar } from "@/components/ui/metric-bar";
 
 export function Nutrition() {
-  const today = todayStr();
+  const today = useSelectedDate();
   const targets = useStore((s) => s.settings.nutrition);
   const meals = useMealsForDay(today);
   // surface most-used favorites first; tap-count bumps automatically
@@ -149,7 +149,7 @@ export function Nutrition() {
                 key={sm.id}
                 meal={sm}
                 onTap={() => {
-                  logSavedMeal(sm.id);
+                  logSavedMeal(sm.id, today);
                   haptic("success");
                 }}
                 onDelete={() => removeSavedMeal(sm.id)}
@@ -224,6 +224,7 @@ export function Nutrition() {
         open={open}
         onClose={() => setOpen(false)}
         savedMeals={saved}
+        date={today}
         onCreate={(meal, saveFav) => {
           addMeal(meal);
           if (saveFav && meal.name) {
@@ -489,11 +490,13 @@ function LogMealModal({
   open,
   onClose,
   savedMeals,
+  date,
   onCreate,
 }: {
   open: boolean;
   onClose: () => void;
   savedMeals: SavedMeal[];
+  date: string;
   onCreate: (
     meal: Omit<Meal, "id" | "createdAt">,
     saveAsFav: boolean
@@ -533,7 +536,7 @@ function LogMealModal({
     if (!Number.isFinite(c) || !Number.isFinite(p)) return;
     onCreate(
       {
-        date: todayStr(),
+        date,
         time,
         name: name.trim() || undefined,
         calories: c,

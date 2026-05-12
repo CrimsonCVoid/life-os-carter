@@ -1,84 +1,215 @@
 "use client";
 
 import * as React from "react";
-import { Plus, X } from "lucide-react";
-import { formatHeader, todayStr } from "@/lib/date";
+import { ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
+import {
+  describeOffset,
+  format,
+  fromDateStr,
+  shiftDate,
+  todayStr,
+} from "@/lib/date";
 import { ScoreRing } from "@/components/score-ring";
 import { useStore } from "@/store";
 import { useScoreFor } from "@/store/selectors";
 import { cn } from "@/lib/utils";
+import { haptic } from "@/lib/haptics";
+import { useDay } from "./day-context";
 
 export function TodayHeader() {
-  const today = todayStr();
-  const { weekday, rest } = formatHeader();
-  const day = useStore((s) => s.days[today]);
+  const {
+    date,
+    step,
+    goToday,
+    isToday,
+    isPast,
+    isFuture,
+    canGoBack,
+    canGoForward,
+    setDate,
+    daysBack,
+    daysForward,
+  } = useDay();
+  const day = useStore((s) => s.days[date]);
   const presets = useStore((s) => s.settings.dayTypePresets);
   const setDayType = useStore((s) => s.setDayType);
   const setReminder = useStore((s) => s.setReminder);
   const addDayType = useStore((s) => s.addDayType);
-  const score = useScoreFor(today);
+  const score = useScoreFor(date);
 
-  const [pickerOpen, setPickerOpen] = React.useState(false);
+  const d = fromDateStr(date);
+  const weekday = format(d, "EEEE");
+  const rest = format(d, "MMMM d");
+
+  const [dayTypeOpen, setDayTypeOpen] = React.useState(false);
+  const dateInputRef = React.useRef<HTMLInputElement>(null);
+
+  const minDate = shiftDate(todayStr(), -daysBack);
+  const maxDate = shiftDate(todayStr(), daysForward);
+
+  const tint = isToday
+    ? undefined
+    : isPast
+    ? "linear-gradient(180deg, color-mix(in srgb, var(--color-fg-3) 8%, transparent), transparent 70%)"
+    : "linear-gradient(180deg, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 70%)";
 
   return (
-    <section className="card p-5 relative overflow-hidden">
+    <section
+      className="card p-5 relative overflow-hidden"
+      style={isToday ? undefined : { background: tint }}
+    >
       <div className="absolute inset-x-0 top-0 h-32 grad-soft pointer-events-none" />
-      <div className="relative flex items-start justify-between gap-3">
-        <div className="min-w-0">
+
+      <div className="relative flex items-center justify-between gap-2">
+        <button
+          type="button"
+          aria-label="Previous day"
+          onClick={() => {
+            haptic("tap");
+            step(-1);
+          }}
+          disabled={!canGoBack}
+          className="h-9 w-9 grid place-items-center rounded-full text-[var(--color-fg-2)] disabled:opacity-25 hover:text-[var(--color-fg)] hover:bg-[var(--color-elevated)] transition"
+        >
+          <ChevronLeft size={18} />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            // showPicker is supported on modern browsers; fallback to focus()
+            const el = dateInputRef.current;
+            if (!el) return;
+            if (typeof el.showPicker === "function") {
+              try {
+                el.showPicker();
+              } catch {
+                el.focus();
+              }
+            } else {
+              el.focus();
+            }
+          }}
+          className="flex-1 min-w-0 text-center group"
+          aria-label="Pick a date"
+        >
           <div className="label">{weekday}</div>
-          <div className="mt-1 text-[32px] font-bold tracking-tight leading-none">
+          <div className="text-[24px] font-bold tracking-tight leading-none group-hover:text-[var(--color-accent)] transition">
             {rest}
           </div>
-          <div className="mt-3 flex items-center gap-1.5 flex-wrap">
-            <button
-              type="button"
-              onClick={() => setPickerOpen((v) => !v)}
-              className={cn(
-                "inline-flex items-center gap-1.5 px-3 h-7 rounded-full text-xs font-medium border transition",
-                day?.dayType
-                  ? "bg-[var(--color-accent-soft)] text-[var(--color-accent)] border-[color:color-mix(in_srgb,var(--color-accent)_24%,transparent)]"
-                  : "border-[var(--color-stroke)] text-[var(--color-fg-2)] hover:text-[var(--color-fg)]"
-              )}
-            >
-              {day?.dayType || "Set day type"}
-              {day?.dayType ? (
-                <X
-                  size={12}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDayType(today, "");
-                  }}
-                />
-              ) : (
-                <Plus size={12} />
-              )}
-            </button>
-          </div>
-        </div>
-        <ScoreRing value={score} />
+        </button>
+
+        <button
+          type="button"
+          aria-label="Next day"
+          onClick={() => {
+            haptic("tap");
+            step(1);
+          }}
+          disabled={!canGoForward}
+          className="h-9 w-9 grid place-items-center rounded-full text-[var(--color-fg-2)] disabled:opacity-25 hover:text-[var(--color-fg)] hover:bg-[var(--color-elevated)] transition"
+        >
+          <ChevronRight size={18} />
+        </button>
+
+        {/* Hidden native date input — the date-title button triggers showPicker(). */}
+        <input
+          ref={dateInputRef}
+          type="date"
+          value={date}
+          min={minDate}
+          max={maxDate}
+          onChange={(e) => {
+            if (!e.target.value) return;
+            haptic("tap");
+            setDate(e.target.value);
+          }}
+          className="absolute inset-x-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 pointer-events-none w-px h-px"
+          aria-hidden
+          tabIndex={-1}
+        />
       </div>
 
-      {pickerOpen && (
+      <div className="relative mt-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+          {!isToday && (
+            <span
+              className={cn(
+                "inline-flex items-center gap-1.5 px-2.5 h-6 rounded-full text-[10px] font-medium shrink-0",
+                isPast
+                  ? "bg-[var(--color-elevated)] text-[var(--color-fg-2)] border border-[var(--color-stroke)]"
+                  : "bg-[var(--color-accent-soft)] text-[var(--color-accent)] border border-[color:color-mix(in_srgb,var(--color-accent)_24%,transparent)]"
+              )}
+            >
+              {describeOffset(date)}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => setDayTypeOpen((v) => !v)}
+            className={cn(
+              "inline-flex items-center gap-1.5 px-3 h-7 rounded-full text-xs font-medium border transition shrink-0",
+              day?.dayType
+                ? "bg-[var(--color-accent-soft)] text-[var(--color-accent)] border-[color:color-mix(in_srgb,var(--color-accent)_24%,transparent)]"
+                : "border-[var(--color-stroke)] text-[var(--color-fg-2)] hover:text-[var(--color-fg)]"
+            )}
+          >
+            {day?.dayType || "Set day type"}
+            {day?.dayType ? (
+              <X
+                size={12}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDayType(date, "");
+                }}
+              />
+            ) : (
+              <Plus size={12} />
+            )}
+          </button>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {!isToday && (
+            <button
+              type="button"
+              onClick={() => {
+                haptic("tap");
+                goToday();
+              }}
+              className="inline-flex items-center h-7 px-3 rounded-full text-xs font-medium bg-[var(--color-accent-strong)] text-white"
+            >
+              Today
+            </button>
+          )}
+          <ScoreRing value={score} />
+        </div>
+      </div>
+
+      {dayTypeOpen && (
         <DayTypePicker
           presets={presets}
           selected={day?.dayType}
           onPick={(v) => {
-            setDayType(today, v);
-            setPickerOpen(false);
+            setDayType(date, v);
+            setDayTypeOpen(false);
           }}
           onAdd={(v) => {
             addDayType(v);
-            setDayType(today, v);
-            setPickerOpen(false);
+            setDayType(date, v);
+            setDayTypeOpen(false);
           }}
-          onClose={() => setPickerOpen(false)}
+          onClose={() => setDayTypeOpen(false)}
         />
       )}
 
-      <ReminderInput
-        value={day?.reminder ?? ""}
-        onChange={(v) => setReminder(today, v)}
-      />
+      {/* Reminder only on actual today + past days (planning future days uses
+          goals + schedule instead) */}
+      {!isFuture && (
+        <ReminderInput
+          value={day?.reminder ?? ""}
+          onChange={(v) => setReminder(date, v)}
+        />
+      )}
     </section>
   );
 }
@@ -164,7 +295,7 @@ function ReminderInput({
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="A note to your future self today…"
+        placeholder="A note for this day…"
         className="w-full bg-transparent text-[15px] text-[var(--color-fg)] placeholder:text-[var(--color-fg-3)] outline-none no-zoom"
         maxLength={160}
       />

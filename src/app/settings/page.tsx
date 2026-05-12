@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Download, Upload, Trash2, Check, X, Plus, Sunrise, RotateCcw, Sparkles, CalendarRange, RotateCw } from "lucide-react";
+import { Download, Upload, Trash2, Check, X, Plus, Sunrise, RotateCcw, Sparkles, CalendarRange, CalendarDays, RotateCw } from "lucide-react";
 import { Screen } from "@/components/screen";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -240,6 +240,8 @@ export default function SettingsPage() {
       <NutritionSettingsCard />
 
       <PhotoFoodSettingsCard />
+
+      <DayNavigationSettingsCard />
 
       <InsightsSettingsCard />
 
@@ -636,6 +638,75 @@ function EveningRoutineSettingsCard() {
 
 
 const DOW_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function DayNavigationSettingsCard() {
+  const dn = useStore((s) => s.settings.dayNavigation);
+  const setDayNavSettings = useStore((s) => s.setDayNavSettings);
+
+  const clampBack = (n: number) => Math.max(7, Math.min(365, n));
+  const clampForward = (n: number) => Math.max(0, Math.min(30, n));
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Day Navigation</CardTitle>
+        <CalendarDays size={14} className="text-[var(--color-accent)]" />
+      </CardHeader>
+      <div className="space-y-1">
+        <ToggleRow
+          label="Swipe between days"
+          description="Horizontal swipe on the Day screen jumps to previous/next day."
+          checked={dn.swipeEnabled}
+          onChange={(v) => setDayNavSettings({ swipeEnabled: v })}
+        />
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-3">
+        <div>
+          <div className="label mb-2">Days back</div>
+          <Input
+            type="number"
+            inputMode="numeric"
+            value={dn.daysBack}
+            min={7}
+            max={365}
+            onChange={(e) => {
+              const n = parseInt(e.target.value, 10);
+              if (Number.isFinite(n)) {
+                setDayNavSettings({ daysBack: clampBack(n) });
+              }
+            }}
+          />
+          <div className="mt-1 text-[10px] text-[var(--color-fg-3)]">
+            7 – 365
+          </div>
+        </div>
+        <div>
+          <div className="label mb-2">Days forward</div>
+          <Input
+            type="number"
+            inputMode="numeric"
+            value={dn.daysForward}
+            min={0}
+            max={30}
+            onChange={(e) => {
+              const n = parseInt(e.target.value, 10);
+              if (Number.isFinite(n)) {
+                setDayNavSettings({ daysForward: clampForward(n) });
+              }
+            }}
+          />
+          <div className="mt-1 text-[10px] text-[var(--color-fg-3)]">
+            0 – 30
+          </div>
+        </div>
+      </div>
+      <p className="mt-3 text-[11px] text-[var(--color-fg-3)] leading-relaxed">
+        Backfill past days or plan ahead — use the arrows in the Day header
+        or swipe horizontally to navigate.
+      </p>
+    </Card>
+  );
+}
 
 function InsightsSettingsCard() {
   const settings = useStore((s) => s.settings.insights);

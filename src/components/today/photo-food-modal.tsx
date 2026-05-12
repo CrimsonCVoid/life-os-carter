@@ -18,7 +18,7 @@ import { Pill } from "@/components/ui/pill";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleRow } from "@/components/ui/toggle";
 import { useStore } from "@/store";
-import { todayStr } from "@/lib/date";
+import { useSelectedDate } from "./day-context";
 import { haptic } from "@/lib/haptics";
 import { uid, cn } from "@/lib/utils";
 import { saveMealPhoto } from "@/lib/meal-photo-store";
@@ -84,6 +84,7 @@ export function PhotoFoodModal({
 }
 
 function PhotoFoodModalBody({ onClose }: { onClose: () => void }) {
+  const selectedDate = useSelectedDate();
   const [phase, setPhase] = React.useState<Phase>({ kind: "capture" });
 
   // Revoke any object URLs we created when we move past them
@@ -720,7 +721,7 @@ function ReviewScreen({
       };
 
       const meal: Omit<Meal, "id" | "createdAt"> = {
-        date: todayStr(),
+        date: selectedDate,
         time: state.time,
         name: state.name.trim() || undefined,
         calories: Math.round(state.totals.calories),

@@ -3,9 +3,9 @@
 import * as React from "react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
-import { todayStr } from "@/lib/date";
 import { useStore } from "@/store";
 import { haptic } from "@/lib/haptics";
+import { useSelectedDate } from "../day-context";
 
 export function StepsLogModal({
   open,
@@ -14,8 +14,8 @@ export function StepsLogModal({
   open: boolean;
   onClose: () => void;
 }) {
-  const today = todayStr();
-  const log = useStore((s) => s.health[today]);
+  const date = useSelectedDate();
+  const log = useStore((s) => s.health[date]);
   const setHealth = useStore((s) => s.setHealth);
 
   const [val, setVal] = React.useState(
@@ -28,7 +28,7 @@ export function StepsLogModal({
 
   const save = () => {
     const n = parseInt(val, 10);
-    setHealth(today, { steps: Number.isFinite(n) ? n : undefined });
+    setHealth(date, { steps: Number.isFinite(n) ? n : undefined });
     haptic("success");
     onClose();
   };

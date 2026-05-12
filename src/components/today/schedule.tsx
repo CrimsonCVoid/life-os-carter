@@ -27,7 +27,7 @@ import {
   BLOCK_COLORS,
   BLOCK_TYPE_LABELS,
 } from "@/lib/types";
-import { todayStr } from "@/lib/date";
+import { useDay } from "./day-context";
 import { cn } from "@/lib/utils";
 import { haptic } from "@/lib/haptics";
 
@@ -60,7 +60,7 @@ function roundToSlot(m: number) {
 }
 
 export function Schedule() {
-  const today = todayStr();
+  const { date: today, isToday } = useDay();
   const blocks = useScheduleForDay(today);
   const addBlock = useStore((s) => s.addBlock);
   const updateBlock = useStore((s) => s.updateBlock);
@@ -78,9 +78,10 @@ export function Schedule() {
   // default: collapse if empty, expand otherwise
   const effectiveExpanded = expanded ?? blocks.length > 0;
 
+  // Now-line only meaningful on actual today.
   const now = useNowMin();
   const nowOffsetPx =
-    now >= START_HOUR * 60 && now < END_HOUR * 60
+    isToday && now >= START_HOUR * 60 && now < END_HOUR * 60
       ? ((now - START_HOUR * 60) / SLOT_MIN) * SLOT_PX
       : null;
 
@@ -746,7 +747,7 @@ function PickGoalModal({
   onTimeChange: (t: number) => void;
   onConfirm: (goal: { id: string; text: string; timeEstimateMin?: number }) => void;
 }) {
-  const today = todayStr();
+  const { date: today } = useDay();
   const goals = useUnscheduledGoals(today);
   const [selected, setSelected] = React.useState<string | null>(null);
 
