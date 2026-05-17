@@ -9,6 +9,8 @@ import { cn, round1 } from "@/lib/utils";
 import { haptic } from "@/lib/haptics";
 import { metricColors, type Metric as MetricKey } from "@/lib/metric-colors";
 import { MetricBar } from "@/components/ui/metric-bar";
+import { SyncedBadge } from "@/components/integrations/synced-badge";
+import type { GoogleHealthDaySource } from "@/lib/types";
 import { SleepLogModal } from "./log-modals/sleep-modal";
 import { MoodLogModal } from "./log-modals/mood-modal";
 import { WaterLogModal } from "./log-modals/water-modal";
@@ -52,7 +54,8 @@ export function PulseStrip() {
     label: string,
     Icon: typeof Moon,
     value: React.ReactNode,
-    extra?: React.ReactNode
+    extra?: React.ReactNode,
+    syncedSource?: keyof GoogleHealthDaySource
   ) => {
     const todayVal = get(m, today);
     const logged = todayVal != null;
@@ -93,12 +96,15 @@ export function PulseStrip() {
         <div className="mt-2 label text-[10px]">{label}</div>
         <div
           className={cn(
-            "text-[18px] font-semibold tnum mt-0.5 leading-none",
+            "text-[18px] font-semibold tnum mt-0.5 leading-none inline-flex items-center gap-1.5",
             logged ? "" : "text-[var(--color-fg-3)]"
           )}
           style={logged ? { color: c.base } : undefined}
         >
           {value}
+          {logged && syncedSource && (
+            <SyncedBadge date={today} source={syncedSource} size={11} />
+          )}
         </div>
         {extra && (
           <div className="text-[10px] text-[var(--color-fg-3)] mt-1">
@@ -129,7 +135,8 @@ export function PulseStrip() {
             : "—",
           todayHealth?.sleepQuality != null
             ? `Quality ${todayHealth.sleepQuality}/10`
-            : null
+            : null,
+          "sleep"
         )}
         {tile(
           "mood",
@@ -168,7 +175,9 @@ export function PulseStrip() {
             ? weightUnit === "kg"
               ? `${round1(todayHealth.weight * 0.453592)}kg`
               : `${round1(todayHealth.weight)}lb`
-            : "—"
+            : "—",
+          undefined,
+          "weight"
         )}
         {tile(
           "steps",
@@ -176,7 +185,9 @@ export function PulseStrip() {
           Footprints,
           todayHealth?.steps != null
             ? todayHealth.steps.toLocaleString()
-            : "—"
+            : "—",
+          undefined,
+          "steps"
         )}
       </div>
 

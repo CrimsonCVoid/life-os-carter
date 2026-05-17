@@ -8,6 +8,7 @@ import { useStore } from "@/store";
 import { round1 } from "@/lib/utils";
 import { haptic } from "@/lib/haptics";
 import { metricColors } from "@/lib/metric-colors";
+import { SyncedBadge } from "@/components/integrations/synced-badge";
 import { SleepLogModal } from "./log-modals/sleep-modal";
 import { useSelectedDate } from "./day-context";
 
@@ -89,6 +90,7 @@ export function SleepCard() {
               value={`${round1(log!.sleepHours!)}h`}
               tint={c.base}
               soft={c.soft}
+              badge={<SyncedBadge date={date} source="sleep" size={11} />}
             />
             <SleepStat
               label="Quality"
@@ -140,11 +142,13 @@ function SleepStat({
   value,
   tint,
   soft,
+  badge,
 }: {
   label: string;
   value: string;
   tint: string;
   soft: string;
+  badge?: React.ReactNode;
 }) {
   return (
     <div
@@ -161,10 +165,11 @@ function SleepStat({
         {label}
       </div>
       <div
-        className="text-base font-semibold tnum mt-1"
+        className="text-base font-semibold tnum mt-1 inline-flex items-center gap-1.5"
         style={{ color: tint }}
       >
         {value}
+        {badge}
       </div>
     </div>
   );

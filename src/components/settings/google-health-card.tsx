@@ -2,12 +2,13 @@
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Activity, Check, Link2, Loader2, AlertTriangle, Unlink } from "lucide-react";
+import { Activity, Check, Link2, Loader2, AlertTriangle, RefreshCw, Unlink } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { useStore } from "@/store";
 import { haptic } from "@/lib/haptics";
+import { runGoogleHealthSync } from "@/lib/integrations/google-health/sync-client";
 
 type ServerStatus = {
   connected: boolean;
@@ -198,15 +199,42 @@ export function GoogleHealthCard() {
 
         <div className="mt-4 flex items-center gap-2">
           {showConnected && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setConfirmDisconnect(true)}
-              disabled={busy != null}
-            >
-              <Unlink size={13} />
-              Disconnect
-            </Button>
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={gh.isSyncing || busy != null}
+                onClick={async () => {
+                  haptic("tap");
+                  const ok = await runGoogleHealthSync();
+                  if (ok) {
+                    setFlash({ kind: "ok", text: "Synced." });
+                    haptic("success");
+                  } else if (useStore.getState().googleHealth.needsReconnect) {
+                    setFlash({
+                      kind: "err",
+                      text: "Reconnect needed — auth expired.",
+                    });
+                  }
+                }}
+              >
+                {gh.isSyncing ? (
+                  <Loader2 size={13} className="animate-spin" />
+                ) : (
+                  <RefreshCw size={13} />
+                )}
+                Sync now
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirmDisconnect(true)}
+                disabled={busy != null}
+              >
+                <Unlink size={13} />
+                Disconnect
+              </Button>
+            </>
           )}
           {(showDisconnected || showReconnect) && (
             <Button

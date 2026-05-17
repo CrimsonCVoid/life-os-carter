@@ -176,6 +176,8 @@ export type HealthLog = {
   sleepQuality?: number; // 1..10
   /** Wake-up time as "HH:MM" 24h. Bedtime is derived = wakeTime - sleepHours. */
   wakeTime?: string;
+  /** Sleep stages in minutes — only populated when a synced provider exposes them. */
+  sleepStages?: SleepStages;
   mood?: number; // 1..10
   /** Legacy single-value energy. Kept for backward-compat; new code reads
    * from EnergyLog (`store.energy[date]`). */
@@ -183,6 +185,10 @@ export type HealthLog = {
   waterOz?: number; // always stored in oz; display converted
   weight?: number; // always stored in lb; display converted
   steps?: number;
+  /** Resting heart rate (bpm). Synced from Google Health when available. */
+  restingHeartRate?: number;
+  /** Daily HRV average (ms). Synced from Google Health when available. */
+  heartRateVariability?: number;
 };
 
 /* ---------- TIME BLOCKING ---------- */
@@ -443,6 +449,8 @@ export type GoogleHealthState = {
   needsReconnect: boolean;
   lastSyncAt?: string; // ISO
   lastSyncError?: string;
+  /** True while a sync is in-flight — drives spinners next to the 🔗 icon. */
+  isSyncing: boolean;
   /** First sync pulls 30 days; subsequent runs pull 7. */
   hasCompletedInitialSync: boolean;
   /** Per-date per-metric provenance — see GoogleHealthDaySource. */
@@ -452,6 +460,7 @@ export type GoogleHealthState = {
 export const DEFAULT_GOOGLE_HEALTH_STATE: GoogleHealthState = {
   connected: false,
   needsReconnect: false,
+  isSyncing: false,
   hasCompletedInitialSync: false,
   sourceByDate: {},
 };

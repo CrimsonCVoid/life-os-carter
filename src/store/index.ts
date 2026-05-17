@@ -258,6 +258,7 @@ type Actions = {
   setGoogleHealthStatus: (
     patch: Partial<Pick<GoogleHealthState, "connected" | "email" | "needsReconnect">>
   ) => void;
+  setGoogleHealthSyncing: (syncing: boolean) => void;
   setGoogleHealthLastSync: (at: string, errorMsg?: string) => void;
   markGoogleHealthInitialSyncDone: () => void;
   /** Stamp `syncedAt` for one or more fields on a given date. Caller is
@@ -1253,6 +1254,10 @@ export const useStore = create<State & Actions>()(
       setGoogleHealthStatus: (patch) =>
         set((s) => ({
           googleHealth: { ...s.googleHealth, ...patch },
+        })),
+      setGoogleHealthSyncing: (syncing) =>
+        set((s) => ({
+          googleHealth: { ...s.googleHealth, isSyncing: syncing },
         })),
       setGoogleHealthLastSync: (at, errorMsg) =>
         set((s) => ({

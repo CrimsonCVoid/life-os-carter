@@ -15,8 +15,14 @@ import { PatternCard } from "@/components/today/pattern-card";
 import { DayProvider, useDay } from "@/components/today/day-context";
 import { useStore } from "@/store";
 import { haptic } from "@/lib/haptics";
+import { maybeAutoSync } from "@/lib/integrations/google-health/sync-client";
 
 export default function Page() {
+  React.useEffect(() => {
+    // Fire-and-forget; the sync client guards against concurrency and
+    // freshness so this is safe to call on every mount.
+    void maybeAutoSync();
+  }, []);
   return (
     <DayProvider>
       <DaySurface />
