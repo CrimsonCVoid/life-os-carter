@@ -22,6 +22,7 @@ export function WeightLogModal({
   const health = useStore((s) => s.health);
   const unit = useStore((s) => s.settings.units.weight);
   const setHealth = useStore((s) => s.setHealth);
+  const recordOverride = useStore((s) => s.recordGoogleHealthManualOverride);
 
   // input value is in user's display unit; we store in lb
   const initial = log?.weight ?? 0;
@@ -51,6 +52,7 @@ export function WeightLogModal({
     }
     const lbs = unit === "kg" ? numeric / 0.453592 : numeric;
     setHealth(date, { weight: lbs });
+    recordOverride(date, "weight");
     haptic("success");
     onClose();
   };

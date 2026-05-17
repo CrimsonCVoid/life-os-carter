@@ -17,6 +17,7 @@ export function StepsLogModal({
   const date = useSelectedDate();
   const log = useStore((s) => s.health[date]);
   const setHealth = useStore((s) => s.setHealth);
+  const recordOverride = useStore((s) => s.recordGoogleHealthManualOverride);
 
   const [val, setVal] = React.useState(
     log?.steps ? String(log.steps) : ""
@@ -29,6 +30,7 @@ export function StepsLogModal({
   const save = () => {
     const n = parseInt(val, 10);
     setHealth(date, { steps: Number.isFinite(n) ? n : undefined });
+    recordOverride(date, "steps");
     haptic("success");
     onClose();
   };

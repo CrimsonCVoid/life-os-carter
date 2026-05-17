@@ -1212,14 +1212,34 @@ export const useStore = create<State & Actions>()(
           };
           // bidirectional weight sync with health log
           const next = { ...s };
+          let updatedGoogleHealth = s.googleHealth;
           if (entry.weight != null) {
             const cur = s.health[entry.date] ?? { date: entry.date };
             next.health = {
               ...s.health,
               [entry.date]: { ...cur, weight: entry.weight },
             };
+            // Manual weight entry from Body screen also wins over next sync.
+            const daySource = s.googleHealth.sourceByDate[entry.date] ?? {};
+            updatedGoogleHealth = {
+              ...s.googleHealth,
+              sourceByDate: {
+                ...s.googleHealth.sourceByDate,
+                [entry.date]: {
+                  ...daySource,
+                  weight: {
+                    ...(daySource.weight ?? {}),
+                    manualOverrideAt: new Date().toISOString(),
+                  },
+                },
+              },
+            };
           }
-          return { body: [...s.body, entry], health: next.health ?? s.health };
+          return {
+            body: [...s.body, entry],
+            health: next.health ?? s.health,
+            googleHealth: updatedGoogleHealth,
+          };
         }),
       updateBodyMeasurement: (id, patch) =>
         set((s) => {
@@ -1229,11 +1249,25 @@ export const useStore = create<State & Actions>()(
           const updated = next.find((x) => x.id === id);
           if (updated && patch.weight !== undefined) {
             const cur = s.health[updated.date] ?? { date: updated.date };
+            const daySource = s.googleHealth.sourceByDate[updated.date] ?? {};
             return {
               body: next,
               health: {
                 ...s.health,
                 [updated.date]: { ...cur, weight: patch.weight },
+              },
+              googleHealth: {
+                ...s.googleHealth,
+                sourceByDate: {
+                  ...s.googleHealth.sourceByDate,
+                  [updated.date]: {
+                    ...daySource,
+                    weight: {
+                      ...(daySource.weight ?? {}),
+                      manualOverrideAt: new Date().toISOString(),
+                    },
+                  },
+                },
               },
             };
           }

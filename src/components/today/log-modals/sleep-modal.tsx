@@ -41,6 +41,7 @@ export function SleepLogModal({
   const date = useSelectedDate();
   const log = useStore((s) => s.health[date]);
   const setHealth = useStore((s) => s.setHealth);
+  const recordOverride = useStore((s) => s.recordGoogleHealthManualOverride);
 
   const [hours, setHours] = React.useState(log?.sleepHours ?? 7.5);
   const [quality, setQuality] = React.useState(log?.sleepQuality ?? 7);
@@ -62,6 +63,7 @@ export function SleepLogModal({
       sleepQuality: quality,
       wakeTime,
     });
+    recordOverride(date, "sleep");
     haptic("success");
     onClose();
   };

@@ -9,6 +9,7 @@ import {
   fetchRestingHeartRate,
   fetchSleep,
   fetchSteps,
+  fetchWeight,
   mergeByDate,
   type SyncedDataPoint,
 } from "@/lib/integrations/google-health/adapter";
@@ -65,12 +66,13 @@ export async function POST(req: NextRequest) {
   const endDate = today();
 
   // Each fetch is independent so a partial failure (e.g. one metric
-  // unavailable) doesn't kill the whole sync. Stage 4 adds weight here.
+  // unavailable) doesn't kill the whole sync.
   const results = await Promise.allSettled([
     fetchSleep({ accessToken, startDate, endDate }),
     fetchSteps({ accessToken, startDate, endDate }),
     fetchRestingHeartRate({ accessToken, startDate, endDate }),
     fetchHeartRateVariability({ accessToken, startDate, endDate }),
+    fetchWeight({ accessToken, startDate, endDate }),
   ]);
 
   const sources: SyncedDataPoint[][] = [];
