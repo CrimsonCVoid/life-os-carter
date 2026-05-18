@@ -650,6 +650,7 @@ function ReviewScreen({
   const addMeal = useStore((s) => s.addMeal);
   const saveMealPhotos = useStore((s) => s.settings.photoFood.saveMealPhotos);
   const autoFillName = useStore((s) => s.settings.photoFood.autoFillName);
+  const selectedDate = useSelectedDate();
 
   const [state, setState] = React.useState<ReviewState>(() => ({
     ...initial,
