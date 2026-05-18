@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Moon, Smile, Droplet, Scale, Footprints, HeartPulse, Activity } from "lucide-react";
+import { Smile, Droplet, Scale, Zap } from "lucide-react";
 import { lastNDates, todayStr } from "@/lib/date";
 import { Sparkline } from "@/components/sparkline";
 import { useStore } from "@/store";
@@ -10,19 +10,20 @@ import { haptic } from "@/lib/haptics";
 import { metricColors, type Metric as MetricKey } from "@/lib/metric-colors";
 import { MetricBar } from "@/components/ui/metric-bar";
 import { SyncedBadge } from "@/components/integrations/synced-badge";
+import { averageOfPeriodValues } from "@/store/selectors";
 import type { GoogleHealthDaySource } from "@/lib/types";
-import { SleepLogModal } from "./log-modals/sleep-modal";
 import { MoodLogModal } from "./log-modals/mood-modal";
 import { WaterLogModal } from "./log-modals/water-modal";
 import { WeightLogModal } from "./log-modals/weight-modal";
-import { StepsLogModal } from "./log-modals/steps-modal";
+import { EnergyLogModal } from "./log-modals/energy-modal";
 
-type Metric = "sleep" | "mood" | "water" | "weight" | "steps" | "rhr" | "hrv";
+type Metric = "mood" | "energy" | "water" | "weight";
 
 export function PulseStrip() {
   const today = todayStr();
   const dates = React.useMemo(() => lastNDates(7), []);
   const health = useStore((s) => s.health);
+  const energy = useStore((s) => s.energy);
   const todayHealth = health[today];
   const waterTarget = useStore((s) => s.settings.waterTargetOz);
   const liquidUnit = useStore((s) => s.settings.units.liquid);
@@ -32,22 +33,18 @@ export function PulseStrip() {
 
   const get = (m: Metric, date: string): number | null => {
     const h = health[date];
+    if (m === "energy") {
+      const e = energy[date];
+      return e ? averageOfPeriodValues(e.values) : null;
+    }
     if (!h) return null;
     switch (m) {
-      case "sleep":
-        return h.sleepHours ?? null;
       case "mood":
         return h.mood ?? null;
       case "water":
         return h.waterOz ?? null;
       case "weight":
         return h.weight ?? null;
-      case "steps":
-        return h.steps ?? null;
-      case "rhr":
-        return h.restingHeartRate ?? null;
-      case "hrv":
-        return h.heartRateVariability ?? null;
     }
   };
 
@@ -56,7 +53,7 @@ export function PulseStrip() {
   const tile = (
     m: Metric,
     label: string,
-    Icon: typeof Moon,
+    Icon: typeof Smile,
     value: React.ReactNode,
     extra?: React.ReactNode,
     syncedSource?: keyof GoogleHealthDaySource
@@ -72,7 +69,7 @@ export function PulseStrip() {
           haptic("tap");
           setOpen(m);
         }}
-        className="snap-start shrink-0 w-[148px] card-hover card p-3 text-left"
+        className="card-hover card p-3 text-left"
         style={
           logged
             ? {
@@ -124,29 +121,25 @@ export function PulseStrip() {
     (todayHealth?.waterOz ?? 0) / Math.max(1, waterTarget)
   );
 
+  const todayEnergyAvg = get("energy", today);
+
   return (
     <section>
       <div className="flex items-center justify-between mb-2 px-1">
         <h2 className="label">Daily Pulse</h2>
       </div>
-      <div className="flex gap-3 overflow-x-auto hide-scroll snap-x snap-mandatory -mx-4 px-4 pb-1">
-        {tile(
-          "sleep",
-          "Sleep",
-          Moon,
-          todayHealth?.sleepHours != null
-            ? `${round1(todayHealth.sleepHours)}h`
-            : "—",
-          todayHealth?.sleepQuality != null
-            ? `Quality ${todayHealth.sleepQuality}/10`
-            : null,
-          "sleep"
-        )}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {tile(
           "mood",
           "Mood",
           Smile,
           todayHealth?.mood != null ? `${todayHealth.mood}/10` : "—"
+        )}
+        {tile(
+          "energy",
+          "Energy",
+          Zap,
+          todayEnergyAvg != null ? `${round1(todayEnergyAvg)}/10` : "—"
         )}
         {tile(
           "water",
@@ -183,43 +176,12 @@ export function PulseStrip() {
           undefined,
           "weight"
         )}
-        {tile(
-          "steps",
-          "Steps",
-          Footprints,
-          todayHealth?.steps != null
-            ? todayHealth.steps.toLocaleString()
-            : "—",
-          undefined,
-          "steps"
-        )}
-        {tile(
-          "rhr",
-          "Resting HR",
-          HeartPulse,
-          todayHealth?.restingHeartRate != null
-            ? `${todayHealth.restingHeartRate} bpm`
-            : "—",
-          undefined,
-          "restingHeartRate"
-        )}
-        {tile(
-          "hrv",
-          "HRV",
-          Activity,
-          todayHealth?.heartRateVariability != null
-            ? `${Math.round(todayHealth.heartRateVariability)} ms`
-            : "—",
-          undefined,
-          "heartRateVariability"
-        )}
       </div>
 
-      <SleepLogModal open={open === "sleep"} onClose={() => setOpen(null)} />
       <MoodLogModal open={open === "mood"} onClose={() => setOpen(null)} />
+      <EnergyLogModal open={open === "energy"} onClose={() => setOpen(null)} />
       <WaterLogModal open={open === "water"} onClose={() => setOpen(null)} />
       <WeightLogModal open={open === "weight"} onClose={() => setOpen(null)} />
-      <StepsLogModal open={open === "steps"} onClose={() => setOpen(null)} />
     </section>
   );
 }

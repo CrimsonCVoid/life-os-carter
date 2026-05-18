@@ -16,6 +16,7 @@ import { DayProvider, useDay } from "@/components/today/day-context";
 import { useStore } from "@/store";
 import { haptic } from "@/lib/haptics";
 import { maybeAutoSync } from "@/lib/integrations/google-health/sync-client";
+import { VitalsTier } from "@/components/today/vitals";
 
 export default function Page() {
   React.useEffect(() => {
@@ -63,6 +64,7 @@ function DaySurface() {
       style={{ touchAction: "pan-y" }}
     >
       <Screen>
+        {!isFuture && <VitalsTier />}
         <MorningBriefing />
         <TodayHeader />
         <WeeklyReviewCard />
