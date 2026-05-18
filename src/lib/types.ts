@@ -493,6 +493,12 @@ export const PHOTO_ANGLE_LABELS: Record<PhotoAngle, string> = {
   back: "Back",
 };
 
+/**
+ * Legacy progress-photo metadata — the IndexedDB-backed shape from upstream.
+ * New code should use BodyProgressPhoto (below) which lives in Postgres and
+ * has its bytes in Vercel Blob. PhotoMeta stays only while the Body UI is
+ * migrated.
+ */
 export type PhotoMeta = {
   id: string;
   date: DateStr;
@@ -500,6 +506,85 @@ export type PhotoMeta = {
   weightAtTime?: number;
   /** IndexedDB blob store key. */
   idbKey: string;
+  createdAt: string;
+};
+
+/* ---------- BODY COMPOSITION (sidecar) ---------- */
+
+/**
+ * Row in Postgres `body_progress_photos`. The blob bytes live in Vercel Blob;
+ * this row is just the index plus capture conditions. INSERT also triggers
+ * pg_notify('new_progress_photo', id) which wakes the bodycomp sidecar.
+ *
+ * See docs/BODYCOMP-CONTEXT.md for the full sidecar architecture.
+ */
+export type BodyProgressPhoto = {
+  id: string;
+  userId: string;
+  /** Full Vercel Blob URL — public-but-unguessable. */
+  blobUrl: string;
+  /** Relative path under users/{uid}/progress/... kept for re-signing/migration. */
+  blobPathname: string;
+  angle: PhotoAngle;
+  /** ISO 8601 timestamp. */
+  capturedAt: string;
+  captureMeta: BodyProgressCaptureMeta;
+};
+
+export type BodyProgressCaptureMeta = {
+  weightKg?: number;
+  timeOfDay?: "morning" | "midday" | "evening";
+  fasted?: boolean;
+  hydrationState?: "low" | "normal" | "high";
+  lightingNotes?: string;
+};
+
+/**
+ * Row in Postgres `body_composition_analyses`. One per photo (UNIQUE photo_id).
+ * Written by the life-os-bodycomp sidecar after running MediaPipe / SAM 2 /
+ * HMR2.0 / BodyScan / Qwen2.5-VL. Status lifecycle:
+ *   pending → processing → complete | failed
+ */
+export type BodyCompositionAnalysisStatus =
+  | "pending"
+  | "processing"
+  | "complete"
+  | "failed";
+
+export type BodyPoseKeypoint = {
+  x: number;
+  y: number;
+  z: number;
+  visibility: number;
+};
+
+export type BodySmplShape = {
+  /** 10-dim SMPL shape vector. Primary trend signal. */
+  beta: number[];
+  /** Axis-angle pose, 72-dim. */
+  pose: number[];
+  /** Weak-perspective camera params. */
+  cam: number[];
+};
+
+export type BodyCompositionAnalysis = {
+  id: string;
+  userId: string;
+  photoId: string;
+  status: BodyCompositionAnalysisStatus;
+  poseKeypoints: BodyPoseKeypoint[] | null;
+  smplShape: BodySmplShape | null;
+  /** Vercel Blob URL of silhouette PNG (alpha mask). */
+  segmentationUrl: string | null;
+  bfEstimatePct: number | null;
+  bfConfidenceLow: number | null;
+  bfConfidenceHigh: number | null;
+  measurements: Record<string, number> | null;
+  vlmCommentary: string | null;
+  /** Frozen at write time so longitudinal comparisons know which model wrote each row. */
+  modelVersions: Record<string, string>;
+  errorMessage: string | null;
+  processedAt: string | null;
   createdAt: string;
 };
 
