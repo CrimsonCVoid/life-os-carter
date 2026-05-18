@@ -12,17 +12,33 @@ A mobile-first PWA personal command center: goals, habits, mood/sleep/water/weig
 
 - **Next.js 15** (App Router) + **React 19** + **TypeScript** (strict)
 - **Tailwind v4** — CSS-first theme tokens (no `tailwind.config.js`; tokens live in `src/app/globals.css` under `@theme`)
-- **Zustand 5** + `persist` middleware (one slice, typed selectors). Hydration gated by `<HydrateGate>`.
+- **Neon Postgres** (free tier, scale-to-zero) + **Drizzle ORM** + **drizzle-kit** for migrations. Schema lives in `src/lib/db/schema.ts`; client in `src/lib/db/index.ts`. Pooled URL at runtime, unpooled URL for migrations.
+- **Auth.js v5** (`next-auth@beta`) with the GitHub provider + `@auth/drizzle-adapter` against the Neon `users / accounts / sessions / verification_tokens` tables. App is fully gated behind sign-in.
+- **SWR** for client data fetching (chosen over TanStack Query for bundle size + simpler optimistic-update story; the personal-PWA scale doesn't need TanStack's caching power).
+- **Zustand 5** for UI-only state (modal opens, transient form state, derived selectors). Synced data (anything user-scoped that needs to survive a device wipe) lives in Neon. Persist middleware is reserved for purely-local prefs we don't care to round-trip to the server.
 - **Motion 12** (formerly framer-motion) for springs, gestures, and presence
 - **@dnd-kit** for drag reorder (PointerSensor with activation distance to avoid stealing input focus)
 - **Recharts 3** for charts. NOTE: SVG attrs don't resolve `var(--...)` — use `metricHex()` for `stroke` / `fill`.
 - **lucide-react** for icons
 - **date-fns 4** for date math (alongside our `src/lib/date.ts` helpers + `DateStr` = `"YYYY-MM-DD"` string)
 - **@google/genai** (Gemini 2.5 Flash) — **server-side only**, route handlers under `src/app/api/`
-- **idb** for IndexedDB blob stores (audio, photos, meal photos)
+- **idb** for IndexedDB blob stores (audio, photos, meal photos). **Blobs never move to Neon** — only their keys land in Postgres (`photo_indexeddb_key`, `voice_indexeddb_key`).
 - **PWA**: `manifest.webmanifest` via Next metadata API, programmatic gradient icons, `public/sw.js` (network-first HTML, SWR assets, never caches `/api/*`, prod-only)
 
-Run scripts: `npm run dev`, `npm run build`, `npm run typecheck` (`tsc --noEmit`), `npm run lint`.
+Run scripts: `npm run dev`, `npm run build`, `npm run typecheck` (`tsc --noEmit`), `npm run lint`, `npm run db:generate`, `npm run db:push`, `npm run db:studio`.
+
+### Database workflow
+
+1. Edit `src/lib/db/schema.ts`.
+2. `npm run db:generate` → drizzle-kit writes a SQL file into `src/lib/db/migrations/`.
+3. `npm run db:push` for quick dev sync, or `npm run db:migrate` to apply migration files in order.
+4. Both commands hit `DATABASE_URL_UNPOOLED` (direct connection — the Neon pooler doesn't accept some DDL).
+5. App-time queries use `DATABASE_URL` (pooled, HTTP-only via `@neondatabase/serverless`).
+
+### Auth / data-access discipline
+
+- Every API route handler under `src/app/api/data/*` must call `getCurrentUser()` from `src/lib/auth-server.ts` before any query. There must be no path to a query that doesn't filter by the session's `userId`.
+- OAuth tokens for third-party integrations (e.g. Google Health) are AES-256-GCM-encrypted via `src/lib/db/encryption.ts` before insert. The encryption key is derived from `NEXTAUTH_SECRET` via HKDF — no separate `ENCRYPTION_KEY` env var.
 
 ---
 
