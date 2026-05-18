@@ -79,7 +79,7 @@ export async function POST(req: Request) {
   const pathname = `users/${user.id}/progress/${slug}.${ext}`;
 
   const blob = await put(pathname, file, {
-    access: "public",
+    access: "private",
     contentType,
     addRandomSuffix: true,
     token: process.env.BLOB_READ_WRITE_TOKEN,

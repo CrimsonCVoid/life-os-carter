@@ -179,7 +179,11 @@ function AngleTile({
       <div className="relative rounded-xl border border-[var(--color-stroke)] overflow-hidden aspect-[3/4] bg-[var(--color-elevated)]">
         {photo ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={photo.blobUrl} alt={angle} className="w-full h-full object-cover" />
+          <img
+            src={`/api/body/progress-photos/${photo.id}/image`}
+            alt={angle}
+            className="w-full h-full object-cover"
+          />
         ) : (
           <div className="absolute inset-0 grid place-items-center text-[var(--color-fg-3)]">
             <Camera size={16} />
