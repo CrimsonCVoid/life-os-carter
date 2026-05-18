@@ -43,7 +43,12 @@ export async function GET() {
 
 /** PUT: replace the snapshot. Whole-blob replacement is intentional — clients
  *  send the entire state on every sync (debounced). Postgres jsonb diff is
- *  efficient enough that this scales fine for a personal app. */
+ *  efficient enough that this scales fine for a personal app.
+ *  POST is an alias so navigator.sendBeacon (POST-only) works on page unload. */
+export async function POST(req: Request) {
+  return PUT(req);
+}
+
 export async function PUT(req: Request) {
   let user;
   try {

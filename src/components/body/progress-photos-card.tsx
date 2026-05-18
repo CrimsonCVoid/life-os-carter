@@ -19,9 +19,12 @@ import { useProgressPhotos, type ProgressPhoto } from "@/lib/hooks/use-progress-
 import { cn } from "@/lib/utils";
 import { haptic } from "@/lib/haptics";
 
-type Props = { userId: string };
+type Props = { userId?: string };
 
 export function ProgressPhotosCard({ userId }: Props) {
+  // `userId` retained for future per-user UI (e.g. multi-account picker);
+  // not required by the modal anymore — server resolves it from the session.
+  void userId;
   const { photos, loading, error, reload } = useProgressPhotos();
   const [open, setOpen] = React.useState(false);
 
@@ -145,7 +148,6 @@ export function ProgressPhotosCard({ userId }: Props) {
       <ProgressPhotoModal
         open={open}
         onClose={() => setOpen(false)}
-        userId={userId}
         onCreated={() => void reload()}
       />
     </Card>

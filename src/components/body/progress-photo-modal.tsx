@@ -6,7 +6,6 @@ import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { uploadProgressPhoto } from "@/lib/storage/blob";
 import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
 
@@ -19,13 +18,14 @@ type TimeOfDay = (typeof TIME_OF_DAY)[number];
 type Props = {
   open: boolean;
   onClose: () => void;
-  userId: string;
+  /** No longer needed on the client — server resolves uid from the session. */
+  userId?: string;
   onCreated: () => void;
 };
 
 type Stage = "form" | "uploading" | "saving";
 
-export function ProgressPhotoModal({ open, onClose, userId, onCreated }: Props) {
+export function ProgressPhotoModal({ open, onClose, onCreated }: Props) {
   const fileRef = React.useRef<HTMLInputElement>(null);
   const [file, setFile] = React.useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
@@ -73,26 +73,27 @@ export function ProgressPhotoModal({ open, onClose, userId, onCreated }: Props) 
     setStage("uploading");
 
     let blobUrl: string;
+    let blobPathname: string;
     try {
-      blobUrl = await uploadProgressPhoto(
-        userId,
-        new Date().toISOString().slice(0, 10),
-        angle,
-        file
-      );
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("angle", angle);
+      const r = await fetch("/api/body/progress-photos/upload", {
+        method: "POST",
+        body: fd,
+        credentials: "include",
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.error || `upload http ${r.status}`);
+      }
+      const j = (await r.json()) as { blobUrl: string; blobPathname: string };
+      blobUrl = j.blobUrl;
+      blobPathname = j.blobPathname;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
       setStage("form");
       return;
-    }
-
-    // Extract the pathname after the Vercel Blob base.
-    let blobPathname = "";
-    try {
-      const u = new URL(blobUrl);
-      blobPathname = u.pathname.replace(/^\//, "");
-    } catch {
-      blobPathname = blobUrl;
     }
 
     setStage("saving");
