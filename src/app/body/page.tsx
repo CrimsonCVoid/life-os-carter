@@ -25,11 +25,26 @@ import { todayStr, format, fromDateStr, lastNDates } from "@/lib/date";
 import { round1, uid, cn } from "@/lib/utils";
 import { haptic } from "@/lib/haptics";
 import { compressImage, deletePhoto, getPhoto, putPhoto } from "@/lib/photo-store";
+import { ProgressPhotosCard } from "@/components/body/progress-photos-card";
 
 export default function BodyPage() {
   const body = useBodyRaw();
   const [logOpen, setLogOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<BodyMeasurement | null>(null);
+  const [userId, setUserId] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let alive = true;
+    fetch("/api/auth/me", { credentials: "include", cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (alive && j?.user?.id) setUserId(j.user.id as string);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const sorted = React.useMemo(
     () =>
@@ -53,6 +68,8 @@ export default function BodyPage() {
         </CardHeader>
         <WeightTrend body={body} />
       </Card>
+
+      {userId && <ProgressPhotosCard userId={userId} />}
 
       <Card>
         <CardHeader>

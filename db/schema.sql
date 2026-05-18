@@ -364,6 +364,19 @@ CREATE TABLE lift_sets (
 -- ============================================================================
 -- NUTRITION
 -- ============================================================================
+-- saved_meals first so meals.saved_meal_id FK is declarable inline.
+
+CREATE TABLE saved_meals (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name        text NOT NULL,
+  calories    numeric(7,2) NOT NULL DEFAULT 0,
+  protein     numeric(6,2) NOT NULL DEFAULT 0,
+  carbs       numeric(6,2),
+  fat         numeric(6,2),
+  use_count   integer NOT NULL DEFAULT 0 CHECK (use_count >= 0),
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
 
 CREATE TABLE meals (
   id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -382,26 +395,6 @@ CREATE TABLE meals (
   ai_analysis         jsonb,  -- {overallConfidence, identifiedItems, notes}
   created_at          timestamptz NOT NULL DEFAULT now()
 );
-
-CREATE TABLE saved_meals (
-  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  name        text NOT NULL,
-  calories    numeric(7,2) NOT NULL DEFAULT 0,
-  protein     numeric(6,2) NOT NULL DEFAULT 0,
-  carbs       numeric(6,2),
-  fat         numeric(6,2),
-  use_count   integer NOT NULL DEFAULT 0 CHECK (use_count >= 0),
-  created_at  timestamptz NOT NULL DEFAULT now()
-);
-
--- Forward-ref fix: meals.saved_meal_id references saved_meals — create FK after both tables exist.
--- (Postgres allows the FK on table creation only if the referenced table already exists;
--- we declared meals first for readability. The FK above will fail unless we reorder.)
--- Workaround: drop and re-add the FK once both tables exist.
-ALTER TABLE meals DROP CONSTRAINT IF EXISTS meals_saved_meal_id_fkey;
-ALTER TABLE meals ADD CONSTRAINT meals_saved_meal_id_fkey
-  FOREIGN KEY (saved_meal_id) REFERENCES saved_meals(id) ON DELETE SET NULL;
 
 -- ============================================================================
 -- JOURNAL
@@ -700,6 +693,24 @@ CREATE POLICY user_tokens_deny_all       ON user_tokens       USING (false) WITH
 -- Auth tables: pure server-side. Clients never query directly via RLS-subject role.
 CREATE POLICY webauthn_challenges_deny   ON webauthn_challenges USING (false) WITH CHECK (false);
 CREATE POLICY sessions_deny              ON sessions            USING (false) WITH CHECK (false);
+
+-- Cloud sync: the Zustand→Postgres mirror lives here. One row per user, full
+-- life-os:v2 blob. Per-slice queryable data lives in its dedicated table
+-- (goals, meals, body_progress_photos, etc.); this snapshot is the
+-- backup-and-multi-device-sync layer. See src/lib/cloud-sync.ts.
+CREATE TABLE IF NOT EXISTS user_state_snapshots (
+  user_id     uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  schema_ver  integer NOT NULL DEFAULT 2,
+  state       jsonb   NOT NULL,
+  bytes       integer NOT NULL,
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS user_state_snapshots_updated_idx
+  ON user_state_snapshots(updated_at DESC);
+ALTER TABLE user_state_snapshots ENABLE ROW LEVEL SECURITY;
+CREATE POLICY user_state_snapshots_owner ON user_state_snapshots
+  USING (user_id = current_user_id())
+  WITH CHECK (user_id = current_user_id());
 
 -- Passkey credentials: an authenticated user can list/manage their own passkeys.
 CREATE POLICY passkey_credentials_owner  ON passkey_credentials

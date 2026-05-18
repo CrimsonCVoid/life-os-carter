@@ -6,6 +6,7 @@ import { HydrateGate } from "@/components/hydrate-gate";
 import { AccentProvider } from "@/components/accent-provider";
 import { Overseer } from "@/components/overseer/overseer";
 import { ServiceWorkerRegister } from "@/components/sw-register";
+import { CloudSyncMount } from "@/components/cloud-sync-mount";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -38,6 +39,7 @@ export default function RootLayout({
       <body>
         <AccentProvider />
         <ServiceWorkerRegister />
+        <CloudSyncMount />
         <HydrateGate>
           <TopNav />
           <MobileTopBar />
