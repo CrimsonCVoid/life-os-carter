@@ -142,6 +142,50 @@ CREATE INDEX sessions_user_idx    ON sessions(user_id, last_seen_at DESC);
 CREATE INDEX sessions_expires_idx ON sessions(expires_at);
 
 -- ============================================================================
+-- TOTP (RFC 6238) AUTH — primary login surface, replaces passkey UI
+-- ============================================================================
+-- Authenticator-app flow: first-time QR scan, 6-digit codes thereafter.
+-- The passkey_credentials / webauthn_challenges tables above remain in
+-- place but the UI no longer surfaces them. We keep the code in case we
+-- want to re-enable both factors later.
+
+-- One secret per user. RLS denies all client access — only the server (which
+-- bypasses RLS via the owner role) reads/writes.
+CREATE TABLE totp_credentials (
+  user_id        uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  secret_base32  text NOT NULL,
+  issuer         text NOT NULL DEFAULT 'Life OS',
+  -- false until the user enters their first valid code → proves they scanned the QR.
+  verified       boolean NOT NULL DEFAULT false,
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  last_used_at   timestamptz
+);
+
+-- Replay protection. Once a 30-second step is accepted, we record it so the
+-- same code can't be reused inside its ±1-step verification window. Old
+-- rows are GC'd by the verify path.
+CREATE TABLE totp_used_steps (
+  user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  step       bigint NOT NULL,
+  used_at    timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, step)
+);
+CREATE INDEX totp_used_steps_used_at_idx ON totp_used_steps(used_at);
+
+-- Per-IP, per-endpoint counter. 5 failed attempts per 15-minute window;
+-- exceeding triggers a 30-minute block. See src/lib/auth/rate-limit.ts.
+CREATE TABLE auth_rate_limits (
+  ip                text NOT NULL,
+  kind              text NOT NULL,   -- 'totp_login' | 'totp_setup' | future surfaces
+  attempt_count     integer NOT NULL DEFAULT 0,
+  window_started_at timestamptz NOT NULL DEFAULT now(),
+  blocked_until     timestamptz,
+  PRIMARY KEY (ip, kind)
+);
+CREATE INDEX auth_rate_limits_blocked_idx
+  ON auth_rate_limits(blocked_until) WHERE blocked_until IS NOT NULL;
+
+-- ============================================================================
 -- DAILY DATA
 -- ============================================================================
 
@@ -654,6 +698,9 @@ ALTER TABLE user_tokens                    ENABLE ROW LEVEL SECURITY;  -- denied
 ALTER TABLE passkey_credentials            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE webauthn_challenges            ENABLE ROW LEVEL SECURITY;  -- denied entirely; server-only
 ALTER TABLE sessions                       ENABLE ROW LEVEL SECURITY;  -- denied entirely; server-only
+ALTER TABLE totp_credentials               ENABLE ROW LEVEL SECURITY;  -- denied entirely; server-only
+ALTER TABLE totp_used_steps                ENABLE ROW LEVEL SECURITY;  -- denied entirely; server-only
+ALTER TABLE auth_rate_limits               ENABLE ROW LEVEL SECURITY;  -- denied entirely; server-only
 ALTER TABLE days                           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE health_logs                    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE energy_logs                    ENABLE ROW LEVEL SECURITY;
@@ -693,6 +740,9 @@ CREATE POLICY user_tokens_deny_all       ON user_tokens       USING (false) WITH
 -- Auth tables: pure server-side. Clients never query directly via RLS-subject role.
 CREATE POLICY webauthn_challenges_deny   ON webauthn_challenges USING (false) WITH CHECK (false);
 CREATE POLICY sessions_deny              ON sessions            USING (false) WITH CHECK (false);
+CREATE POLICY totp_credentials_deny      ON totp_credentials    USING (false) WITH CHECK (false);
+CREATE POLICY totp_used_steps_deny       ON totp_used_steps     USING (false) WITH CHECK (false);
+CREATE POLICY auth_rate_limits_deny      ON auth_rate_limits    USING (false) WITH CHECK (false);
 
 -- Cloud sync: the Zustand→Postgres mirror lives here. One row per user, full
 -- life-os:v2 blob. Per-slice queryable data lives in its dedicated table
