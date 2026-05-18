@@ -9,6 +9,7 @@ import { metricHex } from "@/lib/metric-colors";
 import { round1 } from "@/lib/utils";
 import { computeSleepScore } from "./sleep-score";
 import { computeHrvStatus } from "@/lib/hrv-status";
+import { SleepDetail } from "./sleep-detail";
 
 type VitalKey = "steps" | "hrv" | "sleep";
 
@@ -90,6 +91,15 @@ export function VitalsDetailModal({
 
   const color = metricHex(vital === "sleep" ? "sleep" : vital === "hrv" ? "hrv" : "steps");
   const unit = UNITS[vital];
+
+  // Sleep gets its own detail layout: ring + stages + metrics + grid.
+  if (vital === "sleep") {
+    return (
+      <Modal open onClose={onClose} title={TITLES[vital]} size="lg">
+        <SleepDetail />
+      </Modal>
+    );
+  }
 
   return (
     <Modal open onClose={onClose} title={TITLES[vital]} size="lg" description="Last 30 days">
