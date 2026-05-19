@@ -701,11 +701,21 @@ export const DEFAULT_EVENING_ROUTINE_SETTINGS: EveningRoutineSettings = {
   showStreak: true,
 };
 
+export type BiologicalSex = "male" | "female";
+
+export type BodyProfile = {
+  heightCm?: number;
+  biologicalSex?: BiologicalSex;
+};
+
+export const DEFAULT_BODY_PROFILE: BodyProfile = {};
+
 export type Settings = {
   units: Units;
   accent: AccentColor;
   dayTypePresets: string[];
   hasOnboarded: boolean;
+  bodyProfile: BodyProfile;
   waterTargetOz: number;
   habitTemplates: Array<{ name: string; icon: HabitIcon }>;
   morningBriefing?: CachedBriefing;

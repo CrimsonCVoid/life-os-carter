@@ -95,7 +95,10 @@ export async function GET() {
     bf_estimate_pct: number | null;
     bf_confidence_low: number | null;
     bf_confidence_high: number | null;
+    measurements: Record<string, unknown> | null;
+    silhouette_features: Record<string, unknown> | null;
     vlm_commentary: string | null;
+    vlm_observations: Record<string, unknown> | null;
     segmentation_url: string | null;
     analysis_processed_at: string | null;
   }>(
@@ -107,7 +110,10 @@ export async function GET() {
             a.bf_estimate_pct,
             a.bf_confidence_low,
             a.bf_confidence_high,
+            a.measurements,
+            a.silhouette_features,
             a.vlm_commentary,
+            a.vlm_observations,
             a.segmentation_url,
             a.processed_at            AS analysis_processed_at
        FROM body_progress_photos p
@@ -132,7 +138,10 @@ export async function GET() {
             bfEstimatePct: r.bf_estimate_pct,
             bfConfidenceLow: r.bf_confidence_low,
             bfConfidenceHigh: r.bf_confidence_high,
+            measurements: r.measurements,
+            silhouetteFeatures: r.silhouette_features,
             vlmCommentary: r.vlm_commentary,
+            vlmObservations: r.vlm_observations,
             segmentationUrl: r.segmentation_url,
             processedAt: r.analysis_processed_at,
           }

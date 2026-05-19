@@ -6,6 +6,8 @@ import { todayStr } from "@/lib/date";
 import { shouldGenerateForDate, weekRangeFor } from "@/lib/recurrence";
 import { uid } from "@/lib/utils";
 import {
+  BodyProfile,
+  DEFAULT_BODY_PROFILE,
   DEFAULT_DAY_TYPES,
   DEFAULT_EVENING_ROUTINE,
   DEFAULT_EVENING_ROUTINE_SETTINGS,
@@ -106,6 +108,7 @@ type Actions = {
   updateSettings: (patch: Partial<Settings>) => void;
   setAccent: (a: AccentColor) => void;
   setUnits: (u: Partial<Units>) => void;
+  setBodyProfile: (p: Partial<BodyProfile>) => void;
   setWaterTarget: (oz: number) => void;
   addDayType: (name: string) => void;
   removeDayType: (name: string) => void;
@@ -287,6 +290,7 @@ const defaultSettings = (): Settings => ({
   accent: "violet",
   dayTypePresets: DEFAULT_DAY_TYPES,
   hasOnboarded: false,
+  bodyProfile: { ...DEFAULT_BODY_PROFILE },
   waterTargetOz: 96,
   habitTemplates: HABIT_TEMPLATES,
   morningRoutine: { ...DEFAULT_MORNING_ROUTINE_SETTINGS },
@@ -414,6 +418,13 @@ export const useStore = create<State & Actions>()(
       setUnits: (u) =>
         set((s) => ({
           settings: { ...s.settings, units: { ...s.settings.units, ...u } },
+        })),
+      setBodyProfile: (p) =>
+        set((s) => ({
+          settings: {
+            ...s.settings,
+            bodyProfile: { ...s.settings.bodyProfile, ...p },
+          },
         })),
       setWaterTarget: (oz) =>
         set((s) => ({ settings: { ...s.settings, waterTargetOz: oz } })),
@@ -1520,6 +1531,10 @@ export const useStore = create<State & Actions>()(
             dayNavigation: {
               ...current.settings.dayNavigation,
               ...((p.settings as Partial<Settings>)?.dayNavigation ?? {}),
+            },
+            bodyProfile: {
+              ...current.settings.bodyProfile,
+              ...((p.settings as Partial<Settings>)?.bodyProfile ?? {}),
             },
           },
           routine: p.routine ?? current.routine,

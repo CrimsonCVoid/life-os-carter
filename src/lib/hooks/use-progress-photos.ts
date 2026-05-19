@@ -2,13 +2,55 @@
 
 import * as React from "react";
 
+export type BodyBracket =
+  | "essential"
+  | "athletic"
+  | "lean"
+  | "average"
+  | "above_average"
+  | "high";
+
+export type VlmObservations = {
+  bracket?: BodyBracket | string;
+  features?: Record<string, number>;
+  posture?: {
+    shoulder_rounding?: number;
+    hip_tilt?: "neutral" | "anterior" | "posterior" | string;
+    weight_shift?: "neutral" | "left" | "right" | string;
+  };
+  confidence?: "low" | "medium" | "high" | string;
+  summary?: string;
+};
+
+export type SilhouetteFeatures = {
+  shoulder_to_waist_ratio: number | null;
+  waist_to_hip_ratio: number | null;
+  shoulder_to_hip_ratio: number | null;
+  midsection_to_height_ratio: number | null;
+  v_taper_score: number | null;
+  composition_score: number | null;
+  asymmetry_index: number | null;
+  pose_visibility_mean: number;
+  shoulder_px: number;
+  waist_px: number;
+  hip_px: number;
+  shoulder_cm: number | null;
+  waist_cm: number | null;
+  hip_cm: number | null;
+};
+
+export type Measurements = Record<string, number>;
+
 export type ProgressPhotoAnalysis = {
   id: string;
   status: "pending" | "processing" | "complete" | "failed";
   bfEstimatePct: number | null;
   bfConfidenceLow: number | null;
   bfConfidenceHigh: number | null;
+  measurements: Measurements | null;
+  silhouetteFeatures: SilhouetteFeatures | null;
   vlmCommentary: string | null;
+  vlmObservations: VlmObservations | null;
   segmentationUrl: string | null;
   processedAt: string | null;
 };

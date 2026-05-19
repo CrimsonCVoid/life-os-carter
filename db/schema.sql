@@ -536,7 +536,15 @@ CREATE TABLE body_composition_analyses (
   bf_confidence_low   numeric(5,2) CHECK (bf_confidence_low IS NULL OR bf_confidence_low BETWEEN 0 AND 100),
   bf_confidence_high  numeric(5,2) CHECK (bf_confidence_high IS NULL OR bf_confidence_high BETWEEN 0 AND 100),
   measurements        jsonb,            -- {waist_cm, neck_cm, shoulder_cm, hip_cm, ...}
-  vlm_commentary      text,
+  -- Deterministic silhouette features (ratios, V-taper, asymmetry,
+  -- midsection-to-height). These are the most reliable progress signals
+  -- because they're pure functions of pose + silhouette — reproducible
+  -- across photos in a way that BF% estimates aren't.
+  silhouette_features jsonb,
+  vlm_commentary      text,             -- legacy prose; kept for back-compat, no longer surfaced in UI
+  -- Structured VLM output: {bracket, features:{...}, posture:{...}, confidence, summary}.
+  -- The VLM is treated as a labeler, not a measurer. See commentary.py.
+  vlm_observations    jsonb,
   -- {mediapipe, sam2, hmr2, bodyscan, qwen_vl} — frozen at write time so longitudinal
   -- comparisons know which model generated each row.
   model_versions      jsonb NOT NULL DEFAULT '{}'::jsonb,

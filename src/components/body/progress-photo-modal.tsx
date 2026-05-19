@@ -6,6 +6,7 @@ import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { useStore } from "@/store";
 import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
 
@@ -26,6 +27,7 @@ type Props = {
 type Stage = "form" | "uploading" | "saving";
 
 export function ProgressPhotoModal({ open, onClose, onCreated }: Props) {
+  const bodyProfile = useStore((s) => s.settings.bodyProfile);
   const fileRef = React.useRef<HTMLInputElement>(null);
   const [file, setFile] = React.useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
@@ -104,6 +106,11 @@ export function ProgressPhotoModal({ open, onClose, onCreated }: Props) {
     if (fasted) captureMeta.fasted = true;
     if (hydrationState) captureMeta.hydrationState = hydrationState;
     if (lightingNotes.trim()) captureMeta.lightingNotes = lightingNotes.trim();
+    // Persistent body-profile values get attached to every capture so the
+    // sidecar can scale silhouette pixels → cm without round-tripping back
+    // to the user table. height_cm is what unblocks the Navy formula.
+    if (bodyProfile.heightCm) captureMeta.heightCm = bodyProfile.heightCm;
+    if (bodyProfile.biologicalSex) captureMeta.sex = bodyProfile.biologicalSex;
 
     try {
       const r = await fetch("/api/body/progress-photos", {

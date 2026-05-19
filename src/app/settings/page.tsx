@@ -31,6 +31,7 @@ const ACCENT_SWATCH: Array<{
 export default function SettingsPage() {
   const settings = useStore((s) => s.settings);
   const setUnits = useStore((s) => s.setUnits);
+  const setBodyProfile = useStore((s) => s.setBodyProfile);
   const setAccent = useStore((s) => s.setAccent);
   const setWaterTarget = useStore((s) => s.setWaterTarget);
   const addDayType = useStore((s) => s.addDayType);
@@ -109,6 +110,40 @@ export default function SettingsPage() {
                 { value: "ml", label: "Milliliters (ml)" },
               ]}
             />
+          </div>
+        </div>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Body profile</CardTitle>
+          <span className="text-xs text-[var(--color-fg-3)]">For BF% & measurements</span>
+        </CardHeader>
+        <div className="space-y-4">
+          <div>
+            <div className="label mb-2">Height</div>
+            <BodyHeightInput
+              valueCm={settings.bodyProfile.heightCm}
+              unit={settings.units.weight === "kg" ? "cm" : "in"}
+              onChangeCm={(cm) => setBodyProfile({ heightCm: cm })}
+            />
+            <p className="mt-1.5 text-[11px] text-[var(--color-fg-3)]">
+              Used to scale silhouette pixels → cm for the Navy formula. No height = no BF%.
+            </p>
+          </div>
+          <div>
+            <div className="label mb-2">Biological sex</div>
+            <Segmented<"male" | "female">
+              value={settings.bodyProfile.biologicalSex ?? "male"}
+              onChange={(v) => setBodyProfile({ biologicalSex: v })}
+              options={[
+                { value: "male", label: "Male" },
+                { value: "female", label: "Female" },
+              ]}
+            />
+            <p className="mt-1.5 text-[11px] text-[var(--color-fg-3)]">
+              Navy formula uses different coefficients for each.
+            </p>
           </div>
         </div>
       </Card>
@@ -935,5 +970,74 @@ function PhotoFoodSettingsCard() {
         </div>
       </Modal>
     </Card>
+  );
+}
+
+function BodyHeightInput({
+  valueCm,
+  unit,
+  onChangeCm,
+}: {
+  valueCm: number | undefined;
+  unit: "cm" | "in";
+  onChangeCm: (cm: number | undefined) => void;
+}) {
+  if (unit === "in") {
+    const totalIn = valueCm != null ? valueCm / 2.54 : NaN;
+    const ft = Number.isFinite(totalIn) ? Math.floor(totalIn / 12) : "";
+    const inches = Number.isFinite(totalIn)
+      ? Math.round(totalIn - Math.floor(totalIn / 12) * 12)
+      : "";
+    const commit = (nextFt: number | "", nextIn: number | "") => {
+      const f = typeof nextFt === "number" ? nextFt : 0;
+      const i = typeof nextIn === "number" ? nextIn : 0;
+      const cm = (f * 12 + i) * 2.54;
+      onChangeCm(cm > 0 ? Math.round(cm * 10) / 10 : undefined);
+    };
+    return (
+      <div className="grid grid-cols-2 gap-2">
+        <Input
+          type="number"
+          inputMode="numeric"
+          min={3}
+          max={8}
+          step={1}
+          placeholder="ft"
+          value={ft}
+          onChange={(e) => {
+            const v = e.target.value;
+            commit(v === "" ? "" : Math.max(0, Math.min(9, Math.floor(Number(v)))), inches);
+          }}
+        />
+        <Input
+          type="number"
+          inputMode="numeric"
+          min={0}
+          max={11}
+          step={1}
+          placeholder="in"
+          value={inches}
+          onChange={(e) => {
+            const v = e.target.value;
+            commit(ft, v === "" ? "" : Math.max(0, Math.min(11, Math.floor(Number(v)))));
+          }}
+        />
+      </div>
+    );
+  }
+  return (
+    <Input
+      type="number"
+      inputMode="decimal"
+      min={100}
+      max={230}
+      step={0.5}
+      placeholder="cm"
+      value={valueCm ?? ""}
+      onChange={(e) => {
+        const v = e.target.value;
+        onChangeCm(v === "" ? undefined : Number(v));
+      }}
+    />
   );
 }
