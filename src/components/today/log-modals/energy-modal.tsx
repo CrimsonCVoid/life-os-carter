@@ -4,7 +4,11 @@ import * as React from "react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { useStore } from "@/store";
+import {
+  clearEnergy,
+  setEnergy,
+  useEnergy,
+} from "@/lib/hooks/use-metrics";
 import { useSelectedDate } from "../day-context";
 import { haptic } from "@/lib/haptics";
 import {
@@ -23,24 +27,28 @@ export function EnergyLogModal({
   onClose: () => void;
 }) {
   const date = useSelectedDate();
-  const energyMap = useStore((s) => s.energy);
-  const setEnergy = useStore((s) => s.setEnergy);
-  const clearEnergy = useStore((s) => s.clearEnergy);
+  const { energy } = useEnergy(date);
 
-  const log = energyMap[date];
+  /** Build the value-by-period map the original UI consumed. */
+  const valuesByPeriod = React.useMemo(() => {
+    const out: Partial<Record<EnergyPeriod, number>> = {};
+    for (const row of energy) {
+      out[row.period as EnergyPeriod] = row.value;
+    }
+    return out;
+  }, [energy]);
+
   const period = React.useMemo(() => currentPeriod(), []);
-  const [val, setVal] = React.useState<number>(
-    log?.values[period] ?? 6
-  );
+  const [val, setVal] = React.useState<number>(valuesByPeriod[period] ?? 6);
 
   React.useEffect(() => {
     if (open) {
-      setVal(log?.values[period] ?? 6);
+      setVal(valuesByPeriod[period] ?? 6);
     }
-  }, [open, log, period]);
+  }, [open, valuesByPeriod, period]);
 
   const save = () => {
-    setEnergy(date, period, val);
+    void setEnergy(date, period, val);
     haptic("success");
     onClose();
   };
@@ -85,9 +93,9 @@ export function EnergyLogModal({
               <PeriodRow
                 key={p}
                 period={p}
-                value={log?.values[p]}
-                onChange={(v) => setEnergy(date, p, v)}
-                onClear={() => clearEnergy(date, p)}
+                value={valuesByPeriod[p]}
+                onChange={(v) => void setEnergy(date, p, v)}
+                onClear={() => void clearEnergy(date, p)}
               />
             ))}
           </ul>

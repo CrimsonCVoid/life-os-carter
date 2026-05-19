@@ -4,7 +4,7 @@ import * as React from "react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { useStore } from "@/store";
+import { setMood, useMood } from "@/lib/hooks/use-metrics";
 import { haptic } from "@/lib/haptics";
 import { useSelectedDate } from "../day-context";
 
@@ -29,17 +29,16 @@ export function MoodLogModal({
   onClose: () => void;
 }) {
   const date = useSelectedDate();
-  const log = useStore((s) => s.health[date]);
-  const setHealth = useStore((s) => s.setHealth);
+  const { mood } = useMood(date);
 
-  const [val, setVal] = React.useState(log?.mood ?? 7);
+  const [val, setVal] = React.useState(mood?.value ?? 7);
 
   React.useEffect(() => {
-    if (open) setVal(log?.mood ?? 7);
-  }, [open, log]);
+    if (open) setVal(mood?.value ?? 7);
+  }, [open, mood]);
 
   const save = () => {
-    setHealth(date, { mood: val });
+    void setMood(date, val);
     haptic("success");
     onClose();
   };

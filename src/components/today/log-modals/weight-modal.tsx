@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Sparkline } from "@/components/sparkline";
 import { lastNDates } from "@/lib/date";
 import { useStore } from "@/store";
+import { setWeight, useWeight } from "@/lib/hooks/use-metrics";
 import { round1 } from "@/lib/utils";
 import { haptic } from "@/lib/haptics";
 import { useSelectedDate } from "../day-context";
@@ -18,25 +19,24 @@ export function WeightLogModal({
   onClose: () => void;
 }) {
   const date = useSelectedDate();
-  const log = useStore((s) => s.health[date]);
+  const { weight } = useWeight(date);
+  // Trend still reads from Zustand for now — chart sweep moves to a SWR
+  // range hook in a follow-up. The single-day input is the live source.
   const health = useStore((s) => s.health);
   const unit = useStore((s) => s.settings.units.weight);
-  const setHealth = useStore((s) => s.setHealth);
-  const recordOverride = useStore((s) => s.recordGoogleHealthManualOverride);
 
-  // input value is in user's display unit; we store in lb
-  const initial = log?.weight ?? 0;
+  const initial = weight?.lb ?? 0;
   const initialDisplay =
     unit === "kg" ? round1(initial * 0.453592) : round1(initial);
   const [val, setVal] = React.useState(initialDisplay > 0 ? String(initialDisplay) : "");
 
   React.useEffect(() => {
     if (open) {
-      const v = log?.weight ?? 0;
+      const v = weight?.lb ?? 0;
       const d = unit === "kg" ? round1(v * 0.453592) : round1(v);
       setVal(d > 0 ? String(d) : "");
     }
-  }, [open, log, unit]);
+  }, [open, weight, unit]);
 
   const trend = lastNDates(7).map((d) => {
     const w = health[d]?.weight;
@@ -51,8 +51,7 @@ export function WeightLogModal({
       return;
     }
     const lbs = unit === "kg" ? numeric / 0.453592 : numeric;
-    setHealth(date, { weight: lbs });
-    recordOverride(date, "weight");
+    void setWeight(date, lbs);
     haptic("success");
     onClose();
   };

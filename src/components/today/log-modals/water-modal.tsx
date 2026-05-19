@@ -5,6 +5,7 @@ import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Droplet, Minus, Plus } from "lucide-react";
 import { useStore } from "@/store";
+import { addWater, setWater, useWater } from "@/lib/hooks/use-metrics";
 import { haptic } from "@/lib/haptics";
 import { useSelectedDate } from "../day-context";
 
@@ -16,13 +17,12 @@ export function WaterLogModal({
   onClose: () => void;
 }) {
   const date = useSelectedDate();
-  const log = useStore((s) => s.health[date]);
+  const { water } = useWater(date);
+  // Settings still live in Zustand for now — migration in a follow-up.
   const target = useStore((s) => s.settings.waterTargetOz);
   const unit = useStore((s) => s.settings.units.liquid);
-  const addWater = useStore((s) => s.addWater);
-  const setHealth = useStore((s) => s.setHealth);
 
-  const current = log?.waterOz ?? 0;
+  const current = water?.oz ?? 0;
   const pct = Math.min(1, current / Math.max(1, target));
   const r = 60;
   const c = 2 * Math.PI * r;
@@ -43,7 +43,7 @@ export function WaterLogModal({
             variant="ghost"
             size="sm"
             onClick={() => {
-              setHealth(date, { waterOz: 0 });
+              void setWater(date, 0);
               haptic("warn");
             }}
           >
@@ -93,7 +93,7 @@ export function WaterLogModal({
               key={oz}
               type="button"
               onClick={() => {
-                addWater(date, oz);
+                void addWater(date, oz);
                 haptic("tap");
               }}
               className="h-12 rounded-xl border border-[var(--color-stroke)] bg-[var(--color-elevated)] text-[var(--color-fg)] text-sm font-medium hover:border-[var(--color-stroke-strong)] active:scale-[0.97] transition flex items-center justify-center gap-1.5"
@@ -108,7 +108,7 @@ export function WaterLogModal({
           <button
             type="button"
             onClick={() => {
-              addWater(date, -8);
+              void addWater(date, -8);
               haptic("soft");
             }}
             disabled={current <= 0}
@@ -120,7 +120,7 @@ export function WaterLogModal({
           <button
             type="button"
             onClick={() => {
-              addWater(date, 8);
+              void addWater(date, 8);
               haptic("tap");
             }}
             className="h-9 w-9 grid place-items-center rounded-full border border-[var(--color-stroke)] text-[var(--color-fg-2)] hover:text-[var(--color-fg)]"

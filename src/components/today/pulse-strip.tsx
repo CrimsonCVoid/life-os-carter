@@ -10,8 +10,9 @@ import { haptic } from "@/lib/haptics";
 import { metricColors, type Metric as MetricKey } from "@/lib/metric-colors";
 import { MetricBar } from "@/components/ui/metric-bar";
 import { SyncedBadge } from "@/components/integrations/synced-badge";
+import { useMood, useWater, useWeight, useEnergy } from "@/lib/hooks/use-metrics";
 import { averageOfPeriodValues } from "@/store/selectors";
-import type { GoogleHealthDaySource } from "@/lib/types";
+import type { EnergyPeriod, GoogleHealthDaySource } from "@/lib/types";
 import { MoodLogModal } from "./log-modals/mood-modal";
 import { WaterLogModal } from "./log-modals/water-modal";
 import { WeightLogModal } from "./log-modals/weight-modal";
@@ -22,19 +23,48 @@ type Metric = "mood" | "energy" | "water" | "weight";
 export function PulseStrip() {
   const today = todayStr();
   const dates = React.useMemo(() => lastNDates(7), []);
+  // Today's values come from Neon via SWR. 7-day sparkline still reads
+  // Zustand history until the range-reader hooks are wired through the
+  // pulse strip charts (follow-up commit — sparkline cosmetic only).
+  const { mood: todayMood } = useMood(today);
+  const { water: todayWater } = useWater(today);
+  const { weight: todayWeight } = useWeight(today);
+  const { energy: todayEnergyRows } = useEnergy(today);
   const health = useStore((s) => s.health);
-  const energy = useStore((s) => s.energy);
-  const todayHealth = health[today];
+  const energyMap = useStore((s) => s.energy);
   const waterTarget = useStore((s) => s.settings.waterTargetOz);
   const liquidUnit = useStore((s) => s.settings.units.liquid);
   const weightUnit = useStore((s) => s.settings.units.weight);
 
   const [open, setOpen] = React.useState<Metric | null>(null);
 
+  const todayEnergyAvgValue = React.useMemo(() => {
+    if (todayEnergyRows.length === 0) return null;
+    const values: Partial<Record<EnergyPeriod, number>> = {};
+    for (const row of todayEnergyRows) {
+      values[row.period as EnergyPeriod] = row.value;
+    }
+    return averageOfPeriodValues(values);
+  }, [todayEnergyRows]);
+
   const get = (m: Metric, date: string): number | null => {
+    // Today's values come from SWR; trailing 6 days still come from
+    // Zustand (sparkline rendering only — no writes).
+    if (date === today) {
+      switch (m) {
+        case "mood":
+          return todayMood?.value ?? null;
+        case "water":
+          return todayWater?.oz ?? null;
+        case "weight":
+          return todayWeight?.lb ?? null;
+        case "energy":
+          return todayEnergyAvgValue;
+      }
+    }
     const h = health[date];
     if (m === "energy") {
-      const e = energy[date];
+      const e = energyMap[date];
       return e ? averageOfPeriodValues(e.values) : null;
     }
     if (!h) return null;
@@ -116,12 +146,10 @@ export function PulseStrip() {
     );
   };
 
-  const waterPct = Math.min(
-    1,
-    (todayHealth?.waterOz ?? 0) / Math.max(1, waterTarget)
-  );
-
-  const todayEnergyAvg = get("energy", today);
+  const waterOzToday = todayWater?.oz ?? 0;
+  const waterPct = Math.min(1, waterOzToday / Math.max(1, waterTarget));
+  const weightLbToday = todayWeight?.lb ?? null;
+  const moodValueToday = todayMood?.value ?? null;
 
   return (
     <section>
@@ -133,22 +161,22 @@ export function PulseStrip() {
           "mood",
           "Mood",
           Smile,
-          todayHealth?.mood != null ? `${todayHealth.mood}/10` : "—"
+          moodValueToday != null ? `${moodValueToday}/10` : "—"
         )}
         {tile(
           "energy",
           "Energy",
           Zap,
-          todayEnergyAvg != null ? `${round1(todayEnergyAvg)}/10` : "—"
+          todayEnergyAvgValue != null ? `${round1(todayEnergyAvgValue)}/10` : "—"
         )}
         {tile(
           "water",
           "Water",
           Droplet,
-          todayHealth?.waterOz != null
+          todayWater?.oz != null
             ? liquidUnit === "ml"
-              ? `${Math.round(todayHealth.waterOz * 29.5735)}ml`
-              : `${todayHealth.waterOz}oz`
+              ? `${Math.round(waterOzToday * 29.5735)}ml`
+              : `${waterOzToday}oz`
             : "—",
           <span className="flex items-center gap-1.5">
             <MetricBar
@@ -168,10 +196,10 @@ export function PulseStrip() {
           "weight",
           "Weight",
           Scale,
-          todayHealth?.weight != null
+          weightLbToday != null
             ? weightUnit === "kg"
-              ? `${round1(todayHealth.weight * 0.453592)}kg`
-              : `${round1(todayHealth.weight)}lb`
+              ? `${round1(weightLbToday * 0.453592)}kg`
+              : `${round1(weightLbToday)}lb`
             : "—",
           undefined,
           "weight"
