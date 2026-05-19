@@ -3,6 +3,7 @@
 import useSWR, { mutate } from "swr";
 import type { HabitRow, HabitLogRow } from "@/lib/data/habits";
 import type { HabitIcon } from "@/lib/types";
+import { queuedFetch } from "@/lib/offline-queue";
 
 /**
  * Habits data hooks — read from /api/data/habits + /api/data/habits/log
@@ -97,18 +98,21 @@ export async function toggleHabit(
   );
 
   try {
-    const res = await fetch(LOGS_KEY, {
+    const res = await queuedFetch(LOGS_KEY, {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ habitId, date }),
+      body: { habitId, date },
     });
-    if (!res.ok) throw new Error(`toggle failed: ${res.status}`);
-    // Revalidate from server so we converge on the truth (in case of
-    // races with offline-queue replays).
-    await mutate(LOGS_KEY);
+    if (!res.ok && !("queued" in res && res.queued)) {
+      throw new Error(`toggle failed: ${res.status}`);
+    }
+    // Revalidate from server so we converge on the truth — but only when
+    // the request actually hit the server. A queued response means the
+    // local optimistic state is the closest thing to truth right now.
+    if (!("queued" in res) || !res.queued) {
+      await mutate(LOGS_KEY);
+    }
     return nextCompleted;
   } catch (err) {
-    // Rollback by forcing revalidation.
     await mutate(LOGS_KEY);
     throw err;
   }
@@ -136,15 +140,20 @@ export async function createHabitOptimistic(input: {
     { revalidate: false }
   );
   try {
-    const res = await fetch(HABITS_KEY, {
+    const res = await queuedFetch(HABITS_KEY, {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(input),
+      body: input,
     });
-    if (!res.ok) throw new Error(`create failed: ${res.status}`);
-    const row = (await res.json()) as HabitRow;
-    await mutate(HABITS_KEY);
-    return row;
+    if (!res.ok && !("queued" in res && res.queued)) {
+      throw new Error(`create failed: ${res.status}`);
+    }
+    if (!("queued" in res) || !res.queued) {
+      await mutate(HABITS_KEY);
+      return (await res.json()) as HabitRow;
+    }
+    // Queued: keep the optimistic temp row visible; SWR will reconcile
+    // once the queue flushes.
+    return tempRow;
   } catch (err) {
     await mutate(HABITS_KEY);
     throw err;
@@ -158,10 +167,16 @@ export async function deleteHabitOptimistic(habitId: string): Promise<void> {
     { revalidate: false }
   );
   try {
-    const res = await fetch(`${HABITS_KEY}/${habitId}`, { method: "DELETE" });
-    if (!res.ok) throw new Error(`delete failed: ${res.status}`);
-    await mutate(HABITS_KEY);
-    await mutate(LOGS_KEY);
+    const res = await queuedFetch(`${HABITS_KEY}/${habitId}`, {
+      method: "DELETE",
+    });
+    if (!res.ok && !("queued" in res && res.queued)) {
+      throw new Error(`delete failed: ${res.status}`);
+    }
+    if (!("queued" in res) || !res.queued) {
+      await mutate(HABITS_KEY);
+      await mutate(LOGS_KEY);
+    }
   } catch (err) {
     await mutate(HABITS_KEY);
     throw err;
@@ -179,13 +194,16 @@ export async function updateHabitOptimistic(
     { revalidate: false }
   );
   try {
-    const res = await fetch(`${HABITS_KEY}/${habitId}`, {
+    const res = await queuedFetch(`${HABITS_KEY}/${habitId}`, {
       method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(patch),
+      body: patch,
     });
-    if (!res.ok) throw new Error(`update failed: ${res.status}`);
-    await mutate(HABITS_KEY);
+    if (!res.ok && !("queued" in res && res.queued)) {
+      throw new Error(`update failed: ${res.status}`);
+    }
+    if (!("queued" in res) || !res.queued) {
+      await mutate(HABITS_KEY);
+    }
   } catch (err) {
     await mutate(HABITS_KEY);
     throw err;
