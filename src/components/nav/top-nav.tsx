@@ -21,6 +21,9 @@ export function TopNav() {
   const scrollerRef = React.useRef<HTMLDivElement>(null);
   const itemRefs = React.useRef<Record<string, HTMLAnchorElement | null>>({});
 
+  // Hide chrome on auth + onboarding routes.
+  const chromeHidden = pathname === "/login" || pathname.startsWith("/onboarding");
+
   // ensure the active tab is visible (centered if possible)
   React.useEffect(() => {
     const scroller = scrollerRef.current;
@@ -40,6 +43,7 @@ export function TopNav() {
     void eRect;
   }, [pathname]);
 
+  if (chromeHidden) return null;
   return (
     <nav
       className="sticky top-0 z-30 bg-[var(--color-base)]/85 backdrop-blur-md border-b border-[var(--color-stroke)] hidden md:block"

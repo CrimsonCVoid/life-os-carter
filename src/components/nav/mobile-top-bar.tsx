@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Settings } from "lucide-react";
 
 /**
@@ -8,6 +9,8 @@ import { Settings } from "lucide-react";
  * Settings gear. The full nav lives in BottomNav on mobile.
  */
 export function MobileTopBar() {
+  const pathname = usePathname();
+  if (pathname === "/login" || pathname.startsWith("/onboarding")) return null;
   return (
     <div
       className="fixed top-0 left-0 right-0 z-30 pointer-events-none md:hidden"

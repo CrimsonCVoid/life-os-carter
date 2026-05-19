@@ -27,6 +27,9 @@ const TABS = [
 
 export function BottomNav() {
   const pathname = usePathname();
+  // Hide on auth + onboarding so the nav doesn't capture taps meant for the
+  // primary CTA (e.g. "Get started" on the welcome step).
+  if (pathname === "/login" || pathname.startsWith("/onboarding")) return null;
   return (
     <nav
       className="fixed bottom-0 left-0 right-0 z-30 bg-[var(--color-base)]/85 backdrop-blur-md border-t border-[var(--color-stroke)] md:hidden"

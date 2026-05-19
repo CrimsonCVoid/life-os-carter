@@ -1481,6 +1481,10 @@ export const useStore = create<State & Actions>()(
       name: "life-os:v2",
       version: STORE_VERSION,
       storage: createJSONStorage(() => localStorage),
+      // Defer hydration so we can pull a fresh cloud snapshot first (e.g.
+      // first sign-in on a new device, skipping a redundant onboarding).
+      // CloudSyncMount calls useStore.persist.rehydrate() once that's done.
+      skipHydration: true,
       migrate: (persisted) => {
         // No structural changes: merge() handles new defaults for added
         // slices. Returning the persisted state unchanged is correct.

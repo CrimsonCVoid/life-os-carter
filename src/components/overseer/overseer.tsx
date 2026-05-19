@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import { Send, Sparkles, X, ExternalLink } from "lucide-react";
 import { getOverseerContext } from "@/store/selectors";
@@ -23,6 +24,8 @@ const EMPTY_PROMPTS = [
 ];
 
 export function Overseer() {
+  const pathname = usePathname();
+  const chromeHidden = pathname === "/login" || pathname.startsWith("/onboarding");
   const [open, setOpen] = React.useState(false);
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const [draft, setDraft] = React.useState("");
@@ -129,6 +132,11 @@ export function Overseer() {
   };
 
   const visibleMessages = messages.filter((m) => m.content.length > 0);
+
+  if (chromeHidden) {
+    // Provide a no-op OverseerProvider so child consumers don't crash.
+    return <OverseerProvider value={{ open: () => {} }}><></></OverseerProvider>;
+  }
 
   return (
     <OverseerProvider value={{ open: openPanel }}>
