@@ -137,7 +137,7 @@ function VoiceJournalModalBody({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="h-9 w-9 grid place-items-center rounded-full text-[var(--color-fg-2)] hover:text-[var(--color-fg)] hover:bg-[var(--color-elevated)] transition"
+            className="h-11 w-11 grid place-items-center rounded-full text-[var(--color-fg-2)] hover:text-[var(--color-fg)] hover:bg-[var(--color-elevated)] transition"
           >
             <X size={18} />
           </button>
@@ -1130,7 +1130,7 @@ function TodoRow({
         type="button"
         onClick={onRemove}
         aria-label="Remove"
-        className="shrink-0 h-7 w-7 grid place-items-center rounded-md text-[var(--color-fg-3)] hover:text-[var(--color-danger)]"
+        className="shrink-0 h-11 w-11 grid place-items-center rounded-md text-[var(--color-fg-3)] hover:text-[var(--color-danger)]"
       >
         <Trash2 size={13} />
       </button>

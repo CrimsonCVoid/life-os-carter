@@ -770,7 +770,7 @@ function InsightsSettingsCard() {
                   type="button"
                   onClick={() => restoreDismissedPattern(d.fingerprint)}
                   aria-label="Restore"
-                  className="h-6 w-6 grid place-items-center rounded text-[var(--color-fg-3)] hover:text-[var(--color-accent)]"
+                  className="h-11 w-11 grid place-items-center rounded-md text-[var(--color-fg-3)] hover:text-[var(--color-accent)]"
                 >
                   <RotateCw size={11} />
                 </button>

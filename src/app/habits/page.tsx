@@ -190,7 +190,7 @@ function HabitFullRow({
           type="button"
           onClick={onRemove}
           aria-label="Delete habit"
-          className="h-8 w-8 grid place-items-center rounded-lg text-[var(--color-fg-3)] hover:text-[var(--color-danger)]"
+          className="h-11 w-11 grid place-items-center rounded-lg text-[var(--color-fg-3)] hover:text-[var(--color-danger)]"
         >
           <Trash2 size={14} />
         </button>

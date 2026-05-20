@@ -181,7 +181,7 @@ export function Overseer() {
                   type="button"
                   onClick={() => setOpen(false)}
                   aria-label="Close"
-                  className="h-9 w-9 grid place-items-center rounded-full text-[var(--color-fg-2)] hover:text-[var(--color-fg)] hover:bg-[var(--color-elevated)] transition"
+                  className="h-11 w-11 grid place-items-center rounded-full text-[var(--color-fg-2)] hover:text-[var(--color-fg)] hover:bg-[var(--color-elevated)] transition"
                 >
                   <X size={18} />
                 </button>

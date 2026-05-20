@@ -394,7 +394,7 @@ function SessionRow({
             onDelete();
           }}
           aria-label="Delete session"
-          className="h-8 w-8 grid place-items-center rounded-md text-[var(--color-fg-3)] hover:text-[var(--color-danger)]"
+          className="h-11 w-11 grid place-items-center rounded-md text-[var(--color-fg-3)] hover:text-[var(--color-danger)]"
         >
           <Trash2 size={13} />
         </button>

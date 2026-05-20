@@ -172,7 +172,7 @@ export function DismissWeeklyReviewButton({
         haptic("soft");
       }}
       aria-label="Dismiss this week's review"
-      className="h-7 w-7 grid place-items-center rounded-md text-[var(--color-fg-3)] hover:text-[var(--color-fg-2)]"
+      className="h-11 w-11 grid place-items-center rounded-md text-[var(--color-fg-3)] hover:text-[var(--color-fg-2)]"
     >
       <X size={13} />
     </button>

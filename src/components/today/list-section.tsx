@@ -90,7 +90,7 @@ export function ListSection({
                 onClick={() => itemAction.onClick(item)}
                 aria-label={itemAction.label}
                 title={itemAction.label}
-                className="h-8 w-8 grid place-items-center rounded-lg text-[var(--color-fg-3)] hover:text-[var(--color-accent)] hover:bg-[var(--color-elevated)] transition"
+                className="h-11 w-11 grid place-items-center rounded-lg text-[var(--color-fg-3)] hover:text-[var(--color-accent)] hover:bg-[var(--color-elevated)] transition"
               >
                 <ActionIcon size={14} />
               </button>
@@ -102,7 +102,7 @@ export function ListSection({
                 haptic("warn");
               }}
               aria-label="Delete"
-              className="h-8 w-8 grid place-items-center rounded-lg text-[var(--color-fg-3)] hover:text-[var(--color-danger)] hover:bg-[var(--color-elevated)] opacity-0 group-hover:opacity-100 focus:opacity-100 transition"
+              className="h-11 w-11 grid place-items-center rounded-lg text-[var(--color-fg-3)] hover:text-[var(--color-danger)] hover:bg-[var(--color-elevated)] opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus:opacity-100 transition"
             >
               <Trash2 size={14} />
             </button>

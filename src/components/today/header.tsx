@@ -67,7 +67,7 @@ export function TodayHeader() {
             step(-1);
           }}
           disabled={!canGoBack}
-          className="h-9 w-9 grid place-items-center rounded-full text-[var(--color-fg-2)] disabled:opacity-25 hover:text-[var(--color-fg)] hover:bg-[var(--color-elevated)] transition"
+          className="h-11 w-11 grid place-items-center rounded-full text-[var(--color-fg-2)] disabled:opacity-25 hover:text-[var(--color-fg)] hover:bg-[var(--color-elevated)] transition"
         >
           <ChevronLeft size={18} />
         </button>
@@ -105,7 +105,7 @@ export function TodayHeader() {
             step(1);
           }}
           disabled={!canGoForward}
-          className="h-9 w-9 grid place-items-center rounded-full text-[var(--color-fg-2)] disabled:opacity-25 hover:text-[var(--color-fg)] hover:bg-[var(--color-elevated)] transition"
+          className="h-11 w-11 grid place-items-center rounded-full text-[var(--color-fg-2)] disabled:opacity-25 hover:text-[var(--color-fg)] hover:bg-[var(--color-elevated)] transition"
         >
           <ChevronRight size={18} />
         </button>

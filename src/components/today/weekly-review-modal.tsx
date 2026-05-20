@@ -267,7 +267,7 @@ function EditableList({
               type="button"
               onClick={() => setItems(items.filter((_, j) => j !== i))}
               aria-label="Remove"
-              className="h-7 w-7 grid place-items-center rounded-md text-[var(--color-fg-3)] hover:text-[var(--color-danger)] opacity-0 group-hover:opacity-100 transition"
+              className="h-11 w-11 grid place-items-center rounded-md text-[var(--color-fg-3)] hover:text-[var(--color-danger)] opacity-100 md:opacity-0 md:group-hover:opacity-100 transition"
             >
               <Trash2 size={12} />
             </button>

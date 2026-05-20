@@ -100,7 +100,7 @@ export function MorningBriefing() {
           type="button"
           onClick={() => setDismissed(true)}
           aria-label="Dismiss"
-          className="h-7 w-7 grid place-items-center rounded-full text-[var(--color-fg-3)] hover:text-[var(--color-fg-2)] hover:bg-[var(--color-elevated)] self-center"
+          className="h-11 w-11 grid place-items-center rounded-full text-[var(--color-fg-3)] hover:text-[var(--color-fg-2)] hover:bg-[var(--color-elevated)] self-center"
         >
           <X size={14} />
         </button>

@@ -81,7 +81,7 @@ export function TopNav() {
         <Link
           href="/settings"
           aria-label="Settings"
-          className="h-9 w-9 grid place-items-center rounded-lg text-[var(--color-fg-2)] hover:text-[var(--color-fg)] hover:bg-[var(--color-elevated)] transition shrink-0"
+          className="h-11 w-11 grid place-items-center rounded-lg text-[var(--color-fg-2)] hover:text-[var(--color-fg)] hover:bg-[var(--color-elevated)] transition shrink-0"
         >
           <Settings size={18} />
         </Link>
