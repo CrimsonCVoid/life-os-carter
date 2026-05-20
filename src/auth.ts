@@ -43,10 +43,16 @@ declare module "next-auth" {
  */
 // Use `||` (not `??`) so an empty-string env value also falls through —
 // Vercel sometimes injects "" for un-checked-for-environment vars.
+// Fallback chain covers the v5 canonical (AUTH_*), the v4 names, and
+// the common GitHub-docs alternate (GITHUB_CLIENT_ID / *_SECRET).
 const githubClientId =
-  process.env.AUTH_GITHUB_ID || process.env.GITHUB_ID;
+  process.env.AUTH_GITHUB_ID ||
+  process.env.GITHUB_ID ||
+  process.env.GITHUB_CLIENT_ID;
 const githubClientSecret =
-  process.env.AUTH_GITHUB_SECRET || process.env.GITHUB_SECRET;
+  process.env.AUTH_GITHUB_SECRET ||
+  process.env.GITHUB_SECRET ||
+  process.env.GITHUB_CLIENT_SECRET;
 const authSecret =
   process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
 
@@ -63,9 +69,13 @@ export type AuthConfigCheck = {
 };
 export function checkAuthConfig(): AuthConfigCheck {
   const missing: string[] = [];
-  if (!githubClientId) missing.push("AUTH_GITHUB_ID or GITHUB_ID");
-  if (!githubClientSecret) missing.push("AUTH_GITHUB_SECRET or GITHUB_SECRET");
-  if (!authSecret) missing.push("AUTH_SECRET or NEXTAUTH_SECRET");
+  if (!githubClientId) {
+    missing.push("AUTH_GITHUB_ID / GITHUB_ID / GITHUB_CLIENT_ID");
+  }
+  if (!githubClientSecret) {
+    missing.push("AUTH_GITHUB_SECRET / GITHUB_SECRET / GITHUB_CLIENT_SECRET");
+  }
+  if (!authSecret) missing.push("AUTH_SECRET / NEXTAUTH_SECRET");
   return { ready: missing.length === 0, missing };
 }
 
