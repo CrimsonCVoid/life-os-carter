@@ -59,7 +59,7 @@ export function Modal({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.22 }}
+            transition={{ duration: 0.15 }}
             className="absolute inset-0 bg-black/55 backdrop-blur-md"
           />
           <motion.div
@@ -68,9 +68,9 @@ export function Modal({
             initial={{ y: "100%" }}
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
-            // Spring tuned to iOS sheet feel: settles around ~320ms with a
-            // tiny overshoot. Higher stiffness = snappier.
-            transition={{ type: "spring", stiffness: 360, damping: 34, mass: 0.85 }}
+            // Snappier than typical Framer Motion sheet — closer to the real
+            // iOS sheet present/dismiss curves. ~220ms total settle.
+            transition={{ type: "spring", stiffness: 500, damping: 38, mass: 0.7 }}
             drag="y"
             dragConstraints={{ top: 0, bottom: 0 }}
             dragElastic={{ top: 0, bottom: 0.32 }}

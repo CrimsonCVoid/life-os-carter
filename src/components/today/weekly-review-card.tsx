@@ -120,7 +120,7 @@ export function WeeklyReviewCard() {
         }}
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: 0.18, ease: [0.32, 0.72, 0, 1] }}
         className="w-full text-left rounded-[var(--radius-card)] border p-4 relative overflow-hidden card-hover"
         style={{
           background:

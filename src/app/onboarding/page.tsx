@@ -515,7 +515,7 @@ export default function OnboardingPage() {
             initial={{ opacity: 0, x: 18 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -18 }}
-            transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.16, ease: [0.32, 0.72, 0, 1] }}
           >
             {steps[step].render}
           </motion.div>

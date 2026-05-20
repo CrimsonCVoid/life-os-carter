@@ -14,9 +14,12 @@ import { haptic } from "@/lib/haptics";
 const buttonVariants = cva(
   [
     "inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium select-none",
+    // Snappy iOS-native press: 80ms to depress, then a quick spring back
+    // when :active releases. ease-out is critical — the user's finger
+    // touches first and they expect immediate feedback.
     "transition-[transform,opacity,background-color,border-color,box-shadow]",
-    "duration-150 ease-[var(--ease-spring)]",
-    "active:scale-[0.96] active:opacity-90",
+    "duration-[80ms] ease-out",
+    "active:scale-[0.96] active:opacity-90 active:duration-[60ms]",
     "disabled:pointer-events-none disabled:opacity-40",
     "accent-ring",
   ].join(" "),

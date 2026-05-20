@@ -55,8 +55,8 @@ export function BottomNav() {
                 className={cn(
                   // 44pt+ height, no sticky highlight, snappy press
                   "h-12 w-full flex flex-col items-center justify-center gap-[2px]",
-                  "relative transition-[color,transform] duration-150 ease-[var(--ease-spring)]",
-                  "active:scale-[0.94]",
+                  "relative transition-[color,transform] duration-[80ms] ease-out",
+                  "active:scale-[0.92] active:duration-[60ms]",
                   active
                     ? "text-[var(--color-accent)]"
                     : "text-[var(--color-fg-2)]"

@@ -114,7 +114,14 @@
                "SF Pro Display", "Inter Variable", system-ui,
                "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 
-  --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
+  /* iOS navigation transition curve — sharper start than the prior spring
+   * curve, fast settle, no overshoot. Matches the "feel" of UINavigation
+   * push/pop and the standard iOS sheet present. */
+  --ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-ios: cubic-bezier(0.32, 0.72, 0, 1);
+  /* The previous slower curve, kept for any animation that needs a clear
+   * "settle in" tail (e.g. number counters). Don't reach for this by default. */
+  --ease-overshoot: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @layer base {
@@ -279,12 +286,13 @@
    * selection on iOS: 100ms ease-in to a slightly darker fill, snap-back on
    * release. No long-press lingering. */
   .ios-press {
-    transition: background-color 120ms var(--ease-spring),
-                transform 120ms var(--ease-spring);
+    transition: background-color 80ms ease-out,
+                transform 80ms ease-out;
   }
   .ios-press:active {
     transform: scale(0.985);
     background-color: var(--color-card-hover);
+    transition-duration: 50ms;
   }
 
   .card {
@@ -295,9 +303,9 @@
   }
 
   .card-hover {
-    transition: border-color 160ms var(--ease-spring),
-                background-color 160ms var(--ease-spring),
-                transform 160ms var(--ease-spring);
+    transition: border-color 100ms ease-out,
+                background-color 100ms ease-out,
+                transform 100ms ease-out;
   }
   @media (hover: hover) and (pointer: fine) {
     .card-hover:hover {
@@ -306,8 +314,9 @@
     }
   }
   .card-hover:active {
-    transform: scale(0.99);
+    transform: scale(0.985);
     background: var(--color-card-hover);
+    transition-duration: 60ms;
   }
 
   /* Vitals hero tier — slightly elevated above the standard card surface,
