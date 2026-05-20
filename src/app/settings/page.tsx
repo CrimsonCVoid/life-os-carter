@@ -13,6 +13,7 @@ import { ToggleRow } from "@/components/ui/toggle";
 import { ManageRecurringModal } from "@/components/today/recurring-manage-modal";
 import { GoogleHealthCard } from "@/components/settings/google-health-card";
 import { AccountCard } from "@/components/settings/account-card";
+import { PeakStateCard } from "@/components/settings/peak-state-card";
 import { useStore } from "@/store";
 import { AccentColor } from "@/lib/types";
 import { haptic } from "@/lib/haptics";
@@ -85,6 +86,8 @@ export default function SettingsPage() {
   return (
     <Screen title="Settings">
       <AccountCard />
+
+      <PeakStateCard />
 
       <Card>
         <CardHeader>
