@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+/* Tailwind v4 custom variant: only fires when the device has a real cursor.
+ * Avoids "sticky hover" on iOS Safari where :hover stays applied after a tap
+ * until the user taps elsewhere. Use `hover-mouse:bg-...` instead of `hover:`
+ * for any background/border state. */
+@custom-variant hover-mouse (@media (hover: hover) and (pointer: fine));
+
 @theme {
   --color-base: #050507;
   --color-card: #0F0F12;
@@ -100,8 +106,13 @@
   --shadow-glow: 0 0 0 1px rgba(167, 139, 250, 0.3),
                  0 0 24px -4px rgba(167, 139, 250, 0.4);
 
-  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system,
-               "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  /* iOS/macOS gets SF Pro Text natively via -apple-system first. Inter is
+   * kept as a fallback for platforms that don't ship SF (it isn't being
+   * @font-face loaded today, so this is effectively system-ui everywhere
+   * except Apple, which is exactly what we want for a "native" feel). */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text",
+               "SF Pro Display", "Inter Variable", system-ui,
+               "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 
   --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -120,13 +131,26 @@
     color: var(--color-fg);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
     overscroll-behavior-y: none;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    /* Prevent iOS from auto-inflating text on rotation. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
 
   body {
     min-height: 100dvh;
+    /* Disable iOS rubber-band on the document so only scroll containers
+     * (with overscroll-behavior: contain) rubber-band. */
+    overscroll-behavior: none;
+  }
+
+  /* Native-feeling momentum scroll on iOS for any scrollable region. */
+  .scroll-momentum,
+  .nice-scroll {
+    -webkit-overflow-scrolling: touch;
   }
 
   /* tabular numerals on data-heavy spots */
@@ -140,16 +164,34 @@
   }
 
   button,
-  [role="button"] {
+  [role="button"],
+  a {
     -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none;
+    user-select: none;
     cursor: pointer;
+    /* manipulation = no double-tap zoom, but pinch still works elsewhere. */
     touch-action: manipulation;
+  }
+
+  /* Re-enable selection on actual text content. */
+  p, h1, h2, h3, h4, h5, h6, span, li, td, th, dd, dt, code, pre, label {
+    -webkit-user-select: text;
+    user-select: text;
   }
 
   input,
   textarea,
   select {
     font: inherit;
+    /* iOS Safari likes to round inputs with its own chrome. Reset it. */
+    -webkit-appearance: none;
+    appearance: none;
+    /* Anti-zoom: iOS will auto-zoom on focus if font-size < 16px. */
+    font-size: 16px;
+  }
+  textarea {
+    -webkit-overflow-scrolling: touch;
   }
 
   input[type="number"]::-webkit-outer-spin-button,
@@ -210,6 +252,41 @@
 }
 
 @layer utilities {
+  /* iOS-style blurred chrome (nav bars, tab bars, modal backdrops). The
+   * saturate is what gives SF Symbols / system UI that "looks lit from
+   * behind" quality on top of dark backgrounds. */
+  .ios-blur {
+    background: color-mix(in srgb, var(--color-base) 72%, transparent);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    backdrop-filter: saturate(180%) blur(20px);
+  }
+  .ios-blur-card {
+    background: color-mix(in srgb, var(--color-card) 78%, transparent);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    backdrop-filter: saturate(180%) blur(20px);
+  }
+
+  /* Hit-target widener — apply to small buttons that need to keep their
+   * 44pt minimum tap area without growing visually. Uses a transparent
+   * absolutely-positioned overlay. */
+  .hit-44::before {
+    content: "";
+    position: absolute;
+    inset: -8px;
+  }
+
+  /* Active press style for tappable cards and rows. Mirrors UITableViewCell
+   * selection on iOS: 100ms ease-in to a slightly darker fill, snap-back on
+   * release. No long-press lingering. */
+  .ios-press {
+    transition: background-color 120ms var(--ease-spring),
+                transform 120ms var(--ease-spring);
+  }
+  .ios-press:active {
+    transform: scale(0.985);
+    background-color: var(--color-card-hover);
+  }
+
   .card {
     background: var(--color-card);
     border: 1px solid var(--color-stroke);
@@ -222,12 +299,15 @@
                 background-color 160ms var(--ease-spring),
                 transform 160ms var(--ease-spring);
   }
-  .card-hover:hover {
-    background: var(--color-card-hover);
-    border-color: var(--color-stroke-strong);
+  @media (hover: hover) and (pointer: fine) {
+    .card-hover:hover {
+      background: var(--color-card-hover);
+      border-color: var(--color-stroke-strong);
+    }
   }
   .card-hover:active {
     transform: scale(0.99);
+    background: var(--color-card-hover);
   }
 
   /* Vitals hero tier — slightly elevated above the standard card surface,

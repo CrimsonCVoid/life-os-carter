@@ -6,10 +6,14 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: "Life OS",
     description: "Your daily command center.",
     start_url: "/",
+    scope: "/",
     display: "standalone",
     background_color: "#050507",
     theme_color: "#050507",
     orientation: "portrait",
+    // dir + lang help iOS install prompts render correctly.
+    dir: "ltr",
+    lang: "en-US",
     icons: [
       {
         src: "/icon",
@@ -27,6 +31,7 @@ export default function manifest(): MetadataRoute.Manifest {
         src: "/apple-icon",
         sizes: "180x180",
         type: "image/png",
+        purpose: "any",
       },
     ],
     categories: ["productivity", "health", "lifestyle"],

@@ -50,6 +50,8 @@ export function Modal({
     <AnimatePresence>
       {open && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+          {/* iOS-style dim with backdrop blur. Pure black overlay reads
+           * better against the dark base than a tinted one. */}
           <motion.button
             type="button"
             aria-label="Close"
@@ -57,42 +59,51 @@ export function Modal({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.18 }}
-            className="absolute inset-0 bg-black/65 backdrop-blur-sm"
+            transition={{ duration: 0.22 }}
+            className="absolute inset-0 bg-black/55 backdrop-blur-md"
           />
           <motion.div
             role="dialog"
             aria-modal="true"
-            initial={{ y: "100%", opacity: 0.6 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: "100%", opacity: 0 }}
-            transition={{ type: "spring", stiffness: 320, damping: 32 }}
+            initial={{ y: "100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "100%" }}
+            // Spring tuned to iOS sheet feel: settles around ~320ms with a
+            // tiny overshoot. Higher stiffness = snappier.
+            transition={{ type: "spring", stiffness: 360, damping: 34, mass: 0.85 }}
             drag="y"
             dragConstraints={{ top: 0, bottom: 0 }}
-            dragElastic={0.18}
+            dragElastic={{ top: 0, bottom: 0.32 }}
+            // Larger threshold to avoid accidental dismiss when scrolling.
             onDragEnd={(_, info) => {
-              if (info.offset.y > 120 || info.velocity.y > 600) onClose();
+              if (info.offset.y > 140 || info.velocity.y > 700) onClose();
             }}
             className={cn(
-              "relative w-full card rounded-b-none sm:rounded-b-[var(--radius-card)] sm:mb-0 flex flex-col max-h-[90dvh] touch-pan-y",
+              // iOS sheet: rounded ONLY on top corners when bottom-anchored.
+              // On desktop / sm:, full rounded card.
+              "relative w-full bg-[var(--color-card)] border border-[var(--color-stroke)]",
+              "rounded-t-[20px] rounded-b-none",
+              "sm:rounded-[var(--radius-card)] sm:mb-0",
+              "shadow-[var(--shadow-float)]",
+              "flex flex-col max-h-[92dvh] touch-pan-y",
               sizeClasses[size],
               className
             )}
             style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
           >
-            {/* Drag-handle pill — visible on mobile, decorative on desktop */}
+            {/* Drag grabber — iOS-standard 36×5px pill, ~6pt above content. */}
             <div className="pt-2 pb-1 grid place-items-center sm:hidden">
-              <div className="h-1 w-9 rounded-full bg-[var(--color-stroke-strong)]" />
+              <div className="h-[5px] w-9 rounded-full bg-[color:color-mix(in_srgb,var(--color-fg-3)_70%,transparent)]" />
             </div>
             <header className="flex items-start justify-between gap-3 px-5 pt-3 sm:pt-5 pb-1">
               <div className="min-w-0">
                 {title && (
-                  <div className="text-base font-semibold tracking-tight">
+                  <div className="text-[17px] font-semibold tracking-tight">
                     {title}
                   </div>
                 )}
                 {description && (
-                  <div className="text-xs text-[var(--color-fg-2)] mt-1">
+                  <div className="text-[13px] text-[var(--color-fg-2)] mt-1 leading-snug">
                     {description}
                   </div>
                 )}
@@ -101,9 +112,13 @@ export function Modal({
                 type="button"
                 onClick={onClose}
                 aria-label="Close"
-                className="h-9 w-9 grid place-items-center rounded-full text-[var(--color-fg-2)] hover:text-[var(--color-fg)] hover:bg-[var(--color-elevated)] transition shrink-0 -mr-1 -mt-1"
+                className={cn(
+                  "h-9 w-9 grid place-items-center rounded-full shrink-0 -mr-1 -mt-1",
+                  "text-[var(--color-fg-2)] bg-[var(--color-elevated)]",
+                  "active:scale-[0.92] transition-transform"
+                )}
               >
-                <X size={18} />
+                <X size={17} />
               </button>
             </header>
 
@@ -112,7 +127,7 @@ export function Modal({
             </div>
 
             {footer && (
-              <footer className="border-t border-[var(--color-stroke)] px-5 py-4">
+              <footer className="border-t border-[var(--color-stroke)] px-5 py-3">
                 {footer}
               </footer>
             )}

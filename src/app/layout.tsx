@@ -16,16 +16,37 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: "Life OS",
+    // black-translucent lets the dark base bleed under the status bar, but
+    // the safe-area inset stays valid so content doesn't slide under the
+    // notch / Dynamic Island.
     statusBarStyle: "black-translucent",
   },
   manifest: "/manifest.webmanifest",
+  // iOS Safari ignores manifest icons for the home-screen install path —
+  // it ONLY reads apple-touch-icon link tags. Next handles that for us via
+  // src/app/apple-icon.tsx, which is exported here automatically.
+  formatDetection: {
+    telephone: false,
+    address: false,
+    email: false,
+    date: false,
+  },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#050507",
+  // Match the status bar color to the dark base. Safari uses this for the
+  // OS-level chrome tint when the page first loads.
+  themeColor: [
+    { media: "(prefers-color-scheme: dark)", color: "#050507" },
+    { media: "(prefers-color-scheme: light)", color: "#050507" },
+  ],
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
+  // userScalable=no prevents the iOS "double-tap to zoom" that pulls weird
+  // gestures into focused inputs. Pinch-to-zoom on images still works since
+  // we don't apply touch-action: none globally.
+  userScalable: false,
   viewportFit: "cover",
 };
 

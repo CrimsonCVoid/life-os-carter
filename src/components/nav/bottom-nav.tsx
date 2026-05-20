@@ -27,16 +27,20 @@ const TABS = [
 
 export function BottomNav() {
   const pathname = usePathname();
-  // Hide on auth + onboarding so the nav doesn't capture taps meant for the
-  // primary CTA (e.g. "Get started" on the welcome step).
   if (pathname === "/login" || pathname.startsWith("/onboarding")) return null;
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-30 bg-[var(--color-base)]/85 backdrop-blur-md border-t border-[var(--color-stroke)] md:hidden"
+      className={cn(
+        // iOS tab bar: blurred chrome above the safe area, 1px hairline top
+        // border, no rounded corners — looks like a UITabBar.
+        "fixed bottom-0 left-0 right-0 z-30",
+        "ios-blur border-t border-[var(--color-stroke)]",
+        "md:hidden"
+      )}
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       aria-label="Primary"
     >
-      <ul className="flex items-stretch justify-around max-w-[640px] mx-auto">
+      <ul className="flex items-stretch justify-around max-w-[640px] mx-auto px-1">
         {TABS.map((t) => {
           const active =
             t.href === "/"
@@ -49,29 +53,31 @@ export function BottomNav() {
                 onClick={() => haptic("tap")}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "h-14 w-full flex flex-col items-center justify-center gap-0.5 relative transition active:scale-95",
+                  // 44pt+ height, no sticky highlight, snappy press
+                  "h-12 w-full flex flex-col items-center justify-center gap-[2px]",
+                  "relative transition-[color,transform] duration-150 ease-[var(--ease-spring)]",
+                  "active:scale-[0.94]",
                   active
                     ? "text-[var(--color-accent)]"
-                    : "text-[var(--color-fg-3)]"
+                    : "text-[var(--color-fg-2)]"
                 )}
               >
                 <t.Icon
-                  size={20}
-                  strokeWidth={active ? 2.4 : 2}
+                  size={22}
+                  strokeWidth={active ? 2.4 : 1.9}
+                  // SF Symbols-style "filled when selected" — Lucide icons
+                  // accept fill on their inner paths via fill="currentColor".
                   fill={active ? "currentColor" : "none"}
-                  fillOpacity={active ? 0.15 : 0}
+                  fillOpacity={active ? 0.18 : 0}
                 />
                 <span
                   className={cn(
-                    "text-[10px] tracking-tight",
-                    active ? "font-semibold" : "font-normal"
+                    "text-[10px] leading-none tracking-tight tabular-nums",
+                    active ? "font-semibold" : "font-medium"
                   )}
                 >
                   {t.label}
                 </span>
-                {active && (
-                  <span className="absolute -top-px left-1/2 -translate-x-1/2 h-[2px] w-8 rounded-full bg-[var(--color-accent)]" />
-                )}
               </Link>
             </li>
           );
