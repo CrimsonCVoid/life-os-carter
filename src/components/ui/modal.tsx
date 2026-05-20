@@ -68,13 +68,15 @@ export function Modal({
             initial={{ y: "100%" }}
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
-            // Snappier than typical Framer Motion sheet — closer to the real
-            // iOS sheet present/dismiss curves. ~220ms total settle.
-            transition={{ type: "spring", stiffness: 500, damping: 38, mass: 0.7 }}
+            // Pure tween — explicit duration with iOS easing. Framer's spring
+            // physics ran rAF on the main thread, which on iOS PWA shares with
+            // React reconciliation and dropped frames. A CSS-style tween is
+            // shorter and compositor-driven once the transform settles.
+            transition={{ duration: 0.18, ease: [0.32, 0.72, 0, 1] }}
             drag="y"
             dragConstraints={{ top: 0, bottom: 0 }}
-            dragElastic={{ top: 0, bottom: 0.32 }}
-            // Larger threshold to avoid accidental dismiss when scrolling.
+            dragElastic={{ top: 0, bottom: 0.28 }}
+            dragMomentum={false}
             onDragEnd={(_, info) => {
               if (info.offset.y > 140 || info.velocity.y > 700) onClose();
             }}
@@ -89,7 +91,10 @@ export function Modal({
               sizeClasses[size],
               className
             )}
-            style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+            style={{
+              paddingBottom: "env(safe-area-inset-bottom)",
+              willChange: "transform",
+            }}
           >
             {/* Drag grabber — iOS-standard 36×5px pill, ~6pt above content. */}
             <div className="pt-2 pb-1 grid place-items-center sm:hidden">

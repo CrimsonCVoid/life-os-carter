@@ -34,12 +34,23 @@ export function Toggle({
   const w = size === "sm" ? 36 : 44;
   const h = size === "sm" ? 20 : 26;
   const knob = h - 6;
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  // Imperatively set the `switch` boolean attribute. React's prop pipeline
+  // strips/normalizes some unknown attributes; setAttribute guarantees it
+  // reaches the DOM verbatim so iOS 17.4+ Safari recognizes it and fires a
+  // real OS haptic on user interaction.
+  React.useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.setAttribute("switch", "");
+  }, []);
 
   return (
     <label
       className={cn(
         "relative inline-flex shrink-0 items-center rounded-full select-none",
-        "transition-colors duration-150 ease-out",
+        "transition-colors duration-100 ease-out",
         checked
           ? "bg-[var(--color-accent-strong)]"
           : "bg-[var(--color-elevated)] border border-[var(--color-stroke)]",
@@ -48,19 +59,12 @@ export function Toggle({
       style={{ width: w, height: h }}
       aria-label={rest["aria-label"] ?? label}
     >
-      {/* Native iOS switch element — fires a real haptic when toggled on
-       * iOS 17.4+. Visually hidden but accepts the tap. Using JSX
-       * 'is="..."' via spread because the `switch` attribute isn't in
-       * React's typings yet. */}
       <input
+        ref={inputRef}
         type="checkbox"
         role="switch"
-        // @ts-expect-error — `switch` is an HTML attribute added in iOS 17.4
-        // for native haptic toggle behavior; React's typings don't have it.
-        switch=""
         checked={checked}
         onChange={(e) => {
-          // Fallback vibrate for Android (no-op on iOS).
           haptic("tap");
           onChange(e.currentTarget.checked);
         }}
@@ -72,14 +76,13 @@ export function Toggle({
         className={cn(
           "absolute top-1/2 -translate-y-1/2 rounded-full bg-white",
           "shadow-[0_2px_6px_rgba(0,0,0,0.4)]",
-          "transition-[left,transform] duration-150 ease-out",
-          // pressed knob slightly elongates per iOS — done with scaleX on the
-          // parent label's :active state by reading from the input.
+          "transition-[left] duration-150 ease-out"
         )}
         style={{
           width: knob,
           height: knob,
           left: checked ? w - knob - 3 : 3,
+          willChange: "left",
         }}
       />
     </label>

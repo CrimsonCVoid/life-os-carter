@@ -259,18 +259,30 @@
 }
 
 @layer utilities {
-  /* iOS-style blurred chrome (nav bars, tab bars, modal backdrops). The
-   * saturate is what gives SF Symbols / system UI that "looks lit from
-   * behind" quality on top of dark backgrounds. */
+  /* iOS-style chrome. Earlier version used saturate(180%) blur(20px) —
+   * pretty but it's the #1 source of Safari paint jank because every
+   * scrolling frame underneath the blurred region has to be re-rasterized.
+   * We use mostly-opaque backgrounds + a light blur so we keep the
+   * "translucent above content" look without paying the perf cost. */
   .ios-blur {
-    background: color-mix(in srgb, var(--color-base) 72%, transparent);
-    -webkit-backdrop-filter: saturate(180%) blur(20px);
-    backdrop-filter: saturate(180%) blur(20px);
+    background: color-mix(in srgb, var(--color-base) 92%, transparent);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
   }
   .ios-blur-card {
-    background: color-mix(in srgb, var(--color-card) 78%, transparent);
-    -webkit-backdrop-filter: saturate(180%) blur(20px);
-    backdrop-filter: saturate(180%) blur(20px);
+    background: color-mix(in srgb, var(--color-card) 94%, transparent);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+  }
+  /* Devices that report Reduce Transparency in iOS Accessibility get a
+   * fully opaque fallback — no GPU cost at all. */
+  @media (prefers-reduced-transparency: reduce) {
+    .ios-blur,
+    .ios-blur-card {
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+      background: var(--color-base);
+    }
   }
 
   /* Hit-target widener — apply to small buttons that need to keep their
