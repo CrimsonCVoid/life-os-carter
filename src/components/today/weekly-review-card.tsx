@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { motion } from "motion/react";
 import { CalendarRange, ChevronRight, X } from "lucide-react";
 import { useStore } from "@/store";
 import { buildWeeklyContext, weekBounds } from "@/lib/insights";
@@ -112,16 +111,13 @@ export function WeeklyReviewCard() {
 
   return (
     <>
-      <motion.button
+      <button
         type="button"
         onClick={() => {
           haptic("tap");
           setOpen(true);
         }}
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.18, ease: [0.32, 0.72, 0, 1] }}
-        className="w-full text-left rounded-[var(--radius-card)] border p-4 relative overflow-hidden card-hover"
+        className="animate-card-in w-full text-left rounded-[var(--radius-card)] border p-4 relative overflow-hidden card-hover"
         style={{
           background:
             "linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 14%, var(--color-card)) 0%, var(--color-card) 70%)",
@@ -146,7 +142,7 @@ export function WeeklyReviewCard() {
             </div>
           </div>
         </div>
-      </motion.button>
+      </button>
 
       <WeeklyReviewModal
         open={open}

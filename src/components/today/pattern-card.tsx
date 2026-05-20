@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { motion } from "motion/react";
 import { Sparkles, X, MessageCircle, ChevronRight } from "lucide-react";
 import { useStore } from "@/store";
 import { useOverseer } from "@/components/overseer/overseer-context";
@@ -130,11 +129,8 @@ export function PatternCard() {
   const c = metricColors(metric);
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.18, ease: [0.32, 0.72, 0, 1] }}
-      className="relative overflow-hidden rounded-[var(--radius-card)] border"
+    <div
+      className="animate-card-in relative overflow-hidden rounded-[var(--radius-card)] border"
       style={{
         background: `linear-gradient(135deg, color-mix(in srgb, ${c.base} 12%, var(--color-card)) 0%, var(--color-card) 70%)`,
         borderColor: `color-mix(in srgb, ${c.base} 24%, transparent)`,
@@ -204,6 +200,6 @@ export function PatternCard() {
           </button>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }

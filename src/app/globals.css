@@ -396,16 +396,49 @@
   to { opacity: 1; }
 }
 .animate-fade-in {
-  animation: fade-in 240ms var(--ease-spring);
+  animation: fade-in 180ms var(--ease-ios);
+}
+
+@keyframes card-in {
+  from { opacity: 0; transform: translate3d(0, 6px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+/* Drop-in replacement for the Framer Motion entry pattern. Runs entirely on
+ * the compositor at the device's native refresh rate (120Hz on ProMotion). */
+.animate-card-in {
+  animation: card-in 180ms var(--ease-ios) both;
+  will-change: transform, opacity;
 }
 
 @keyframes panel-up {
-  from { transform: translateY(100%); opacity: 0.4; }
-  to { transform: translateY(0); opacity: 1; }
+  from { transform: translate3d(0, 100%, 0); }
+  to { transform: translate3d(0, 0, 0); }
 }
 .animate-panel-up {
-  animation: panel-up 320ms var(--ease-spring);
+  animation: panel-up 240ms var(--ease-ios);
+  will-change: transform;
 }
+
+@keyframes panel-down {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(0, 100%, 0); }
+}
+.animate-panel-down {
+  animation: panel-down 200ms var(--ease-ios) forwards;
+  will-change: transform;
+}
+
+@keyframes scrim-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-scrim-in { animation: scrim-in 160ms ease-out; }
+
+@keyframes scrim-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+.animate-scrim-out { animation: scrim-out 160ms ease-out forwards; }
 
 @keyframes pulse-dot {
   0%, 100% { opacity: 0.3; }
