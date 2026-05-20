@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import * as React from "react";
 import { TopNav } from "@/components/nav/top-nav";
 import { BottomNav } from "@/components/nav/bottom-nav";
 import { MobileTopBar } from "@/components/nav/mobile-top-bar";
@@ -7,6 +8,8 @@ import { AccentProvider } from "@/components/accent-provider";
 import { Overseer } from "@/components/overseer/overseer";
 import { ServiceWorkerRegister } from "@/components/sw-register";
 import { CloudSyncMount } from "@/components/cloud-sync-mount";
+import { ActiveWorkoutBanner } from "@/components/workout/active-workout-banner";
+import { QuickActionRouter } from "@/components/quick-action-router";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -66,6 +69,12 @@ export default function RootLayout({
           {children}
           <BottomNav />
           <Overseer />
+          <ActiveWorkoutBanner />
+          {/* Suspense around the search-params-reading router so it doesn't
+           * blow up the static render path. */}
+          <React.Suspense fallback={null}>
+            <QuickActionRouter />
+          </React.Suspense>
         </HydrateGate>
       </body>
     </html>

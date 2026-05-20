@@ -71,6 +71,20 @@ export function ProgressPhotosCard({ userId }: Props) {
   const [open, setOpen] = React.useState(false);
   const [videoOpen, setVideoOpen] = React.useState(false);
 
+  // Deep-link from the "Capture daily photo" App Shortcut — opens the
+  // capture modal automatically when arriving at /body?action=capture.
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("action") === "capture") {
+      setOpen(true);
+      params.delete("action");
+      const q = params.toString();
+      const url = window.location.pathname + (q ? `?${q}` : "");
+      window.history.replaceState(null, "", url);
+    }
+  }, []);
+
   const completed = React.useMemo(
     () => photos.filter((p) => p.analysis?.status === "complete"),
     [photos]

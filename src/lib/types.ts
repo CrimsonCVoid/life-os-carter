@@ -145,6 +145,20 @@ export type LiftSession = {
 };
 
 /**
+ * Live workout in progress. There's only ever one of these at a time per
+ * user; on End, it's converted into a LiftSession and cleared. The state
+ * persists across reloads (localStorage + cloud sync) so closing the PWA
+ * mid-workout doesn't lose the timer or logged sets.
+ */
+export type ActiveWorkoutSession = {
+  id: string;
+  startedAt: string;        // ISO
+  lastSetAt?: string;       // ISO — drives the rest timer
+  workoutType?: string;     // optional Push/Pull/Legs/etc tag
+  exercises: LiftExercise[];
+};
+
+/**
  * Workout type was originally a narrow union but the Gym page lets users
  * pick from dayTypePresets (or type their own), so we treat this as an
  * open string. Common presets: Push, Pull, Legs, Cardio, Yoga, Other.

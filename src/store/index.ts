@@ -49,6 +49,7 @@ import {
   DismissedPattern,
   DayNavigationSettings,
   InsightsSettings,
+  ActiveWorkoutSession,
   LiftSession,
   RecurringGoal,
   RecurringGoalGeneration,
@@ -94,6 +95,7 @@ type State = {
   recurringGoals: RecurringGoal[];
   recurringGenerations: RecurringGoalGeneration[];
   liftSessions: LiftSession[];
+  activeWorkout: ActiveWorkoutSession | null;
   cachedPatterns?: CachedPatterns;
   dismissedPatterns: DismissedPattern[];
   weeklyReviews: WeeklyReviewData[];
@@ -233,6 +235,18 @@ type Actions = {
   removeLiftSession: (id: string) => void;
   updateLiftSession: (id: string, patch: Partial<LiftSession>) => void;
 
+  // Active workout (live session)
+  startActiveWorkout: (workoutType?: string) => void;
+  cancelActiveWorkout: () => void;
+  finishActiveWorkout: () => LiftSession | null;
+  addActiveWorkoutSet: (
+    exerciseName: string,
+    weight: number,
+    reps: number
+  ) => void;
+  removeActiveWorkoutSet: (exerciseId: string, order: number) => void;
+  removeActiveWorkoutExercise: (exerciseId: string) => void;
+
   // insights / patterns
   setCachedPatterns: (p: CachedPatterns | undefined) => void;
   nextPattern: () => void;
@@ -364,6 +378,7 @@ const initialState: State = {
   recurringGoals: [],
   recurringGenerations: [],
   liftSessions: [],
+  activeWorkout: null,
   cachedPatterns: undefined,
   dismissedPatterns: [],
   weeklyReviews: [],
@@ -1111,6 +1126,112 @@ export const useStore = create<State & Actions>()(
           ),
         })),
 
+      startActiveWorkout: (workoutType) =>
+        set((s) => {
+          // If one's already running, no-op — caller decides whether to
+          // resume the existing one or finish/cancel it first.
+          if (s.activeWorkout) return s;
+          return {
+            activeWorkout: {
+              id: uid(),
+              startedAt: new Date().toISOString(),
+              exercises: [],
+              workoutType,
+            },
+          };
+        }),
+
+      cancelActiveWorkout: () => set(() => ({ activeWorkout: null })),
+
+      finishActiveWorkout: () => {
+        const session: LiftSession | null = (() => {
+          const aw = get().activeWorkout;
+          if (!aw) return null;
+          if (aw.exercises.length === 0) return null;
+          return {
+            id: aw.id,
+            date: todayStr(),
+            exercises: aw.exercises,
+            createdAt: aw.startedAt,
+          };
+        })();
+        if (session) {
+          set((s) => ({
+            liftSessions: [...s.liftSessions, session],
+            activeWorkout: null,
+          }));
+        } else {
+          set(() => ({ activeWorkout: null }));
+        }
+        return session;
+      },
+
+      addActiveWorkoutSet: (exerciseName, weight, reps) =>
+        set((s) => {
+          if (!s.activeWorkout) return s;
+          const norm = exerciseName.trim().toLowerCase();
+          const existingIdx = s.activeWorkout.exercises.findIndex(
+            (e) => e.normalizedName === norm
+          );
+          const now = new Date().toISOString();
+          const exercises = [...s.activeWorkout.exercises];
+          if (existingIdx >= 0) {
+            const ex = exercises[existingIdx];
+            exercises[existingIdx] = {
+              ...ex,
+              sets: [
+                ...ex.sets,
+                { weight, reps, order: ex.sets.length + 1 },
+              ],
+            };
+          } else {
+            exercises.push({
+              id: uid(),
+              name: exerciseName.trim(),
+              normalizedName: norm,
+              sets: [{ weight, reps, order: 1 }],
+            });
+          }
+          return {
+            activeWorkout: {
+              ...s.activeWorkout,
+              exercises,
+              lastSetAt: now,
+            },
+          };
+        }),
+
+      removeActiveWorkoutSet: (exerciseId, order) =>
+        set((s) => {
+          if (!s.activeWorkout) return s;
+          const exercises = s.activeWorkout.exercises
+            .map((e) =>
+              e.id === exerciseId
+                ? {
+                    ...e,
+                    sets: e.sets
+                      .filter((st) => st.order !== order)
+                      .map((st, i) => ({ ...st, order: i + 1 })),
+                  }
+                : e
+            )
+            .filter((e) => e.sets.length > 0);
+          return { activeWorkout: { ...s.activeWorkout, exercises } };
+        }),
+
+      removeActiveWorkoutExercise: (exerciseId) =>
+        set((s) => {
+          if (!s.activeWorkout) return s;
+          return {
+            activeWorkout: {
+              ...s.activeWorkout,
+              exercises: s.activeWorkout.exercises.filter(
+                (e) => e.id !== exerciseId
+              ),
+            },
+          };
+        }),
+
       setCachedPatterns: (p) => set(() => ({ cachedPatterns: p })),
       nextPattern: () =>
         set((s) => {
@@ -1553,6 +1674,8 @@ export const useStore = create<State & Actions>()(
           recurringGenerations:
             p.recurringGenerations ?? current.recurringGenerations,
           liftSessions: p.liftSessions ?? current.liftSessions,
+          activeWorkout:
+            "activeWorkout" in p ? p.activeWorkout ?? null : current.activeWorkout,
           cachedPatterns: p.cachedPatterns ?? current.cachedPatterns,
           dismissedPatterns:
             p.dismissedPatterns ?? current.dismissedPatterns,

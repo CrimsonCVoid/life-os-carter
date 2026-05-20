@@ -10,7 +10,8 @@ import {
   Tooltip,
   CartesianGrid,
 } from "recharts";
-import { ChevronDown, Plus, Trash2, X } from "lucide-react";
+import { ChevronDown, Plus, Square, Timer, Trash2, X } from "lucide-react";
+import { ActiveWorkoutSheet } from "@/components/workout/active-workout-sheet";
 import { Screen } from "@/components/screen";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -116,9 +117,10 @@ export default function GymPage() {
       title="Gym"
       subtitle="Type + duration + sets, all on one screen. Paste from RepCount."
     >
-      <Button onClick={() => setPasteOpen(true)} className="w-full" size="lg">
+      <StartWorkoutCTA />
+      <Button onClick={() => setPasteOpen(true)} className="w-full" size="lg" variant="secondary">
         <Plus size={16} />
-        New session
+        Log past session
       </Button>
 
       {byExercise.length > 0 && (
@@ -721,3 +723,42 @@ Logged using RepCount`}
     </Modal>
   );
 }
+
+function StartWorkoutCTA() {
+  const active = useStore((s) => s.activeWorkout);
+  const start = useStore((s) => s.startActiveWorkout);
+  const [open, setOpen] = React.useState(false);
+
+  if (active) {
+    return (
+      <>
+        <Button
+          onClick={() => setOpen(true)}
+          variant="primary"
+          className="w-full"
+          size="lg"
+        >
+          <Timer size={16} />
+          Continue workout
+        </Button>
+        <ActiveWorkoutSheet open={open} onClose={() => setOpen(false)} />
+      </>
+    );
+  }
+  return (
+    <Button
+      onClick={() => {
+        start();
+        setOpen(true);
+      }}
+      variant="primary"
+      className="w-full"
+      size="lg"
+      haptic="success"
+    >
+      <Square size={14} />
+      Start workout
+    </Button>
+  );
+}
+
