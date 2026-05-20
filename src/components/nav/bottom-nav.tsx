@@ -3,25 +3,18 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  Home,
-  BarChart3,
-  CheckSquare,
-  Dumbbell,
-  Apple,
-  BookOpen,
-  Scale,
-} from "lucide-react";
+import { Home, BarChart3, CheckSquare, Dumbbell, Apple } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { haptic } from "@/lib/haptics";
 
+// Five tabs (iOS HIG ceiling). Journal + Body lost their bottom-bar
+// slots; both still have full routes and are reachable from the
+// mobile top bar's icon row.
 const TABS = [
   { href: "/", label: "Today", Icon: Home },
   { href: "/nutrition", label: "Nutrition", Icon: Apple },
   { href: "/habits", label: "Habits", Icon: CheckSquare },
   { href: "/gym", label: "Gym", Icon: Dumbbell },
-  { href: "/journal", label: "Journal", Icon: BookOpen },
-  { href: "/body", label: "Body", Icon: Scale },
   { href: "/stats", label: "Stats", Icon: BarChart3 },
 ] as const;
 
