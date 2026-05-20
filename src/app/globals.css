@@ -126,10 +126,112 @@
 
 @layer base {
   :root {
-    color-scheme: dark;
+    /* Tell the browser we support both schemes — auto-tints form controls,
+     * scrollbars, and built-in chrome to match. */
+    color-scheme: light dark;
     --accent-h: 258;
     --accent-s: 90%;
     --accent-l: 76%;
+  }
+
+  /* Light-mode palette. Parallel to the dark @theme tokens above; iOS users
+   * with system "Appearance: Light" get this automatically with no JS or
+   * toggle. The dark palette stays the default so the app reads "premium
+   * dark" by default. */
+  @media (prefers-color-scheme: light) {
+    :root {
+      --color-base: #F5F5F7;            /* iOS systemGroupedBackground feel */
+      --color-card: #FFFFFF;
+      --color-card-hover: #F2F2F7;
+      --color-elevated: #FFFFFF;
+      --color-vitals-surface: #FFFFFF;
+      --color-vitals-surface-hover: #F2F2F7;
+      --color-stroke: #E5E5EA;
+      --color-stroke-strong: #C7C7CC;
+
+      --color-fg: #0B0B0F;
+      --color-fg-2: #3C3C43;
+      --color-fg-3: #8E8E93;
+
+      /* Accent — slightly darker on white for proper contrast (4.5:1+ AA). */
+      --color-accent: #7C3AED;
+      --color-accent-strong: #6D28D9;
+      --color-accent-soft: rgba(124, 58, 237, 0.10);
+
+      /* Semantic — iOS systemRed/Green/Yellow tuned for light backgrounds. */
+      --color-success: #16A34A;
+      --color-warning: #D97706;
+      --color-danger: #DC2626;
+
+      --color-p1: #DC2626;
+      --color-p2: #D97706;
+      --color-p3: #2563EB;
+
+      /* Metric palette — slightly darker variants so 12%-opacity soft tints
+       * still read on a white surface. */
+      --mc-calories: #D97706;
+      --mc-calories-2: #F59E0B;
+      --mc-calories-soft: rgba(217, 119, 6, 0.12);
+
+      --mc-protein: #7C3AED;
+      --mc-protein-2: #8B5CF6;
+      --mc-protein-soft: rgba(124, 58, 237, 0.12);
+
+      --mc-carbs: #0284C7;
+      --mc-carbs-2: #0EA5E9;
+      --mc-carbs-soft: rgba(2, 132, 199, 0.12);
+
+      --mc-fat: #059669;
+      --mc-fat-2: #10B981;
+      --mc-fat-soft: rgba(5, 150, 105, 0.12);
+
+      --mc-water: #0891B2;
+      --mc-water-2: #06B6D4;
+      --mc-water-soft: rgba(8, 145, 178, 0.12);
+
+      --mc-sleep: #4F46E5;
+      --mc-sleep-2: #6366F1;
+      --mc-sleep-soft: rgba(79, 70, 229, 0.12);
+
+      --mc-mood-low: #DC2626;
+      --mc-mood-high: #059669;
+      --mc-mood: #DC2626;
+      --mc-mood-soft: rgba(220, 38, 38, 0.10);
+
+      --mc-energy-low: #D97706;
+      --mc-energy-high: #EA580C;
+      --mc-energy: #D97706;
+      --mc-energy-soft: rgba(217, 119, 6, 0.10);
+
+      --mc-weight: #64748B;
+      --mc-weight-2: #94A3B8;
+      --mc-weight-soft: rgba(100, 116, 139, 0.12);
+
+      --mc-steps: #65A30D;
+      --mc-steps-2: #84CC16;
+      --mc-steps-soft: rgba(101, 163, 13, 0.12);
+
+      --mc-hrv: #4F46E5;
+      --mc-hrv-2: #6366F1;
+      --mc-hrv-soft: rgba(79, 70, 229, 0.12);
+
+      --mc-rhr: #DC2626;
+      --mc-rhr-2: #EF4444;
+      --mc-rhr-soft: rgba(220, 38, 38, 0.12);
+
+      --streak-amber: #D97706;
+      --streak-orange: #EA580C;
+      --streak-gold: #CA8A04;
+
+      /* Light shadows — much lighter. Dark mode used heavy drops for depth;
+       * light mode reads better with crisp hairlines + soft shadows. */
+      --shadow-card: 0 1px 2px rgba(15, 15, 20, 0.04),
+                     0 4px 14px -6px rgba(15, 15, 20, 0.08);
+      --shadow-float: 0 8px 32px -8px rgba(15, 15, 20, 0.12),
+                      0 0 0 1px rgba(15, 15, 20, 0.04);
+      --shadow-glow: 0 0 0 1px rgba(124, 58, 237, 0.18),
+                     0 6px 24px -6px rgba(124, 58, 237, 0.35);
+    }
   }
 
   html,

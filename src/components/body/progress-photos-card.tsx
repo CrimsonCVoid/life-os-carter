@@ -1,7 +1,16 @@
 "use client";
 
 import * as React from "react";
-import { Camera, Loader2, Trash2, TrendingDown, TrendingUp, Minus } from "lucide-react";
+import {
+  Camera,
+  Loader2,
+  Trash2,
+  TrendingDown,
+  TrendingUp,
+  Minus,
+  Film,
+  Flame,
+} from "lucide-react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -15,6 +24,7 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { ProgressPhotoModal } from "./progress-photo-modal";
+import { MonthVideoModal } from "./month-video-modal";
 import {
   useProgressPhotos,
   type ProgressPhoto,
@@ -27,31 +37,60 @@ import { haptic } from "@/lib/haptics";
 
 type Props = { userId?: string };
 
+function ymd(d: Date | string): string {
+  const dd = typeof d === "string" ? new Date(d) : d;
+  return `${dd.getFullYear()}-${String(dd.getMonth() + 1).padStart(2, "0")}-${String(dd.getDate()).padStart(2, "0")}`;
+}
+
+function currentMonthKey(d = new Date()): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function inCurrentMonth(p: ProgressPhoto): boolean {
+  const d = new Date(p.capturedAt);
+  const now = new Date();
+  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+}
+
+/** Daily streak = consecutive days back from today with at least one front photo. */
+function calcStreak(photos: ProgressPhoto[]): number {
+  const days = new Set(photos.map((p) => ymd(p.capturedAt)));
+  let streak = 0;
+  const cursor = new Date();
+  while (days.has(ymd(cursor))) {
+    streak++;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
+}
+
 export function ProgressPhotosCard({ userId }: Props) {
   void userId;
   const heightCm = useStore((s) => s.settings.bodyProfile.heightCm);
   const { photos, loading, error, reload } = useProgressPhotos();
   const [open, setOpen] = React.useState(false);
+  const [videoOpen, setVideoOpen] = React.useState(false);
 
   const completed = React.useMemo(
     () => photos.filter((p) => p.analysis?.status === "complete"),
     [photos]
   );
 
-  const latestByAngle = React.useMemo(() => {
-    const out: Record<"front" | "side" | "back", ProgressPhoto | null> = {
-      front: null,
-      side: null,
-      back: null,
-    };
-    for (const p of photos) {
-      if (!out[p.angle]) out[p.angle] = p;
-    }
-    return out;
-  }, [photos]);
+  const latest = photos[0] ?? null;
+  const prior = photos[1] ?? null;
 
-  const latest = completed[0] ?? null;
-  const prior = completed[1] ?? null;
+  const photosThisMonth = React.useMemo(
+    () => photos.filter(inCurrentMonth),
+    [photos]
+  );
+
+  const streak = React.useMemo(() => calcStreak(photos), [photos]);
+  const todayCaptured = photos.some(
+    (p) => ymd(p.capturedAt) === ymd(new Date())
+  );
+
+  const latestCompleted = completed[0] ?? null;
+  const priorCompleted = completed[1] ?? null;
 
   const bfTrend = React.useMemo(
     () =>
@@ -68,10 +107,14 @@ export function ProgressPhotosCard({ userId }: Props) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Progress photos</CardTitle>
-        <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
+        <CardTitle>Daily progress photo</CardTitle>
+        <Button
+          variant={todayCaptured ? "secondary" : "primary"}
+          size="sm"
+          onClick={() => setOpen(true)}
+        >
           <Camera size={12} />
-          Capture
+          {todayCaptured ? "Replace today" : "Capture today"}
         </Button>
       </CardHeader>
 
@@ -80,21 +123,46 @@ export function ProgressPhotosCard({ userId }: Props) {
       ) : error ? (
         <div className="py-6 text-center text-xs text-[var(--color-danger)]">{error}</div>
       ) : photos.length === 0 ? (
-        <div className="py-6 text-center text-xs text-[var(--color-fg-3)]">
-          No progress photos yet. Capture one to start the body-comp trend.
+        <div className="py-8 text-center text-xs text-[var(--color-fg-3)]">
+          <div className="text-[14px] text-[var(--color-fg-2)] mb-1">
+            Today's the start of the streak.
+          </div>
+          Capture your first photo to begin the monthly compilation.
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="grid grid-cols-3 gap-2">
-            {(["front", "side", "back"] as const).map((angle) => (
-              <AngleTile
-                key={angle}
-                photo={latestByAngle[angle]}
-                angle={angle}
-                onChange={reload}
+          <div className="flex items-stretch gap-3">
+            <div className="w-32 shrink-0">
+              <LatestPhotoTile photo={latest} onChange={reload} />
+            </div>
+            <div className="flex-1 grid grid-cols-2 gap-2">
+              <StatTile
+                icon={<Flame size={14} />}
+                label="Streak"
+                value={`${streak}`}
+                suffix=" day"
+                accent={streak >= 7 ? "warning" : streak >= 3 ? "accent" : "neutral"}
               />
-            ))}
+              <StatTile
+                icon={<Camera size={14} />}
+                label="This month"
+                value={`${photosThisMonth.length}`}
+                suffix=" / 30"
+              />
+            </div>
           </div>
+
+          {photosThisMonth.length >= 2 && (
+            <Button
+              variant="secondary"
+              size="default"
+              className="w-full"
+              onClick={() => setVideoOpen(true)}
+            >
+              <Film size={14} />
+              Export this month's video ({photosThisMonth.length}s)
+            </Button>
+          )}
 
           {!heightCm && completed.length > 0 && (
             <a
@@ -105,19 +173,21 @@ export function ProgressPhotosCard({ userId }: Props) {
             </a>
           )}
 
-          {latest && <HeadlineCard latest={latest} prior={prior} />}
+          {latestCompleted && (
+            <HeadlineCard latest={latestCompleted} prior={priorCompleted} />
+          )}
 
           {bfTrend.length >= 2 && <BfTrendChart data={bfTrend} />}
 
-          {latest?.analysis?.silhouetteFeatures && (
+          {latestCompleted?.analysis?.silhouetteFeatures && (
             <MeasurementsGrid
-              current={latest.analysis.silhouetteFeatures}
-              prior={prior?.analysis?.silhouetteFeatures ?? null}
+              current={latestCompleted.analysis.silhouetteFeatures}
+              prior={priorCompleted?.analysis?.silhouetteFeatures ?? null}
             />
           )}
 
-          {latest?.analysis?.vlmObservations && (
-            <ObservationsCard obs={latest.analysis.vlmObservations} />
+          {latestCompleted?.analysis?.vlmObservations && (
+            <ObservationsCard obs={latestCompleted.analysis.vlmObservations} />
           )}
         </div>
       )}
@@ -125,9 +195,127 @@ export function ProgressPhotosCard({ userId }: Props) {
       <ProgressPhotoModal
         open={open}
         onClose={() => setOpen(false)}
+        priorPhotoId={prior?.id ?? null}
         onCreated={() => void reload()}
       />
+      <MonthVideoModal
+        open={videoOpen}
+        onClose={() => setVideoOpen(false)}
+        photos={photosThisMonth}
+      />
     </Card>
+  );
+}
+
+function StatTile({
+  icon,
+  label,
+  value,
+  suffix,
+  accent,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  suffix?: string;
+  accent?: "neutral" | "accent" | "warning";
+}) {
+  const color =
+    accent === "warning"
+      ? "var(--color-warning)"
+      : accent === "accent"
+      ? "var(--color-accent)"
+      : "var(--color-fg-2)";
+  return (
+    <div className="rounded-lg border border-[var(--color-stroke)] bg-[var(--color-elevated)]/40 p-2.5 flex flex-col justify-between">
+      <div
+        className="flex items-center gap-1 text-[10px] uppercase tracking-wider"
+        style={{ color }}
+      >
+        {icon}
+        {label}
+      </div>
+      <div className="text-[20px] font-semibold tnum mt-1" style={{ color }}>
+        {value}
+        {suffix && <span className="text-[11px] font-normal opacity-70">{suffix}</span>}
+      </div>
+    </div>
+  );
+}
+
+function LatestPhotoTile({
+  photo,
+  onChange,
+}: {
+  photo: ProgressPhoto | null;
+  onChange: () => void;
+}) {
+  const [confirmDelete, setConfirmDelete] = React.useState(false);
+  const status = photo?.analysis?.status;
+  const inflight = status === "pending" || status === "processing" || (photo && !status);
+
+  const handleDelete = async () => {
+    if (!photo) return;
+    await fetch(`/api/body/progress-photos/${photo.id}`, { method: "DELETE" });
+    haptic("warn");
+    onChange();
+  };
+
+  return (
+    <>
+      <div className="relative rounded-xl border border-[var(--color-stroke)] overflow-hidden aspect-[3/4] bg-[var(--color-elevated)]">
+        {photo ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={`/api/body/progress-photos/${photo.id}/image`}
+            alt="Latest progress"
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="absolute inset-0 grid place-items-center text-[var(--color-fg-3)]">
+            <Camera size={16} />
+          </div>
+        )}
+
+        {photo && (
+          <button
+            type="button"
+            onClick={() => setConfirmDelete(true)}
+            aria-label="Delete photo"
+            className="absolute top-1 right-1 h-6 w-6 grid place-items-center rounded bg-black/50 text-white"
+          >
+            <Trash2 size={11} />
+          </button>
+        )}
+
+        {photo && inflight && (
+          <div className="absolute bottom-1 left-1 right-1 flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded bg-black/60 text-white">
+            <Loader2 size={10} className="animate-spin" />
+            {status === "processing" ? "analyzing" : "queued"}
+          </div>
+        )}
+
+        {photo?.analysis?.bfEstimatePct != null && (
+          <div className="absolute bottom-1 left-1 right-1 px-1.5 py-0.5 text-[10px] rounded bg-black/60 text-white text-center tnum">
+            {photo.analysis.bfEstimatePct.toFixed(1)}% BF
+          </div>
+        )}
+
+        {status === "failed" && (
+          <div className="absolute bottom-1 left-1 right-1 px-1.5 py-0.5 text-[10px] rounded text-center bg-[var(--color-danger)]/70 text-white">
+            failed
+          </div>
+        )}
+      </div>
+
+      <ConfirmModal
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={handleDelete}
+        title="Delete this photo?"
+        description="The photo and its analysis row are removed. Blob bytes remain until cleanup."
+      />
+    </>
   );
 }
 
@@ -239,7 +427,6 @@ function MeasurementsGrid({
     priorValue: number | null | undefined;
     suffix?: string;
     decimals?: number;
-    /** If true, a *decrease* is the desirable direction (e.g. waist). */
     inverted?: boolean;
   };
   const rows: Row[] = [
@@ -284,10 +471,8 @@ function MeasurementsGrid({
       decimals: 0,
     },
   ];
-
   const visible = rows.filter((r) => r.value != null);
   if (visible.length === 0) return null;
-
   return (
     <div>
       <div className="text-[11px] uppercase tracking-wider text-[var(--color-fg-3)] mb-2">
@@ -359,7 +544,6 @@ function DeltaPill({
   days?: number | null;
 }) {
   const isZero = Math.abs(delta) < 0.0005;
-  // "Good" direction depends on the metric. Inverted = down is good.
   const good = isZero ? null : inverted ? delta < 0 : delta > 0;
   const Icon = isZero ? Minus : delta > 0 ? TrendingUp : TrendingDown;
   const color = isZero
@@ -411,17 +595,17 @@ function ObservationsCard({ obs }: { obs: VlmObservations }) {
   };
   const features = obs.features ?? {};
   const featureKeys = Object.keys(featureLabels).filter((k) => k in features);
-  const bracket = obs.bracket && bracketLabels[obs.bracket] ? bracketLabels[obs.bracket as string] : obs.bracket;
+  const bracket =
+    obs.bracket && bracketLabels[obs.bracket]
+      ? bracketLabels[obs.bracket as string]
+      : obs.bracket;
 
   return (
     <div className="rounded-xl border border-[var(--color-stroke)] bg-[var(--color-elevated)]/30 p-3 space-y-3">
       <div className="flex items-center justify-between gap-2 text-[11px] text-[var(--color-fg-3)]">
         <span className="uppercase tracking-wider">Observations</span>
-        {obs.confidence && (
-          <span className="opacity-80">conf · {obs.confidence}</span>
-        )}
+        {obs.confidence && <span className="opacity-80">conf · {obs.confidence}</span>}
       </div>
-
       {bracket && (
         <div>
           <div className="text-[10px] uppercase tracking-wider text-[var(--color-fg-3)] mb-1">
@@ -432,7 +616,6 @@ function ObservationsCard({ obs }: { obs: VlmObservations }) {
           </span>
         </div>
       )}
-
       {featureKeys.length > 0 && (
         <div>
           <div className="text-[10px] uppercase tracking-wider text-[var(--color-fg-3)] mb-1.5">
@@ -450,7 +633,6 @@ function ObservationsCard({ obs }: { obs: VlmObservations }) {
           </div>
         </div>
       )}
-
       {obs.summary && (
         <p className="text-[12px] leading-relaxed text-[var(--color-fg-2)] pt-1 border-t border-[var(--color-stroke)]">
           {obs.summary}
@@ -469,9 +651,7 @@ function FeatureBar({
   value: number;
   inverted?: boolean;
 }) {
-  // 0..5 → 0..100% width
   const pct = (value / 5) * 100;
-  // Color: high = good (accent) except for inverted scales where high = warn
   const tone = inverted
     ? value >= 3
       ? "var(--color-warning)"
@@ -499,92 +679,4 @@ function daysBetween(a: string, b: string): number {
   const da = new Date(a).getTime();
   const db = new Date(b).getTime();
   return Math.abs(db - da) / 86_400_000;
-}
-
-function AngleTile({
-  photo,
-  angle,
-  onChange,
-}: {
-  photo: ProgressPhoto | null;
-  angle: "front" | "side" | "back";
-  onChange: () => void;
-}) {
-  const [confirmDelete, setConfirmDelete] = React.useState(false);
-  const status = photo?.analysis?.status;
-  const inflight = status === "pending" || status === "processing" || (photo && !status);
-
-  const handleDelete = async () => {
-    if (!photo) return;
-    await fetch(`/api/body/progress-photos/${photo.id}`, { method: "DELETE" });
-    haptic("warn");
-    onChange();
-  };
-
-  return (
-    <>
-      <div className="relative rounded-xl border border-[var(--color-stroke)] overflow-hidden aspect-[3/4] bg-[var(--color-elevated)]">
-        {photo ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={`/api/body/progress-photos/${photo.id}/image`}
-            alt={angle}
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <div className="absolute inset-0 grid place-items-center text-[var(--color-fg-3)]">
-            <Camera size={16} />
-          </div>
-        )}
-
-        <div className="absolute top-1 left-1 px-1.5 py-0.5 text-[10px] uppercase tracking-wide rounded bg-black/50 text-white capitalize">
-          {angle}
-        </div>
-
-        {photo && (
-          <button
-            type="button"
-            onClick={() => setConfirmDelete(true)}
-            aria-label="Delete photo"
-            className="absolute top-1 right-1 h-6 w-6 grid place-items-center rounded bg-black/50 text-white"
-          >
-            <Trash2 size={11} />
-          </button>
-        )}
-
-        {photo && inflight && (
-          <div className="absolute bottom-1 left-1 right-1 flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded bg-black/60 text-white">
-            <Loader2 size={10} className="animate-spin" />
-            {status === "processing" ? "analyzing" : "queued"}
-          </div>
-        )}
-
-        {photo?.analysis?.bfEstimatePct != null && (
-          <div className="absolute bottom-1 left-1 right-1 px-1.5 py-0.5 text-[10px] rounded bg-black/60 text-white text-center tnum">
-            {photo.analysis.bfEstimatePct.toFixed(1)}% BF
-          </div>
-        )}
-
-        {status === "failed" && (
-          <div
-            title="Analysis failed"
-            className={cn(
-              "absolute bottom-1 left-1 right-1 px-1.5 py-0.5 text-[10px] rounded text-center",
-              "bg-[var(--color-danger)]/70 text-white"
-            )}
-          >
-            failed
-          </div>
-        )}
-      </div>
-
-      <ConfirmModal
-        open={confirmDelete}
-        onClose={() => setConfirmDelete(false)}
-        onConfirm={handleDelete}
-        title="Delete this photo?"
-        description="The photo and its analysis row are removed. Blob bytes remain until the next cleanup pass."
-      />
-    </>
-  );
 }

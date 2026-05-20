@@ -16,10 +16,9 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: "Life OS",
-    // black-translucent lets the dark base bleed under the status bar, but
-    // the safe-area inset stays valid so content doesn't slide under the
-    // notch / Dynamic Island.
-    statusBarStyle: "black-translucent",
+    // default = system-controlled status bar text. Light system → dark text,
+    // dark system → light text. Matches the auto color-scheme behavior.
+    statusBarStyle: "default",
   },
   manifest: "/manifest.webmanifest",
   // iOS Safari ignores manifest icons for the home-screen install path —
@@ -38,7 +37,7 @@ export const viewport: Viewport = {
   // OS-level chrome tint when the page first loads.
   themeColor: [
     { media: "(prefers-color-scheme: dark)", color: "#050507" },
-    { media: "(prefers-color-scheme: light)", color: "#050507" },
+    { media: "(prefers-color-scheme: light)", color: "#F5F5F7" },
   ],
   width: "device-width",
   initialScale: 1,

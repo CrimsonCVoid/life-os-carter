@@ -10,33 +10,37 @@ import { useStore } from "@/store";
 import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
 
-const ANGLES = ["front", "side", "back"] as const;
-type Angle = (typeof ANGLES)[number];
-
 const TIME_OF_DAY = ["morning", "midday", "evening"] as const;
 type TimeOfDay = (typeof TIME_OF_DAY)[number];
 
 type Props = {
   open: boolean;
   onClose: () => void;
-  /** No longer needed on the client — server resolves uid from the session. */
   userId?: string;
+  /** Pathname of the prior front photo so we can show it as a ghost overlay
+   *  in the preview, helping the user match pose/lighting/distance. */
+  priorPhotoId?: string | null;
   onCreated: () => void;
 };
 
 type Stage = "form" | "uploading" | "saving";
 
-export function ProgressPhotoModal({ open, onClose, onCreated }: Props) {
+// Hard-coded to "front". Daily-cadence progress photos work best when the
+// angle is invariant — the monthly compilation needs a single perspective
+// to read as continuous motion, not a slideshow of three views.
+const ANGLE = "front" as const;
+
+export function ProgressPhotoModal({ open, onClose, priorPhotoId, onCreated }: Props) {
   const bodyProfile = useStore((s) => s.settings.bodyProfile);
   const fileRef = React.useRef<HTMLInputElement>(null);
   const [file, setFile] = React.useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
 
-  const [angle, setAngle] = React.useState<Angle>("front");
   const [weightKg, setWeightKg] = React.useState("");
   const [timeOfDay, setTimeOfDay] = React.useState<TimeOfDay | "">("");
   const [fasted, setFasted] = React.useState(false);
-  const [hydrationState, setHydrationState] = React.useState<"low" | "normal" | "high" | "">("");
+  const [hydrationState, setHydrationState] =
+    React.useState<"low" | "normal" | "high" | "">("");
   const [lightingNotes, setLightingNotes] = React.useState("");
 
   const [stage, setStage] = React.useState<Stage>("form");
@@ -46,7 +50,6 @@ export function ProgressPhotoModal({ open, onClose, onCreated }: Props) {
     if (!open) return;
     setFile(null);
     setPreviewUrl(null);
-    setAngle("front");
     setWeightKg("");
     setTimeOfDay("");
     setFasted(false);
@@ -79,7 +82,7 @@ export function ProgressPhotoModal({ open, onClose, onCreated }: Props) {
     try {
       const fd = new FormData();
       fd.append("file", file);
-      fd.append("angle", angle);
+      fd.append("angle", ANGLE);
       const r = await fetch("/api/body/progress-photos/upload", {
         method: "POST",
         body: fd,
@@ -106,9 +109,6 @@ export function ProgressPhotoModal({ open, onClose, onCreated }: Props) {
     if (fasted) captureMeta.fasted = true;
     if (hydrationState) captureMeta.hydrationState = hydrationState;
     if (lightingNotes.trim()) captureMeta.lightingNotes = lightingNotes.trim();
-    // Persistent body-profile values get attached to every capture so the
-    // sidecar can scale silhouette pixels → cm without round-tripping back
-    // to the user table. height_cm is what unblocks the Navy formula.
     if (bodyProfile.heightCm) captureMeta.heightCm = bodyProfile.heightCm;
     if (bodyProfile.biologicalSex) captureMeta.sex = bodyProfile.biologicalSex;
 
@@ -119,7 +119,7 @@ export function ProgressPhotoModal({ open, onClose, onCreated }: Props) {
         body: JSON.stringify({
           blobUrl,
           blobPathname,
-          angle,
+          angle: ANGLE,
           capturedAt: new Date().toISOString(),
           captureMeta,
         }),
@@ -143,7 +143,8 @@ export function ProgressPhotoModal({ open, onClose, onCreated }: Props) {
     <Modal
       open={open}
       onClose={onClose}
-      title="New progress photo"
+      title="Daily progress photo"
+      description="Same mirror, same lighting, same time of day if you can. The monthly compilation will thank you."
       size="lg"
       footer={
         <div className="flex items-center justify-end gap-2">
@@ -158,27 +159,6 @@ export function ProgressPhotoModal({ open, onClose, onCreated }: Props) {
     >
       <div className="space-y-5">
         <div>
-          <div className="label mb-2">Angle</div>
-          <div className="grid grid-cols-3 gap-2">
-            {ANGLES.map((a) => (
-              <button
-                key={a}
-                type="button"
-                onClick={() => setAngle(a)}
-                className={cn(
-                  "py-2 rounded-lg text-sm capitalize border transition",
-                  a === angle
-                    ? "bg-[var(--color-accent)] text-white border-transparent"
-                    : "border-[var(--color-stroke)] text-[var(--color-fg-2)] hover:text-[var(--color-fg)]"
-                )}
-              >
-                {a}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div>
           <div className="label mb-2">Photo</div>
           <div
             className={cn(
@@ -188,12 +168,26 @@ export function ProgressPhotoModal({ open, onClose, onCreated }: Props) {
           >
             {previewUrl ? (
               <div className="space-y-3">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={previewUrl}
-                  alt="Attached"
-                  className="w-full rounded-lg max-h-72 object-contain bg-[var(--color-elevated)]"
-                />
+                {/* Stack: prior photo at low opacity, current photo on top.
+                 *  Helps the user spot pose/lighting/distance differences
+                 *  before committing the upload. */}
+                <div className="relative w-full rounded-lg overflow-hidden bg-[var(--color-elevated)]">
+                  {priorPhotoId && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={`/api/body/progress-photos/${priorPhotoId}/image`}
+                      alt=""
+                      aria-hidden="true"
+                      className="absolute inset-0 w-full h-full object-contain opacity-25 pointer-events-none"
+                    />
+                  )}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={previewUrl}
+                    alt="Selected photo"
+                    className="relative w-full max-h-[60dvh] object-contain"
+                  />
+                </div>
                 <Button
                   variant="secondary"
                   size="sm"
@@ -201,19 +195,41 @@ export function ProgressPhotoModal({ open, onClose, onCreated }: Props) {
                   disabled={busy}
                 >
                   <Camera size={12} />
-                  Replace
+                  Retake
                 </Button>
               </div>
             ) : (
-              <button
-                type="button"
-                onClick={() => fileRef.current?.click()}
-                disabled={busy}
-                className="w-full py-8 flex flex-col items-center justify-center gap-1 text-[var(--color-fg-3)] hover:text-[var(--color-fg-2)] transition"
-              >
-                <Camera size={22} />
-                <span className="text-xs">Attach image</span>
-              </button>
+              <div className="relative">
+                {priorPhotoId && (
+                  // Ghost reference while empty so the user knows the frame to
+                  // match before they even open the camera.
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={`/api/body/progress-photos/${priorPhotoId}/image`}
+                    alt=""
+                    aria-hidden="true"
+                    className="absolute inset-0 w-full h-full object-contain opacity-15 pointer-events-none rounded-lg"
+                  />
+                )}
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={busy}
+                  className={cn(
+                    "relative w-full py-12 flex flex-col items-center justify-center gap-2",
+                    "text-[var(--color-fg-2)]",
+                    "transition active:scale-[0.99]"
+                  )}
+                >
+                  <Camera size={26} />
+                  <span className="text-[13px] font-semibold">
+                    {priorPhotoId ? "Match the ghost, take photo" : "Take photo"}
+                  </span>
+                  <span className="text-[11px] text-[var(--color-fg-3)]">
+                    Camera opens · tap allow
+                  </span>
+                </button>
+              </div>
             )}
             <input
               ref={fileRef}
@@ -233,18 +249,19 @@ export function ProgressPhotoModal({ open, onClose, onCreated }: Props) {
         <details className="rounded-xl border border-[var(--color-stroke)] p-3">
           <summary className="cursor-pointer text-sm text-[var(--color-fg-2)]">
             Capture conditions{" "}
-            <span className="text-[var(--color-fg-3)]">(optional)</span>
+            <span className="text-[var(--color-fg-3)]">(optional, improves analysis)</span>
           </summary>
           <div className="mt-3 space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <div className="label mb-1">Weight (kg)</div>
+                <div className="label mb-1">Weight</div>
                 <Input
                   type="number"
                   inputMode="decimal"
+                  step="0.1"
                   value={weightKg}
                   onChange={(e) => setWeightKg(e.target.value)}
-                  placeholder="—"
+                  placeholder="kg"
                 />
               </div>
               <div>
@@ -252,7 +269,7 @@ export function ProgressPhotoModal({ open, onClose, onCreated }: Props) {
                 <select
                   value={timeOfDay}
                   onChange={(e) => setTimeOfDay(e.target.value as TimeOfDay | "")}
-                  className="w-full h-9 rounded-md border border-[var(--color-stroke)] bg-[var(--color-bg)] px-2 text-sm"
+                  className="control h-11 w-full text-[17px] px-3"
                 >
                   <option value="">—</option>
                   {TIME_OF_DAY.map((t) => (
@@ -264,44 +281,48 @@ export function ProgressPhotoModal({ open, onClose, onCreated }: Props) {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <label className="flex items-center gap-2 text-sm text-[var(--color-fg-2)]">
+              <div className="flex items-center gap-2 h-11 px-3 control">
                 <input
                   type="checkbox"
+                  id="fasted"
                   checked={fasted}
                   onChange={(e) => setFasted(e.target.checked)}
                 />
-                Fasted
-              </label>
+                <label htmlFor="fasted" className="text-[14px]">
+                  Fasted
+                </label>
+              </div>
               <div>
-                <div className="label mb-1">Hydration</div>
                 <select
                   value={hydrationState}
                   onChange={(e) =>
-                    setHydrationState(e.target.value as "low" | "normal" | "high" | "")
+                    setHydrationState(
+                      e.target.value as "low" | "normal" | "high" | ""
+                    )
                   }
-                  className="w-full h-9 rounded-md border border-[var(--color-stroke)] bg-[var(--color-bg)] px-2 text-sm"
+                  className="control h-11 w-full text-[17px] px-3"
                 >
-                  <option value="">—</option>
-                  <option value="low">low</option>
-                  <option value="normal">normal</option>
-                  <option value="high">high</option>
+                  <option value="">Hydration —</option>
+                  <option value="low">Low</option>
+                  <option value="normal">Normal</option>
+                  <option value="high">High</option>
                 </select>
               </div>
             </div>
             <div>
-              <div className="label mb-1">Lighting / notes</div>
+              <div className="label mb-1">Lighting notes</div>
               <Textarea
+                rows={2}
                 value={lightingNotes}
                 onChange={(e) => setLightingNotes(e.target.value)}
-                rows={2}
-                placeholder="e.g. bathroom overhead, same as last week"
+                placeholder="e.g. bathroom overhead, daylight from left"
               />
             </div>
           </div>
         </details>
 
         {error && (
-          <div className="rounded-lg border border-[var(--color-danger)]/35 bg-[var(--color-danger)]/10 p-3 text-xs text-[var(--color-danger)]">
+          <div className="rounded-lg bg-[color:color-mix(in_srgb,var(--color-danger)_12%,transparent)] border border-[color:color-mix(in_srgb,var(--color-danger)_35%,transparent)] px-3 py-2 text-[12px] text-[var(--color-danger)]">
             {error}
           </div>
         )}
