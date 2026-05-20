@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import useSWR from "swr";
-import { LogOut, Github, Loader2 } from "lucide-react";
+import { LogOut, CircleUserRound, Loader2 } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
@@ -57,7 +57,7 @@ export function AccountCard() {
               aria-hidden
               className="h-10 w-10 rounded-full grid place-items-center bg-[var(--color-elevated)] border border-[var(--color-stroke)] text-[var(--color-fg-2)] text-sm font-semibold"
             >
-              {initials || <Github size={16} />}
+              {initials || <CircleUserRound size={16} />}
             </div>
           )}
           <div className="min-w-0 flex-1">

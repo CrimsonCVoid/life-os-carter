@@ -11,7 +11,10 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   const date = req.nextUrl.searchParams.get("date");
-  return withUser((userId) =>
+  // Conditional returns either WorkoutRow | null (single date) or
+  // WorkoutRow[] (full list) — broaden so withUser's generic doesn't
+  // collapse them into one mismatched shape.
+  return withUser(async (userId): Promise<unknown> =>
     date ? getWorkoutForDate(userId, date) : listWorkouts(userId)
   );
 }

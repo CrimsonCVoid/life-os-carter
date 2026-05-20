@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Github } from "lucide-react";
+import { LogIn } from "lucide-react";
 import { auth, signIn } from "@/auth";
 
 export const metadata = {
@@ -38,7 +38,7 @@ export default async function SignInPage({
             type="submit"
             className="w-full h-12 rounded-xl bg-[var(--color-accent-strong)] text-white font-medium inline-flex items-center justify-center gap-2 shadow-[var(--shadow-glow)] active:scale-[0.98] transition"
           >
-            <Github size={18} />
+            <LogIn size={18} />
             Continue with GitHub
           </button>
         </form>
