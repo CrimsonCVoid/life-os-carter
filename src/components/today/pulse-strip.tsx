@@ -1,8 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Smile, Droplet, Scale, Zap } from "lucide-react";
-import { lastNDates, todayStr } from "@/lib/date";
+import { Smile, Droplet, Scale, Zap, HeartPulse } from "lucide-react";
+import { lastNDates, shiftDate, todayStr } from "@/lib/date";
 import { Sparkline } from "@/components/sparkline";
 import { useStore } from "@/store";
 import { cn, round1 } from "@/lib/utils";
@@ -10,15 +10,23 @@ import { haptic } from "@/lib/haptics";
 import { metricColors, type Metric as MetricKey } from "@/lib/metric-colors";
 import { MetricBar } from "@/components/ui/metric-bar";
 import { SyncedBadge } from "@/components/integrations/synced-badge";
-import { useMood, useWater, useWeight, useEnergy } from "@/lib/hooks/use-metrics";
+import {
+  useMood,
+  useWater,
+  useWeight,
+  useEnergy,
+  useRhrRange,
+  type RhrRangeRow,
+} from "@/lib/hooks/use-metrics";
 import { averageOfPeriodValues } from "@/store/selectors";
 import type { EnergyPeriod, GoogleHealthDaySource } from "@/lib/types";
 import { MoodLogModal } from "./log-modals/mood-modal";
 import { WaterLogModal } from "./log-modals/water-modal";
 import { WeightLogModal } from "./log-modals/weight-modal";
 import { EnergyLogModal } from "./log-modals/energy-modal";
+import { RhrDetailModal } from "./log-modals/rhr-detail-modal";
 
-type Metric = "mood" | "energy" | "water" | "weight";
+type Metric = "mood" | "energy" | "water" | "weight" | "rhr";
 
 export function PulseStrip() {
   const today = todayStr();
@@ -30,6 +38,17 @@ export function PulseStrip() {
   const { water: todayWater } = useWater(today);
   const { weight: todayWeight } = useWeight(today);
   const { energy: todayEnergyRows } = useEnergy(today);
+  // RHR data is sync-only; we pull the trailing 7 days in one request
+  // and read both today + the sparkline from this map.
+  const rhrRangeStart = React.useMemo(() => shiftDate(today, -6), [today]);
+  const rhrRange = useRhrRange(rhrRangeStart, today);
+  const rhrByDate = React.useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of (rhrRange.data ?? []) as RhrRangeRow[]) {
+      m.set(r.date, r.bpm);
+    }
+    return m;
+  }, [rhrRange.data]);
   const health = useStore((s) => s.health);
   const energyMap = useStore((s) => s.energy);
   const waterTarget = useStore((s) => s.settings.waterTargetOz);
@@ -48,6 +67,11 @@ export function PulseStrip() {
   }, [todayEnergyRows]);
 
   const get = (m: Metric, date: string): number | null => {
+    // RHR is fully Neon-sourced — both today and the trailing 6 days
+    // come from the same useRhrRange query.
+    if (m === "rhr") {
+      return rhrByDate.get(date) ?? null;
+    }
     // Today's values come from SWR; trailing 6 days still come from
     // Zustand (sparkline rendering only — no writes).
     if (date === today) {
@@ -76,6 +100,7 @@ export function PulseStrip() {
       case "weight":
         return h.weight ?? null;
     }
+    return null;
   };
 
   const sparkValues = (m: Metric) => dates.map((d) => get(m, d));
@@ -156,7 +181,7 @@ export function PulseStrip() {
       <div className="flex items-center justify-between mb-2 px-1">
         <h2 className="label">Daily Pulse</h2>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {tile(
           "mood",
           "Mood",
@@ -204,12 +229,30 @@ export function PulseStrip() {
           undefined,
           "weight"
         )}
+        {tile(
+          "rhr",
+          "Resting HR",
+          HeartPulse,
+          rhrByDate.get(today) != null ? (
+            <>
+              <span>{rhrByDate.get(today)}</span>
+              <span className="text-[11px] font-medium ml-0.5 text-[var(--color-fg-3)]">
+                bpm
+              </span>
+            </>
+          ) : (
+            "—"
+          ),
+          undefined,
+          "restingHeartRate"
+        )}
       </div>
 
       <MoodLogModal open={open === "mood"} onClose={() => setOpen(null)} />
       <EnergyLogModal open={open === "energy"} onClose={() => setOpen(null)} />
       <WaterLogModal open={open === "water"} onClose={() => setOpen(null)} />
       <WeightLogModal open={open === "weight"} onClose={() => setOpen(null)} />
+      <RhrDetailModal open={open === "rhr"} onClose={() => setOpen(null)} />
     </section>
   );
 }

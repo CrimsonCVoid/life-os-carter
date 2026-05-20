@@ -169,8 +169,45 @@ export function useHrvRange(start: string, end: string) {
   return useSWR<unknown[]>(rangeKeyFor("hrv", start, end));
 }
 export function useRhrRange(start: string, end: string) {
-  return useSWR<unknown[]>(rangeKeyFor("rhr", start, end));
+  return useSWR<RhrRangeRow[]>(rangeKeyFor("rhr", start, end));
 }
+export type RhrRangeRow = {
+  userId: string;
+  date: string;
+  bpm: number;
+  updatedAt: Date;
+};
+
+// ── RHR single-day ──────────────────────────────────────────────────────────
+export type RhrRow = RhrRangeRow | null;
+
+export function useRhr(date: string) {
+  const swr = useSWR<RhrRow>(keyFor("rhr", date));
+  return { rhr: swr.data ?? null, isLoading: swr.isLoading };
+}
+
+export async function setRhr(date: string, bpm: number) {
+  const key = keyFor("rhr", date);
+  await mutate<RhrRow>(
+    key,
+    () =>
+      ({
+        userId: "",
+        date,
+        bpm,
+        updatedAt: new Date(),
+      }) as RhrRangeRow,
+    { revalidate: false }
+  );
+  await fetch("/api/data/metrics/rhr", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ date, bpm }),
+  });
+  await mutate(key);
+  await mutate((k) => typeof k === "string" && k.startsWith("/api/data/metrics/rhr"));
+}
+
 export function useSleepRange(start: string, end: string) {
   return useSWR<unknown[]>(rangeKeyFor("sleep", start, end));
 }
