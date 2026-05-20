@@ -1,5 +1,5 @@
-// Life OS — basic offline shell service worker
-const CACHE = "life-os-v1";
+// Life OS — offline shell + Web Push handler
+const CACHE = "life-os-v2";
 const APP_SHELL = ["/"];
 
 self.addEventListener("install", (event) => {
@@ -56,5 +56,62 @@ self.addEventListener("fetch", (event) => {
         .catch(() => cached);
       return cached || fetchPromise;
     })
+  );
+});
+
+// ---------- Web Push ----------
+// iOS 16.4+ Safari, every Chromium-based browser, and Firefox all support
+// the Push API the same way: server sends a notification body, we render it
+// via showNotification().
+
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    payload = { title: "Life OS", body: event.data ? event.data.text() : "" };
+  }
+  const title = payload.title || "Life OS";
+  const options = {
+    body: payload.body || "",
+    icon: payload.icon || "/apple-icon",
+    badge: payload.badge || "/icon",
+    tag: payload.tag || undefined,
+    data: { url: payload.url || "/" },
+    // Vibrate (Android only; iOS gates this).
+    vibrate: [10, 30, 10],
+    // Keep iOS from auto-grouping too aggressively.
+    renotify: !!payload.tag,
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || "/";
+  event.waitUntil(
+    (async () => {
+      const clientsList = await self.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      });
+      // Prefer focusing an existing PWA window over opening a new one.
+      for (const c of clientsList) {
+        try {
+          const u = new URL(c.url);
+          if (u.origin === self.location.origin) {
+            await c.focus();
+            // Navigate the focused window to the target route.
+            if ("navigate" in c) {
+              await c.navigate(url);
+            }
+            return;
+          }
+        } catch {
+          /* ignore — bad URL */
+        }
+      }
+      await self.clients.openWindow(url);
+    })()
   );
 });

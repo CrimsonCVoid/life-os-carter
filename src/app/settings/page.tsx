@@ -12,6 +12,7 @@ import { Slider } from "@/components/ui/slider";
 import { ToggleRow } from "@/components/ui/toggle";
 import { ManageRecurringModal } from "@/components/today/recurring-manage-modal";
 import { GoogleHealthCard } from "@/components/settings/google-health-card";
+import { PushCard } from "@/components/settings/push-card";
 import { useStore } from "@/store";
 import { AccentColor } from "@/lib/types";
 import { haptic } from "@/lib/haptics";
@@ -290,6 +291,8 @@ export default function SettingsPage() {
       <React.Suspense fallback={null}>
         <GoogleHealthCard />
       </React.Suspense>
+
+      <PushCard />
 
       <Card>
         <CardHeader>
