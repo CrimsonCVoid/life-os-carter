@@ -37,6 +37,7 @@
     "recharts": "^3.8.1",
     "swr": "^2.3.0",
     "tailwind-merge": "^3.6.0",
+    "web-push": "^3.6.7",
     "zustand": "^5.0.13"
   },
   "devDependencies": {
@@ -44,6 +45,7 @@
     "@types/node": "^22.10.5",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "@types/web-push": "^3.6.4",
     "dotenv": "^16.4.7",
     "drizzle-kit": "^0.30.1",
     "tailwindcss": "^4.3.0",

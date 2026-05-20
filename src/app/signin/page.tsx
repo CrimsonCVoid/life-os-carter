@@ -42,7 +42,7 @@ export default async function SignInPage({
               OAuth not configured on this deployment.
             </div>
             <div className="mt-1 text-[var(--color-fg-2)]">
-              The following env var{config.missing.length === 1 ? "" : "s"} resolved to empty at runtime:
+              These env var{config.missing.length === 1 ? "" : "s"} resolved to empty at runtime:
             </div>
             <ul className="mt-2 space-y-1 text-[var(--color-fg)]">
               {config.missing.map((m) => (
@@ -53,8 +53,29 @@ export default async function SignInPage({
                 </li>
               ))}
             </ul>
-            <p className="mt-3 text-[var(--color-fg-3)] text-[11px]">
-              Set them in Vercel → Project Settings → Environment Variables, with the Production environment box checked, then redeploy.
+
+            <div className="mt-4 pt-3 border-t border-[color:color-mix(in_srgb,var(--color-warning)_25%,transparent)] text-[var(--color-fg-2)]">
+              Auth-related env keys Vercel DID inject on this deployment:
+            </div>
+            {config.authEnvKeysPresent.length === 0 ? (
+              <p className="mt-2 text-[var(--color-fg-3)] text-[11px]">
+                None. This means the env vars aren&rsquo;t set on the Production
+                scope at all — not a typo, not a wrong-environment problem.
+              </p>
+            ) : (
+              <ul className="mt-2 space-y-1 text-[var(--color-fg)]">
+                {config.authEnvKeysPresent.map((k) => (
+                  <li key={k}>
+                    <code className="text-[11px] bg-[var(--color-elevated)] px-1.5 py-0.5 rounded">
+                      {k}
+                    </code>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <p className="mt-4 text-[var(--color-fg-3)] text-[11px]">
+              Set them in Vercel → Project Settings → Environment Variables with the Production box checked, then click Redeploy on the latest deployment (env changes don&rsquo;t auto-rebuild).
             </p>
           </div>
         )}

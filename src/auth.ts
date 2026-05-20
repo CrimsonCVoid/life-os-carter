@@ -66,7 +66,15 @@ const authSecret =
 export type AuthConfigCheck = {
   ready: boolean;
   missing: string[];
+  /**
+   * Names of env vars Vercel actually injected at runtime that look
+   * auth-related. Helps spot typos (GITHUB_CLIENTID vs GITHUB_CLIENT_ID),
+   * wrong-environment scoping, or missed redeploys.
+   * Keys only — never values.
+   */
+  authEnvKeysPresent: string[];
 };
+
 export function checkAuthConfig(): AuthConfigCheck {
   const missing: string[] = [];
   if (!githubClientId) {
@@ -76,7 +84,24 @@ export function checkAuthConfig(): AuthConfigCheck {
     missing.push("AUTH_GITHUB_SECRET / GITHUB_SECRET / GITHUB_CLIENT_SECRET");
   }
   if (!authSecret) missing.push("AUTH_SECRET / NEXTAUTH_SECRET");
-  return { ready: missing.length === 0, missing };
+
+  const authEnvKeysPresent = Object.keys(process.env)
+    .filter((k) => /^(AUTH_|NEXTAUTH_|GITHUB_|VERCEL_GIT_)/.test(k))
+    .filter((k) => {
+      const v = process.env[k];
+      return typeof v === "string" && v.length > 0;
+    })
+    // Drop the noise from VERCEL_GIT_ keys that aren't actionable —
+    // we include them in the regex above only so the user sees this
+    // really is the Vercel runtime, not some other env.
+    .filter((k) => !k.startsWith("VERCEL_GIT_"))
+    .sort();
+
+  return {
+    ready: missing.length === 0,
+    missing,
+    authEnvKeysPresent,
+  };
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
