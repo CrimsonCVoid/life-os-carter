@@ -30,6 +30,10 @@ export function VitalsTier() {
       </div>
       <div
         className="flex gap-3 overflow-x-auto hide-scroll snap-x snap-mandatory -mx-4 px-4 pb-1 sm:overflow-visible sm:px-0 sm:mx-0 sm:gap-4"
+        // touch-action: pan-x isolates horizontal pans so vertical
+        // scroll on the page never gets trapped inside the row. The
+        // page parent uses pan-y for the inverse — see app/page.tsx.
+        style={{ touchAction: "pan-x" }}
       >
         <StepsTile onActivate={() => setOpen("steps")} />
         <HrvTile onActivate={() => setOpen("hrv")} />

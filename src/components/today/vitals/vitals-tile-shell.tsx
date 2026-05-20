@@ -48,10 +48,16 @@ export function VitalsTileShell({
       onClick={interactive ? onActivate : undefined}
       aria-label={ariaLabel}
       className={cn(
-        "vitals-tile group snap-start shrink-0 relative text-left",
-        "w-[85vw] sm:w-auto sm:flex-1",
-        "aspect-[4/5] sm:aspect-auto sm:min-h-[260px]",
-        "px-5 pt-5 pb-4 flex flex-col",
+        "vitals-tile group snap-start shrink-0 relative text-center",
+        // Width: ~78% of viewport on mobile so two tiles + a peek
+        // sliver are visible at once and the snap rhythm reads. On
+        // sm+ they share a row equally.
+        "w-[78vw] sm:w-auto sm:flex-1",
+        // Height: capped at ~62vw on mobile (≈233px on a 375 phone)
+        // with a 220px floor so empty states don't shrink awkwardly.
+        // Desktop drops the cap entirely.
+        "min-h-[220px] max-h-[62vw] sm:max-h-none sm:min-h-[260px]",
+        "px-4 pt-4 pb-4 flex flex-col",
         interactive && "card-hover"
       )}
     >
@@ -74,12 +80,15 @@ export function VitalsTileShell({
         )}
       </div>
 
-      <div className="flex-1 mt-3 flex flex-col items-start justify-center">
+      {/* Hero content sits center-stage; per-tile components render
+       *  number/ring/mini-trend here. Children own their own vertical
+       *  margins so we don't double-space via parent gap. */}
+      <div className="flex-1 mt-2 flex flex-col items-center justify-center">
         {children}
       </div>
 
       {secondary && !empty && (
-        <div className="mt-3 text-[12px] text-[var(--color-fg-2)] min-h-[1em]">
+        <div className="mt-2 text-[12px] text-[var(--color-fg-2)] min-h-[1em]">
           {secondary}
         </div>
       )}
@@ -88,7 +97,7 @@ export function VitalsTileShell({
         <Link
           href={connectHref}
           onClick={(e) => e.stopPropagation()}
-          className="mt-3 text-[11px] uppercase tracking-[0.14em] text-[var(--color-fg-3)] hover:text-[var(--color-fg-2)] inline-flex items-center gap-1.5 self-start"
+          className="mt-3 mx-auto text-[11px] uppercase tracking-[0.14em] inline-flex items-center gap-1.5"
           style={{ color: accent }}
         >
           <Link2 size={11} />
