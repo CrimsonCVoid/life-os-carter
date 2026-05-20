@@ -2,12 +2,17 @@
 
 import * as React from "react";
 import { Sparkles } from "lucide-react";
+import { clearBadge, setBadge } from "@/lib/app-badge";
 
 type Briefing = {
   headline: string;
   observations: string[];
   generatedAt: string;
 };
+
+// localStorage key to track whether this briefing has been seen (per-day).
+// Avoids re-badging the icon every time the user reopens the app today.
+const SEEN_KEY = "life-os:briefing-seen-date";
 
 export function DailyBriefingCard() {
   const [briefing, setBriefing] = React.useState<Briefing | null>(null);
@@ -19,8 +24,15 @@ export function DailyBriefingCard() {
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
         if (!alive) return;
-        setBriefing(j?.briefing ?? null);
+        const b = (j?.briefing ?? null) as Briefing | null;
+        setBriefing(b);
         setLoaded(true);
+        // Badge the icon if this briefing hasn't been seen today.
+        if (b) {
+          const today = b.generatedAt.slice(0, 10);
+          const seen = window.localStorage.getItem(SEEN_KEY);
+          if (seen !== today) void setBadge(1);
+        }
       })
       .catch(() => {
         if (!alive) return;
@@ -30,6 +42,18 @@ export function DailyBriefingCard() {
       alive = false;
     };
   }, []);
+
+  // Mark seen + clear badge when the card actually renders for the user.
+  // Using a separate effect so we mark AFTER the briefing is in state and
+  // visible — not just because the request completed.
+  React.useEffect(() => {
+    if (!briefing) return;
+    const today = briefing.generatedAt.slice(0, 10);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(SEEN_KEY, today);
+    }
+    void clearBadge();
+  }, [briefing]);
 
   if (!loaded || !briefing) return null;
 
