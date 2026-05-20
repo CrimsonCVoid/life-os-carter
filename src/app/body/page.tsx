@@ -18,6 +18,8 @@ import { haptic } from "@/lib/haptics";
 import { compressImage, deletePhoto, getPhoto, putPhoto } from "@/lib/photo-store";
 import { DailyWeightCard } from "@/components/body/daily-weight-card";
 import { PhotoSessionsCard } from "@/components/body/photo-sessions-card";
+import { DailyWeightNudge } from "@/components/body/daily-weight-nudge";
+import { PhotoDayBanner } from "@/components/body/photo-day-banner";
 
 export default function BodyPage() {
   const body = useBodyRaw();
@@ -35,6 +37,12 @@ export default function BodyPage() {
 
   return (
     <Screen title="Body" subtitle="Weight, notes, photos — one entry at a time.">
+      {/* Reminders render only when relevant: PhotoDayBanner self-hides
+       *  off-window or once the session exists; DailyWeightNudge hides
+       *  once today's weight is logged. */}
+      <PhotoDayBanner placement="body" />
+      <DailyWeightNudge tone="strong" />
+
       {/* Daily weight + rolling-average trend (per-day singletons in
        *  weight_logs). The richer measurement+notes+photo entries below
        *  remain on the Zustand body-measurements path. */}

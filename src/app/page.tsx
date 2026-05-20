@@ -18,6 +18,7 @@ import { maybeAutoSync } from "@/lib/integrations/google-health/sync-client";
 import { VitalsTier } from "@/components/today/vitals";
 import { CardioLoadCard } from "@/components/today/cardio-load/cardio-load-card";
 import { PeakStateHero } from "@/components/today/peak-state/peak-state-hero";
+import { PhotoDayBanner } from "@/components/body/photo-day-banner";
 import { PullToRefresh } from "@/components/pull-to-refresh";
 import { mutate as swrMutate } from "swr";
 
@@ -82,6 +83,7 @@ function DaySurface() {
         style={{ touchAction: "pan-y" }}
       >
         <Screen>
+          {!isFuture && <PhotoDayBanner placement="today" />}
           {!isFuture && <PeakStateHero />}
           {!isFuture && <VitalsTier />}
           {!isFuture && <CardioLoadCard />}
