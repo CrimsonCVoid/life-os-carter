@@ -175,6 +175,19 @@ export async function setRestingHeartRate(
     });
 }
 
+export async function getRestingHeartRate(userId: string, date: string) {
+  const [row] = await db
+    .select()
+    .from(restingHeartRateLogs)
+    .where(
+      and(
+        eq(restingHeartRateLogs.userId, userId),
+        eq(restingHeartRateLogs.date, date)
+      )
+    );
+  return row ?? null;
+}
+
 export type SleepStagesInput = {
   lightMin?: number;
   deepMin?: number;
