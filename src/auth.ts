@@ -41,12 +41,33 @@ declare module "next-auth" {
  * fallbacks so existing GITHUB_ID / GITHUB_SECRET / NEXTAUTH_SECRET
  * vars in Vercel continue to work — no rename required.
  */
+// Use `||` (not `??`) so an empty-string env value also falls through —
+// Vercel sometimes injects "" for un-checked-for-environment vars.
 const githubClientId =
-  process.env.AUTH_GITHUB_ID ?? process.env.GITHUB_ID;
+  process.env.AUTH_GITHUB_ID || process.env.GITHUB_ID;
 const githubClientSecret =
-  process.env.AUTH_GITHUB_SECRET ?? process.env.GITHUB_SECRET;
+  process.env.AUTH_GITHUB_SECRET || process.env.GITHUB_SECRET;
 const authSecret =
-  process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
+  process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
+
+/**
+ * Server-side readiness check for the signin page. Returns the list of
+ * required env vars (by either v5 or v4 name) that are missing on this
+ * deployment. The signin page calls this before rendering the button
+ * so we never redirect to github.com with an undefined client_id —
+ * which GitHub serves as a 404.
+ */
+export type AuthConfigCheck = {
+  ready: boolean;
+  missing: string[];
+};
+export function checkAuthConfig(): AuthConfigCheck {
+  const missing: string[] = [];
+  if (!githubClientId) missing.push("AUTH_GITHUB_ID or GITHUB_ID");
+  if (!githubClientSecret) missing.push("AUTH_GITHUB_SECRET or GITHUB_SECRET");
+  if (!authSecret) missing.push("AUTH_SECRET or NEXTAUTH_SECRET");
+  return { ready: missing.length === 0, missing };
+}
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: DrizzleAdapter(db, {

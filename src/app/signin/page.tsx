@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { AlertTriangle } from "lucide-react";
+import { auth, checkAuthConfig } from "@/auth";
 import { SignInButton } from "@/components/sign-in-button";
 
 export const metadata = {
@@ -17,6 +18,7 @@ export default async function SignInPage({
     redirect(params.callbackUrl || "/");
   }
   const callbackUrl = params.callbackUrl || "/";
+  const config = checkAuthConfig();
 
   return (
     <main className="min-h-dvh grid place-items-center px-6 py-12">
@@ -28,7 +30,34 @@ export default async function SignInPage({
           </p>
         </div>
 
-        <SignInButton callbackUrl={callbackUrl} />
+        {config.ready ? (
+          <SignInButton callbackUrl={callbackUrl} />
+        ) : (
+          <div
+            role="alert"
+            className="rounded-xl border border-[color:color-mix(in_srgb,var(--color-warning)_40%,transparent)] bg-[color:color-mix(in_srgb,var(--color-warning)_10%,transparent)] p-4 text-[12px] text-[var(--color-warning)]"
+          >
+            <div className="inline-flex items-center gap-1.5 font-semibold">
+              <AlertTriangle size={13} />
+              OAuth not configured on this deployment.
+            </div>
+            <div className="mt-1 text-[var(--color-fg-2)]">
+              The following env var{config.missing.length === 1 ? "" : "s"} resolved to empty at runtime:
+            </div>
+            <ul className="mt-2 space-y-1 text-[var(--color-fg)]">
+              {config.missing.map((m) => (
+                <li key={m}>
+                  <code className="text-[11px] bg-[var(--color-elevated)] px-1.5 py-0.5 rounded">
+                    {m}
+                  </code>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-3 text-[var(--color-fg-3)] text-[11px]">
+              Set them in Vercel → Project Settings → Environment Variables, with the Production environment box checked, then redeploy.
+            </p>
+          </div>
+        )}
 
         <div className="mt-8 rounded-xl border border-[var(--color-stroke)] bg-[var(--color-elevated)] p-4 text-[12px] text-[var(--color-fg-2)] space-y-1.5">
           <p className="font-medium text-[var(--color-fg)]">
