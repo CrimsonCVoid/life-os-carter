@@ -1,5 +1,11 @@
-// Life OS — basic offline shell service worker
-const CACHE = "life-os-v1";
+// Life OS — basic offline shell service worker.
+//
+// Bump CACHE when the request flow changes — the `activate` handler
+// deletes every cache name that isn't the current one, so the next
+// request after the new SW installs gets fresh assets across the board.
+// (v1 → v2 bump: previously-cached chunks on desktop browsers were
+//  pinning the broken sign-in JS even after the fix shipped.)
+const CACHE = "life-os-v2";
 const APP_SHELL = ["/"];
 
 self.addEventListener("install", (event) => {
@@ -25,6 +31,17 @@ self.addEventListener("fetch", (event) => {
 
   // never cache API routes or Next data fetches
   if (url.pathname.startsWith("/api/") || url.pathname.includes("/_next/data/")) {
+    return;
+  }
+
+  // Sign-in surface must always go to the network — a stale cached page
+  // pins the previous build's chunk hashes, which is how desktop users
+  // ended up stuck on the broken click handler after the deploy fixed it.
+  if (
+    url.pathname === "/signin" ||
+    url.pathname.startsWith("/signin/") ||
+    url.pathname.startsWith("/api/auth/")
+  ) {
     return;
   }
 
