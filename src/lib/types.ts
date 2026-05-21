@@ -145,6 +145,66 @@ export type LiftSession = {
 };
 
 /**
+ * Saved workout template — e.g. "Push Day", "Pull Day", "Legs". Each
+ * template seeds an active workout with a pre-loaded exercise list.
+ * The user logs sets against those exercises as they go.
+ */
+export type WorkoutTemplate = {
+  id: string;
+  name: string;
+  /** Optional emoji for the home tile. */
+  icon?: string;
+  /** Ordered list of exercise names that the active workout pre-fills with. */
+  exercises: string[];
+  createdAt: string;
+};
+
+export const DEFAULT_WORKOUT_TEMPLATES: WorkoutTemplate[] = [
+  {
+    id: "tpl-push",
+    name: "Push Day",
+    icon: "💪",
+    exercises: [
+      "Bench press",
+      "Overhead press",
+      "Incline dumbbell press",
+      "Cable fly",
+      "Tricep pushdown",
+      "Lateral raise",
+    ],
+    createdAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    id: "tpl-pull",
+    name: "Pull Day",
+    icon: "🪢",
+    exercises: [
+      "Deadlift",
+      "Pull-up",
+      "Barbell row",
+      "Lat pulldown",
+      "Face pull",
+      "Barbell curl",
+    ],
+    createdAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    id: "tpl-legs",
+    name: "Legs",
+    icon: "🦵",
+    exercises: [
+      "Back squat",
+      "Romanian deadlift",
+      "Leg press",
+      "Walking lunge",
+      "Leg curl",
+      "Calf raise",
+    ],
+    createdAt: "2026-01-01T00:00:00.000Z",
+  },
+];
+
+/**
  * Live workout in progress. There's only ever one of these at a time per
  * user; on End, it's converted into a LiftSession and cleared. The state
  * persists across reloads (localStorage + cloud sync) so closing the PWA

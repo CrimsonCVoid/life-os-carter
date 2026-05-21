@@ -10,6 +10,7 @@ import { ServiceWorkerRegister } from "@/components/sw-register";
 import { CloudSyncMount } from "@/components/cloud-sync-mount";
 import { ActiveWorkoutBanner } from "@/components/workout/active-workout-banner";
 import { QuickActionRouter } from "@/components/quick-action-router";
+import { QuickCaptureFab } from "@/components/quick-capture-fab";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -70,6 +71,7 @@ export default function RootLayout({
           <BottomNav />
           <Overseer />
           <ActiveWorkoutBanner />
+          <QuickCaptureFab />
           {/* Suspense around the search-params-reading router so it doesn't
            * blow up the static render path. */}
           <React.Suspense fallback={null}>

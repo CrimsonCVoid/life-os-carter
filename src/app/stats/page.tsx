@@ -4,6 +4,7 @@ import * as React from "react";
 import { Screen } from "@/components/screen";
 import { Segmented } from "@/components/ui/segmented";
 import { Heatmap } from "@/components/stats/heatmap";
+import { WeekViewCard } from "@/components/stats/week-view-card";
 import {
   MoodEnergyChart,
   SleepChart,
@@ -42,6 +43,7 @@ export default function StatsPage() {
           size="sm"
         />
       </div>
+      <WeekViewCard />
       <Heatmap days={Math.min(days, 90)} />
       <TimeSpentCard days={days} />
       <RecurringGoalsCard days={days} />

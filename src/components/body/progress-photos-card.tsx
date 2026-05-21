@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { ProgressPhotoModal } from "./progress-photo-modal";
 import { MonthVideoModal } from "./month-video-modal";
+import { PhotoTimelineScrubber } from "./photo-timeline-scrubber";
 import {
   useProgressPhotos,
   type ProgressPhoto,
@@ -165,6 +166,8 @@ export function ProgressPhotosCard({ userId }: Props) {
               />
             </div>
           </div>
+
+          {photos.length >= 2 && <PhotoTimelineScrubber photos={photos} />}
 
           {photosThisMonth.length >= 2 && (
             <Button

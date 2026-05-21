@@ -118,6 +118,7 @@ export default function GymPage() {
       subtitle="Type + duration + sets, all on one screen. Paste from RepCount."
     >
       <StartWorkoutCTA />
+      <WorkoutTemplatesRow />
       <Button onClick={() => setPasteOpen(true)} className="w-full" size="lg" variant="secondary">
         <Plus size={16} />
         Log past session
@@ -721,6 +722,53 @@ Logged using RepCount`}
         )}
       </div>
     </Modal>
+  );
+}
+
+function WorkoutTemplatesRow() {
+  const templates = useStore((s) => s.workoutTemplates);
+  const active = useStore((s) => s.activeWorkout);
+  const startFromTemplate = useStore((s) => s.startWorkoutFromTemplate);
+  const [sheetOpenFor, setSheetOpenFor] = React.useState<string | null>(null);
+
+  // Hide the template row once a workout is in flight — they can't double-start.
+  if (active) return null;
+  if (templates.length === 0) return null;
+
+  return (
+    <>
+      <div className="space-y-2">
+        <div className="label">Templates</div>
+        <div className="grid grid-cols-3 gap-2">
+          {templates.slice(0, 3).map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => {
+                haptic("tap");
+                startFromTemplate(t.id);
+                setSheetOpenFor(t.id);
+              }}
+              className={cn(
+                "rounded-xl border border-[var(--color-stroke)] bg-[var(--color-card)]",
+                "p-2.5 text-left active:scale-[0.98]",
+                "transition-transform duration-[80ms] ease-out"
+              )}
+            >
+              <div className="text-[20px] leading-none">{t.icon ?? "🏋️"}</div>
+              <div className="mt-1.5 text-[13px] font-semibold truncate">{t.name}</div>
+              <div className="text-[10px] text-[var(--color-fg-3)] tnum">
+                {t.exercises.length} ex
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+      <ActiveWorkoutSheet
+        open={sheetOpenFor !== null}
+        onClose={() => setSheetOpenFor(null)}
+      />
+    </>
   );
 }
 

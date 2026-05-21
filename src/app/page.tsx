@@ -8,6 +8,7 @@ import { SleepCard } from "@/components/today/sleep-card";
 import { MorningBriefing } from "@/components/today/morning-briefing";
 import { DailyBriefingCard } from "@/components/today/daily-briefing-card";
 import { QuickLogTiles } from "@/components/today/quick-log-tiles";
+import { ActivityRings } from "@/components/today/activity-rings";
 import { MorningRoutine } from "@/components/today/morning-routine";
 import { EveningRoutine } from "@/components/today/evening-routine";
 import { Goals } from "@/components/today/goals";
@@ -68,6 +69,7 @@ function DaySurface() {
       <Screen>
         {!isFuture && <VitalsTier />}
         {!isFuture && <DailyBriefingCard />}
+        {!isFuture && <ActivityRings />}
         {!isFuture && <QuickLogTiles />}
         <MorningBriefing />
         <TodayHeader />

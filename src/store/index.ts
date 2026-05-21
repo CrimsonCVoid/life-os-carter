@@ -50,7 +50,9 @@ import {
   DayNavigationSettings,
   InsightsSettings,
   ActiveWorkoutSession,
+  DEFAULT_WORKOUT_TEMPLATES,
   LiftSession,
+  WorkoutTemplate,
   RecurringGoal,
   RecurringGoalGeneration,
   SavedMeal,
@@ -96,6 +98,7 @@ type State = {
   recurringGenerations: RecurringGoalGeneration[];
   liftSessions: LiftSession[];
   activeWorkout: ActiveWorkoutSession | null;
+  workoutTemplates: WorkoutTemplate[];
   cachedPatterns?: CachedPatterns;
   dismissedPatterns: DismissedPattern[];
   weeklyReviews: WeeklyReviewData[];
@@ -234,6 +237,12 @@ type Actions = {
   addLiftSession: (session: LiftSession) => void;
   removeLiftSession: (id: string) => void;
   updateLiftSession: (id: string, patch: Partial<LiftSession>) => void;
+
+  // Workout templates
+  addWorkoutTemplate: (t: Omit<WorkoutTemplate, "id" | "createdAt">) => void;
+  updateWorkoutTemplate: (id: string, patch: Partial<WorkoutTemplate>) => void;
+  removeWorkoutTemplate: (id: string) => void;
+  startWorkoutFromTemplate: (templateId: string) => void;
 
   // Active workout (live session)
   startActiveWorkout: (workoutType?: string) => void;
@@ -379,6 +388,7 @@ const initialState: State = {
   recurringGenerations: [],
   liftSessions: [],
   activeWorkout: null,
+  workoutTemplates: DEFAULT_WORKOUT_TEMPLATES.map((t) => ({ ...t })),
   cachedPatterns: undefined,
   dismissedPatterns: [],
   weeklyReviews: [],
@@ -1126,6 +1136,43 @@ export const useStore = create<State & Actions>()(
           ),
         })),
 
+      addWorkoutTemplate: (t) =>
+        set((s) => ({
+          workoutTemplates: [
+            ...s.workoutTemplates,
+            { ...t, id: uid(), createdAt: new Date().toISOString() },
+          ],
+        })),
+      updateWorkoutTemplate: (id, patch) =>
+        set((s) => ({
+          workoutTemplates: s.workoutTemplates.map((t) =>
+            t.id === id ? { ...t, ...patch } : t
+          ),
+        })),
+      removeWorkoutTemplate: (id) =>
+        set((s) => ({
+          workoutTemplates: s.workoutTemplates.filter((t) => t.id !== id),
+        })),
+      startWorkoutFromTemplate: (templateId) =>
+        set((s) => {
+          if (s.activeWorkout) return s; // existing session wins
+          const tpl = s.workoutTemplates.find((t) => t.id === templateId);
+          if (!tpl) return s;
+          return {
+            activeWorkout: {
+              id: uid(),
+              startedAt: new Date().toISOString(),
+              exercises: tpl.exercises.map((name) => ({
+                id: uid(),
+                name,
+                normalizedName: name.trim().toLowerCase(),
+                sets: [],
+              })),
+              workoutType: tpl.name,
+            },
+          };
+        }),
+
       startActiveWorkout: (workoutType) =>
         set((s) => {
           // If one's already running, no-op — caller decides whether to
@@ -1676,6 +1723,7 @@ export const useStore = create<State & Actions>()(
           liftSessions: p.liftSessions ?? current.liftSessions,
           activeWorkout:
             "activeWorkout" in p ? p.activeWorkout ?? null : current.activeWorkout,
+          workoutTemplates: p.workoutTemplates ?? current.workoutTemplates,
           cachedPatterns: p.cachedPatterns ?? current.cachedPatterns,
           dismissedPatterns:
             p.dismissedPatterns ?? current.dismissedPatterns,
