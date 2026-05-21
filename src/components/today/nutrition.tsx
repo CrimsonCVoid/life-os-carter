@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { motion } from "motion/react";
-import { Camera, Plus, Trash2, Utensils, X } from "lucide-react";
+import { Camera, Plus, ScanBarcode, Trash2, Utensils, X } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { useSelectedDate } from "./day-context";
 import { haptic } from "@/lib/haptics";
 import { PhotoFoodModal } from "./photo-food-modal";
+import { BarcodeScanModal } from "./barcode-scan-modal";
 import { getMealPhoto } from "@/lib/meal-photo-store";
 import { metricColors } from "@/lib/metric-colors";
 import { MetricBar } from "@/components/ui/metric-bar";
@@ -42,6 +43,7 @@ export function Nutrition() {
   const [editing, setEditing] = React.useState<Meal | null>(null);
   const [targetsOpen, setTargetsOpen] = React.useState(false);
   const [photoOpen, setPhotoOpen] = React.useState(false);
+  const [scanOpen, setScanOpen] = React.useState(false);
   const photoFoodSettings = useStore((s) => s.settings.photoFood);
   const setPhotoFoodSettings = useStore((s) => s.setPhotoFoodSettings);
 
@@ -72,6 +74,15 @@ export function Nutrition() {
           >
             <Camera size={12} />
             Photo
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setScanOpen(true)}
+            title="Scan a packaged food barcode"
+          >
+            <ScanBarcode size={12} />
+            Scan
           </Button>
           <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>
             <Plus size={12} />
@@ -261,6 +272,12 @@ export function Nutrition() {
       <PhotoFoodModal
         open={photoOpen}
         onClose={() => setPhotoOpen(false)}
+      />
+      <BarcodeScanModal
+        open={scanOpen}
+        onClose={() => setScanOpen(false)}
+        onFallbackManual={() => setOpen(true)}
+        onFallbackPhoto={() => setPhotoOpen(true)}
       />
     </Card>
   );
