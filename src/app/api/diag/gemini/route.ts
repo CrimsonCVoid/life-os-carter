@@ -33,12 +33,29 @@ export async function GET(req: Request) {
 
   const presentEnvVars = GEMINI_KEY_NAMES.filter((n) => !!process.env[n]);
   const apiKey = resolveGeminiApiKey();
+
+  // Sanity probes for "are runtime envs reaching this function at all".
+  const allKeys = Object.keys(process.env);
+  const envTotal = allKeys.length;
+  const looksLikeGemini = allKeys.filter((k) =>
+    /gemini|google|genai/i.test(k)
+  );
+  const sanity = {
+    databaseUrlPresent: !!process.env.DATABASE_URL,
+    cronSecretPresent: !!process.env.CRON_SECRET,
+    vercelEnv: process.env.VERCEL_ENV ?? null,
+    region: process.env.VERCEL_REGION ?? null,
+  };
+
   const base: Record<string, unknown> = {
     presentEnvVars,
     keyResolved: !!apiKey,
     keyLength: apiKey?.length ?? 0,
     keyPrefix: apiKey ? `${apiKey.slice(0, 8)}…${apiKey.slice(-4)}` : null,
     model: "gemini-2.5-flash",
+    envTotal,
+    looksLikeGemini,
+    sanity,
   };
 
   if (!apiKey) {
