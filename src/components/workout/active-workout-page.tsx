@@ -34,6 +34,8 @@ import {
   formatDaysAgo,
   type ExerciseLastSession,
 } from "@/lib/workout-history";
+import { computeReadiness } from "@/lib/readiness";
+import { todayStr } from "@/lib/date";
 
 import { Button } from "@/components/ui/button";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
@@ -168,6 +170,9 @@ export function ActiveWorkoutPage({ open, onClose }: Props) {
               onFinish={handleFinish}
             />
 
+            <ReadinessChip />
+
+
             <StatsStrip
               sets={completedSets}
               volume={totalVolume}
@@ -178,109 +183,126 @@ export function ActiveWorkoutPage({ open, onClose }: Props) {
               {active.exercises.length === 0 ? (
                 <EmptyState onAdd={() => setPickerOpen(true)} />
               ) : (
-                active.exercises.map((ex, idx, arr) => {
-                  const prev = idx > 0 ? arr[idx - 1] : undefined;
-                  const next = idx < arr.length - 1 ? arr[idx + 1] : undefined;
-                  const inSuperset = !!ex.supersetGroupId;
-                  const groupFirst =
-                    inSuperset &&
-                    (!prev || prev.supersetGroupId !== ex.supersetGroupId);
-                  const groupLast =
-                    inSuperset &&
-                    (!next || next.supersetGroupId !== ex.supersetGroupId);
+                computeRenderGroups(active.exercises).map((group) => {
+                  const renderCard = (
+                    ex: LiftExercise,
+                    opts: {
+                      variant: "standalone" | "in-superset";
+                      supersetLetter?: string;
+                      indexInGroup?: number;
+                      isLastInGroup?: boolean;
+                    }
+                  ) => {
+                    const arr = active.exercises;
+                    const idx = arr.findIndex((e) => e.id === ex.id);
+                    const prev = idx > 0 ? arr[idx - 1] : undefined;
+                    const next = idx < arr.length - 1 ? arr[idx + 1] : undefined;
+                    return (
+                      <ExerciseCard
+                        key={ex.id}
+                        exercise={ex}
+                        lastSession={findLastSessionFor(liftSessions, ex.name)}
+                        variant={opts.variant}
+                        supersetLetter={opts.supersetLetter}
+                        indexInGroup={opts.indexInGroup}
+                        isLastInGroup={opts.isLastInGroup}
+                        prevExercise={prev}
+                        nextExercise={next}
+                        onAddSet={(isDrop) => {
+                          const completedSets = ex.sets.filter(
+                            (s) => s.completed !== false
+                          );
+                          const lastCompleted = completedSets[completedSets.length - 1];
+                          const last = lastCompleted ?? ex.sets[ex.sets.length - 1];
+                          const hist = findLastSessionFor(liftSessions, ex.name);
+                          let seedWeight =
+                            last?.weight ?? hist?.topSet?.weight ?? 45;
+                          const seedReps = last?.reps ?? hist?.topSet?.reps ?? 8;
+                          if (isDrop && seedWeight > 0) {
+                            seedWeight = Math.round((seedWeight * 0.8) / 5) * 5;
+                          }
+                          addSet(ex.name, seedWeight, seedReps, {
+                            completed: false,
+                          });
+                          if (isDrop) {
+                            const targetOrder = ex.sets.length + 1;
+                            window.setTimeout(() => {
+                              updateSet(ex.id, targetOrder, { isDropSet: true });
+                            }, 0);
+                          }
+                          haptic("tap");
+                        }}
+                        onTapWeight={(order, current) =>
+                          setKeypad({
+                            exerciseId: ex.id,
+                            exerciseName: ex.name,
+                            order,
+                            field: "weight",
+                            initialValue: current,
+                          })
+                        }
+                        onTapReps={(order, current) =>
+                          setKeypad({
+                            exerciseId: ex.id,
+                            exerciseName: ex.name,
+                            order,
+                            field: "reps",
+                            initialValue: current,
+                          })
+                        }
+                        onTapPlate={(weight) => {
+                          setPlateOpen({ totalWeight: weight });
+                          haptic("soft");
+                        }}
+                        onToggleComplete={(order) => {
+                          toggleComplete(ex.id, order);
+                          const set = ex.sets.find((s) => s.order === order);
+                          const willComplete = (set?.completed ?? true) === false;
+                          haptic(willComplete ? "success" : "soft");
+                        }}
+                        onRemoveSet={(order) => {
+                          removeSet(ex.id, order);
+                          haptic("warn");
+                        }}
+                        onOpenRpeNotes={(order) =>
+                          setRpeDrawer({ exerciseId: ex.id, order })
+                        }
+                        onRemoveExercise={() => {
+                          removeExercise(ex.id);
+                          haptic("warn");
+                        }}
+                        onSupersetWith={(direction) => {
+                          const other = direction === "up" ? prev : next;
+                          if (!other) return;
+                          toggleSuperset(ex.id, other.id);
+                          haptic("soft");
+                        }}
+                        onBreakSuperset={() => {
+                          breakSuperset(ex.id);
+                          haptic("soft");
+                        }}
+                      />
+                    );
+                  };
+
+                  if (group.type === "single") {
+                    return renderCard(group.exercise, { variant: "standalone" });
+                  }
                   return (
-                    <ExerciseCard
-                      key={ex.id}
-                      exercise={ex}
-                      lastSession={findLastSessionFor(liftSessions, ex.name)}
-                      superset={
-                        inSuperset
-                          ? {
-                              isFirstInGroup: groupFirst,
-                              isLastInGroup: groupLast,
-                            }
-                          : null
-                      }
-                      prevExercise={prev}
-                      nextExercise={next}
-                      onAddSet={(isDrop) => {
-                        const completedSets = ex.sets.filter(
-                          (s) => s.completed !== false
-                        );
-                        const lastCompleted = completedSets[completedSets.length - 1];
-                        const last = lastCompleted ?? ex.sets[ex.sets.length - 1];
-                        const hist = findLastSessionFor(liftSessions, ex.name);
-                        let seedWeight =
-                          last?.weight ?? hist?.topSet?.weight ?? 45;
-                        const seedReps = last?.reps ?? hist?.topSet?.reps ?? 8;
-                        if (isDrop && seedWeight > 0) {
-                          // 20% drop, snap to nearest 5 lb
-                          seedWeight =
-                            Math.round((seedWeight * 0.8) / 5) * 5;
-                        }
-                        addSet(ex.name, seedWeight, seedReps, {
-                          completed: false,
-                        });
-                        if (isDrop) {
-                          // Mark the just-added set as a drop set.
-                          const targetOrder = ex.sets.length + 1;
-                          // Defer the patch so the set exists in state first.
-                          window.setTimeout(() => {
-                            updateSet(ex.id, targetOrder, { isDropSet: true });
-                          }, 0);
-                        }
-                        haptic("tap");
-                      }}
-                      onTapWeight={(order, current) =>
-                        setKeypad({
-                          exerciseId: ex.id,
-                          exerciseName: ex.name,
-                          order,
-                          field: "weight",
-                          initialValue: current,
+                    <SupersetBlock
+                      key={group.groupId}
+                      letter={group.letter}
+                      memberCount={group.exercises.length}
+                    >
+                      {group.exercises.map((ex, i) =>
+                        renderCard(ex, {
+                          variant: "in-superset",
+                          supersetLetter: group.letter,
+                          indexInGroup: i + 1,
+                          isLastInGroup: i === group.exercises.length - 1,
                         })
-                      }
-                      onTapReps={(order, current) =>
-                        setKeypad({
-                          exerciseId: ex.id,
-                          exerciseName: ex.name,
-                          order,
-                          field: "reps",
-                          initialValue: current,
-                        })
-                      }
-                      onTapPlate={(weight) => {
-                        setPlateOpen({ totalWeight: weight });
-                        haptic("soft");
-                      }}
-                      onToggleComplete={(order) => {
-                        toggleComplete(ex.id, order);
-                        const set = ex.sets.find((s) => s.order === order);
-                        const willComplete = (set?.completed ?? true) === false;
-                        haptic(willComplete ? "success" : "soft");
-                      }}
-                      onRemoveSet={(order) => {
-                        removeSet(ex.id, order);
-                        haptic("warn");
-                      }}
-                      onOpenRpeNotes={(order) =>
-                        setRpeDrawer({ exerciseId: ex.id, order })
-                      }
-                      onRemoveExercise={() => {
-                        removeExercise(ex.id);
-                        haptic("warn");
-                      }}
-                      onSupersetWith={(direction) => {
-                        const other = direction === "up" ? prev : next;
-                        if (!other) return;
-                        toggleSuperset(ex.id, other.id);
-                        haptic("soft");
-                      }}
-                      onBreakSuperset={() => {
-                        breakSuperset(ex.id);
-                        haptic("soft");
-                      }}
-                    />
+                      )}
+                    </SupersetBlock>
                   );
                 })
               )}
@@ -489,10 +511,15 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
 
 /* ----------------------------- Exercise card ----------------------------- */
 
+type ExerciseCardVariant = "standalone" | "in-superset";
+
 function ExerciseCard({
   exercise,
   lastSession,
-  superset,
+  variant,
+  supersetLetter,
+  indexInGroup,
+  isLastInGroup,
   prevExercise,
   nextExercise,
   onAddSet,
@@ -508,7 +535,10 @@ function ExerciseCard({
 }: {
   exercise: LiftExercise;
   lastSession: ExerciseLastSession;
-  superset: { isFirstInGroup: boolean; isLastInGroup: boolean } | null;
+  variant: ExerciseCardVariant;
+  supersetLetter?: string;
+  indexInGroup?: number;
+  isLastInGroup?: boolean;
   prevExercise: LiftExercise | undefined;
   nextExercise: LiftExercise | undefined;
   onAddSet: (isDrop: boolean) => void;
@@ -525,7 +555,7 @@ function ExerciseCard({
   const [menuOpen, setMenuOpen] = React.useState(false);
   const detailHref = `/gym/exercise/${encodeURIComponent(exercise.name)}`;
 
-  const inSuperset = !!superset;
+  const inSuperset = variant === "in-superset";
   const canSupersetUp =
     !!prevExercise && prevExercise.supersetGroupId !== exercise.supersetGroupId;
   const canSupersetDown =
@@ -538,35 +568,26 @@ function ExerciseCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
       className={cn(
-        "rounded-2xl border bg-[var(--color-card)] overflow-hidden relative",
+        "overflow-hidden relative",
         inSuperset
-          ? "border-[color:color-mix(in_srgb,var(--pillar-strain)_36%,var(--color-stroke))]"
-          : "border-[var(--color-stroke)]"
+          ? cn(
+              "bg-transparent",
+              !isLastInGroup &&
+                "border-b border-[color:color-mix(in_srgb,var(--pillar-strain)_24%,var(--color-stroke))]"
+            )
+          : "rounded-2xl border border-[var(--color-stroke)] bg-[var(--color-card)]"
       )}
     >
-      {inSuperset && (
-        <div
-          aria-hidden
-          className="absolute left-0 top-0 bottom-0 w-1"
-          style={{ background: "var(--pillar-strain)" }}
-        />
-      )}
-      {inSuperset && superset?.isFirstInGroup && (
-        <div className="px-3.5 pt-2 pb-1 flex items-center gap-1.5">
-          <Zap
-            size={11}
-            className="text-[var(--pillar-strain)]"
-            strokeWidth={2.5}
-          />
-          <span
-            className="text-[9px] uppercase tracking-[0.16em] font-bold"
-            style={{ color: "var(--pillar-strain)" }}
-          >
-            Superset
-          </span>
-        </div>
-      )}
       <div className="flex items-center gap-2 px-3.5 py-3">
+        {inSuperset && supersetLetter && indexInGroup != null && (
+          <span
+            className="shrink-0 h-7 min-w-[28px] px-1.5 grid place-items-center rounded-md text-[11px] font-bold tnum text-white"
+            style={{ background: "var(--pillar-strain)" }}
+          >
+            {supersetLetter}
+            {indexInGroup}
+          </span>
+        )}
         <Link
           href={detailHref}
           onClick={() => haptic("tap")}
@@ -682,19 +703,23 @@ function ExerciseCard({
         </div>
 
         <div className="space-y-1">
-          {exercise.sets.map((set) => (
-            <SetRow
-              key={set.order}
-              set={set}
-              prev={lastSession?.sets.find((s) => s.order === set.order)}
-              onTapWeight={() => onTapWeight(set.order, set.weight)}
-              onTapReps={() => onTapReps(set.order, set.reps)}
-              onTapPlate={() => onTapPlate(set.weight)}
-              onToggleComplete={() => onToggleComplete(set.order)}
-              onRemove={() => onRemoveSet(set.order)}
-              onOpenRpeNotes={() => onOpenRpeNotes(set.order)}
-            />
-          ))}
+          {(() => {
+            const depths = computeDropDepths(exercise.sets);
+            return exercise.sets.map((set, i) => (
+              <SetRow
+                key={set.order}
+                set={set}
+                dropDepth={depths[i]}
+                prev={lastSession?.sets.find((s) => s.order === set.order)}
+                onTapWeight={() => onTapWeight(set.order, set.weight)}
+                onTapReps={() => onTapReps(set.order, set.reps)}
+                onTapPlate={() => onTapPlate(set.weight)}
+                onToggleComplete={() => onToggleComplete(set.order)}
+                onRemove={() => onRemoveSet(set.order)}
+                onOpenRpeNotes={() => onOpenRpeNotes(set.order)}
+              />
+            ));
+          })()}
         </div>
 
         <div className="mt-2 grid grid-cols-[1fr_auto] gap-1.5">
@@ -732,6 +757,7 @@ function ExerciseCard({
 function SetRow({
   set,
   prev,
+  dropDepth,
   onTapWeight,
   onTapReps,
   onTapPlate,
@@ -741,6 +767,7 @@ function SetRow({
 }: {
   set: LiftSet;
   prev: LiftSet | undefined;
+  dropDepth: number;
   onTapWeight: () => void;
   onTapReps: () => void;
   onTapPlate: () => void;
@@ -774,25 +801,41 @@ function SetRow({
     ? `${prev.weight > 0 ? prev.weight : "BW"}×${prev.reps}`
     : "—";
 
+  const isDrop = !!set.isDropSet && dropDepth > 0;
+
   return (
     <div
       className={cn(
         "grid grid-cols-[28px_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_34px_32px] gap-2 items-center",
-        "rounded-lg px-1 py-1",
-        set.isDropSet ? "pl-3 ml-2 border-l border-dashed border-[color:color-mix(in_srgb,var(--color-warning)_45%,transparent)]" : "",
-        completed
-          ? "bg-[color:color-mix(in_srgb,var(--color-success)_6%,transparent)]"
-          : "bg-transparent"
+        "rounded-lg px-1 py-1 relative",
+        isDrop
+          ? completed
+            ? "bg-[color:color-mix(in_srgb,var(--color-warning)_10%,transparent)]"
+            : "bg-[color:color-mix(in_srgb,var(--color-warning)_5%,transparent)]"
+          : completed
+            ? "bg-[color:color-mix(in_srgb,var(--color-success)_6%,transparent)]"
+            : "bg-transparent"
       )}
+      style={isDrop ? { marginLeft: `${Math.min(dropDepth, 3) * 10}px` } : undefined}
       onPointerDown={startPress}
       onPointerUp={endPress}
       onPointerLeave={endPress}
       onPointerCancel={endPress}
     >
-      <div className="text-center text-[12px] tnum text-[var(--color-fg-3)] relative">
-        {set.isDropSet ? (
-          <span className="text-[9px] uppercase tracking-wider text-[var(--color-warning)] font-semibold">
-            ↓
+      {isDrop && (
+        <span
+          aria-hidden
+          className="absolute left-0 top-0 bottom-0 w-[2px] rounded-full"
+          style={{ background: "color-mix(in srgb, var(--color-warning) 60%, transparent)" }}
+        />
+      )}
+      <div className="text-center text-[11px] tnum text-[var(--color-fg-3)] relative">
+        {isDrop ? (
+          <span
+            className="text-[9px] uppercase tracking-wider font-bold"
+            style={{ color: "var(--color-warning)" }}
+          >
+            D{dropDepth}
           </span>
         ) : (
           set.order
@@ -1121,4 +1164,193 @@ function formatVolume(v: number): string {
   if (v <= 0) return "0";
   if (v >= 1000) return `${(v / 1000).toFixed(1)}k`;
   return String(Math.round(v));
+}
+
+/* ----------------------------- Superset wrapper + grouping ----------------------------- */
+
+type RenderGroup =
+  | { type: "single"; exercise: LiftExercise }
+  | { type: "superset"; groupId: string; letter: string; exercises: LiftExercise[] };
+
+function computeRenderGroups(exercises: LiftExercise[]): RenderGroup[] {
+  const out: RenderGroup[] = [];
+  let letterCode = "A".charCodeAt(0);
+  let i = 0;
+  while (i < exercises.length) {
+    const ex = exercises[i];
+    if (ex.supersetGroupId) {
+      const members: LiftExercise[] = [];
+      let j = i;
+      while (
+        j < exercises.length &&
+        exercises[j].supersetGroupId === ex.supersetGroupId
+      ) {
+        members.push(exercises[j]);
+        j++;
+      }
+      out.push({
+        type: "superset",
+        groupId: ex.supersetGroupId,
+        letter: String.fromCharCode(letterCode++),
+        exercises: members,
+      });
+      i = j;
+    } else {
+      out.push({ type: "single", exercise: ex });
+      i++;
+    }
+  }
+  return out;
+}
+
+function SupersetBlock({
+  letter,
+  memberCount,
+  children,
+}: {
+  letter: string;
+  memberCount: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+      className="rounded-2xl border-2 overflow-hidden relative bg-[var(--color-card)]"
+      style={{
+        borderColor: "color-mix(in srgb, var(--pillar-strain) 45%, var(--color-stroke))",
+      }}
+    >
+      <div
+        className="flex items-center gap-2 px-3.5 py-2"
+        style={{
+          background: "color-mix(in srgb, var(--pillar-strain) 14%, transparent)",
+          borderBottom: "1px solid color-mix(in srgb, var(--pillar-strain) 24%, var(--color-stroke))",
+        }}
+      >
+        <span
+          className="h-6 min-w-[24px] px-1.5 grid place-items-center rounded-md text-[11px] font-bold text-white"
+          style={{ background: "var(--pillar-strain)" }}
+        >
+          {letter}
+        </span>
+        <span
+          className="text-[10px] uppercase tracking-[0.16em] font-bold"
+          style={{ color: "var(--pillar-strain)" }}
+        >
+          Superset
+        </span>
+        <span className="ml-auto text-[10px] text-[var(--color-fg-3)] tnum">
+          {memberCount} exercises
+        </span>
+      </div>
+      {children}
+    </motion.div>
+  );
+}
+
+/* ----------------------------- Drop set depth ----------------------------- */
+
+/**
+ * For each set in order, compute the drop-chain depth:
+ *   regular set → 0
+ *   first drop after a regular → 1
+ *   second consecutive drop → 2 (and so on)
+ *   any regular set resets the chain
+ */
+function computeDropDepths(sets: LiftSet[]): number[] {
+  const out: number[] = [];
+  let depth = 0;
+  for (const s of sets) {
+    if (s.isDropSet) {
+      depth += 1;
+      out.push(depth);
+    } else {
+      depth = 0;
+      out.push(0);
+    }
+  }
+  return out;
+}
+
+/* ----------------------------- Readiness chip ----------------------------- */
+
+/**
+ * Pre-workout readiness pill, sourced from the same composite Whoop-style
+ * score the Today screen uses. When Fitbit Air HRV+RHR are syncing this
+ * gives meaningful "go heavy / take it easy" guidance; before any sensor
+ * data it falls back to a sleep proxy.
+ */
+function ReadinessChip() {
+  const health = useStore((s) => s.health);
+  const liftSessions = useStore((s) => s.liftSessions);
+  const waterTargetOz = useStore((s) => s.settings.waterTargetOz);
+  const result = React.useMemo(
+    () =>
+      computeReadiness({
+        health,
+        liftSessions,
+        today: todayStr(),
+        waterTargetOz,
+      }),
+    [health, liftSessions, waterTargetOz]
+  );
+
+  if (result.bracket === "unknown") return null;
+  const tone = bracketTone(result.bracket);
+  const label = bracketLabel(result.bracket);
+
+  return (
+    <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--color-stroke)] bg-[var(--color-card)]">
+      <div
+        className="h-7 px-2.5 rounded-full grid place-items-center text-[11px] font-bold tnum"
+        style={{
+          background: `color-mix(in srgb, ${tone} 16%, transparent)`,
+          color: tone,
+        }}
+      >
+        {result.score}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-[10px] uppercase tracking-wider text-[var(--color-fg-3)] font-medium">
+          Readiness · {label}
+        </div>
+        <div className="text-[11px] text-[var(--color-fg-2)] truncate">
+          {result.headline}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function bracketTone(b: string): string {
+  switch (b) {
+    case "optimal":
+      return "var(--readiness-optimal)";
+    case "green":
+      return "var(--readiness-green)";
+    case "yellow":
+      return "var(--readiness-yellow)";
+    case "red":
+      return "var(--readiness-red)";
+    default:
+      return "var(--color-fg-3)";
+  }
+}
+
+function bracketLabel(b: string): string {
+  switch (b) {
+    case "optimal":
+      return "Optimal";
+    case "green":
+      return "Recovered";
+    case "yellow":
+      return "Moderate";
+    case "red":
+      return "Take it easy";
+    default:
+      return "No data";
+  }
 }

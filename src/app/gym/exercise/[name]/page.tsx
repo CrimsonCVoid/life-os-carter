@@ -303,40 +303,8 @@ export default function ExerciseDetailPage() {
       <RepRangePRsCard normalized={normalized} sessions={relevant} />
       <CompoundRecordsCard sessions={liftSessions} />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent sessions</CardTitle>
-          <span className="text-xs text-[var(--color-fg-3)] tnum">
-            {Math.min(relevant.length, 20)} of {relevant.length}
-          </span>
-        </CardHeader>
-        <ul className="space-y-2">
-          {[...points]
-            .reverse()
-            .slice(0, 20)
-            .map((p) => (
-              <li
-                key={p.date}
-                className="rounded-lg border border-[var(--color-stroke)] bg-[var(--color-elevated)]/40 px-3 py-2.5"
-              >
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-[13px] font-medium">
-                    {format(fromDateStr(p.date), "EEE, MMM d")}
-                  </span>
-                  <span className="text-[11px] text-[var(--color-fg-3)] tnum">
-                    {p.setCount} set{p.setCount === 1 ? "" : "s"}
-                  </span>
-                </div>
-                <div className="mt-1 text-[12px] text-[var(--color-fg-2)] tnum">
-                  Top {p.top > 0 ? `${p.top}×${p.repsAtTop}` : `BW×${p.repsAtTop}`}
-                  {p.e1rm > 0 && ` · e1RM ${round1(p.e1rm)}`}
-                  {` · ${formatVolume(p.volume)} vol`}
-                  {p.avgRpe != null && ` · RPE ${round1(p.avgRpe)}`}
-                </div>
-              </li>
-            ))}
-        </ul>
-      </Card>
+      <RecentSessionsList points={points} />
+
     </Screen>
   );
 }
@@ -649,4 +617,80 @@ function withMovingAverage(
     for (let j = 0; j < window; j++) sum += series[i - j].v;
     return { ...p, ma: sum / window };
   });
+}
+
+/* ---------------- Recent sessions with sleep correlation ---------------- */
+
+function RecentSessionsList({ points }: { points: Point[] }) {
+  const health = useStore((s) => s.health);
+
+  const enriched = React.useMemo(
+    () =>
+      [...points].reverse().slice(0, 20).map((p) => {
+        // "Last night's sleep" = sleep logged on the same date as the workout
+        // OR the day before (some sources post the prior night under the next day).
+        const sleep =
+          health[p.date]?.sleepHours ??
+          health[shiftDate(p.date, -1)]?.sleepHours ??
+          null;
+        return { ...p, sleep };
+      }),
+    [points, health]
+  );
+
+  if (enriched.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Recent sessions</CardTitle>
+        <span className="text-xs text-[var(--color-fg-3)] tnum">
+          {enriched.length} of {points.length}
+        </span>
+      </CardHeader>
+      <ul className="space-y-2">
+        {enriched.map((p) => (
+          <li
+            key={p.date}
+            className="rounded-lg border border-[var(--color-stroke)] bg-[var(--color-elevated)]/40 px-3 py-2.5"
+          >
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-[13px] font-medium">
+                {format(fromDateStr(p.date), "EEE, MMM d")}
+              </span>
+              <span className="text-[11px] text-[var(--color-fg-3)] tnum inline-flex items-center gap-2">
+                {p.sleep != null && (
+                  <span
+                    className="inline-flex items-center gap-0.5"
+                    style={{ color: sleepTone(p.sleep) }}
+                  >
+                    💤 {p.sleep.toFixed(1)}h
+                  </span>
+                )}
+                <span>{p.setCount} set{p.setCount === 1 ? "" : "s"}</span>
+              </span>
+            </div>
+            <div className="mt-1 text-[12px] text-[var(--color-fg-2)] tnum">
+              Top {p.top > 0 ? `${p.top}×${p.repsAtTop}` : `BW×${p.repsAtTop}`}
+              {p.e1rm > 0 && ` · e1RM ${round1(p.e1rm)}`}
+              {` · ${formatVolume(p.volume)} vol`}
+              {p.avgRpe != null && ` · RPE ${round1(p.avgRpe)}`}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
+function shiftDate(dateStr: string, days: number): string {
+  const d = new Date(dateStr + "T00:00:00");
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function sleepTone(hours: number): string {
+  if (hours >= 7.5) return "var(--color-success)";
+  if (hours >= 6.5) return "var(--color-warning)";
+  return "var(--color-danger)";
 }
