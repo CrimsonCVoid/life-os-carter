@@ -14,6 +14,7 @@ import type {
   TemplateExerciseEntry,
   WorkoutTemplate,
 } from "@/lib/types";
+import { WEEK_DAY_SHORT_LABELS, WEEK_DAY_LABELS } from "@/lib/types";
 import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
 
@@ -52,6 +53,7 @@ export function RoutineEditor({ open, onClose, routineId }: Props) {
   const [icon, setIcon] = React.useState<string>(ICON_CHOICES[0]);
   const [notes, setNotes] = React.useState("");
   const [exercises, setExercises] = React.useState<TemplateExerciseEntry[]>([]);
+  const [scheduledDays, setScheduledDays] = React.useState<number[]>([]);
   const [pickerOpen, setPickerOpen] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
 
@@ -61,6 +63,7 @@ export function RoutineEditor({ open, onClose, routineId }: Props) {
       setName(existing.name);
       setIcon(existing.icon || ICON_CHOICES[0]);
       setNotes(existing.notes || "");
+      setScheduledDays(existing.scheduledDays ?? []);
       setExercises(
         existing.exercises.map((e) => ({
           ...e,
@@ -71,9 +74,19 @@ export function RoutineEditor({ open, onClose, routineId }: Props) {
       setName("");
       setIcon(ICON_CHOICES[0]);
       setNotes("");
+      setScheduledDays([]);
       setExercises([]);
     }
   }, [open, existing]);
+
+  const toggleScheduledDay = (day: number) => {
+    setScheduledDays((curr) =>
+      curr.includes(day)
+        ? curr.filter((d) => d !== day)
+        : [...curr, day].sort((a, b) => a - b)
+    );
+    haptic("soft");
+  };
 
   const addExercise = (exerciseName: string) => {
     setExercises((curr) => [
@@ -156,6 +169,7 @@ export function RoutineEditor({ open, onClose, routineId }: Props) {
       icon,
       notes: notes.trim() || undefined,
       exercises,
+      scheduledDays: scheduledDays.length > 0 ? scheduledDays : undefined,
     };
     if (existing) {
       updateTemplate(existing.id, payload);
@@ -236,6 +250,36 @@ export function RoutineEditor({ open, onClose, routineId }: Props) {
                   {c}
                 </button>
               ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="label mb-1.5">Schedule</div>
+            <div className="grid grid-cols-7 gap-1.5">
+              {WEEK_DAY_SHORT_LABELS.map((label, day) => {
+                const selected = scheduledDays.includes(day);
+                return (
+                  <button
+                    key={day}
+                    type="button"
+                    aria-label={WEEK_DAY_LABELS[day]}
+                    aria-pressed={selected}
+                    onClick={() => toggleScheduledDay(day)}
+                    className={cn(
+                      "h-10 rounded-lg text-[13px] font-semibold border",
+                      "active:scale-[0.94] transition-transform duration-[80ms]",
+                      selected
+                        ? "bg-[var(--color-accent-strong)] text-white border-transparent"
+                        : "bg-[var(--color-elevated)] border-[var(--color-stroke)] text-[var(--color-fg-2)]"
+                    )}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="text-[10px] text-[var(--color-fg-3)] mt-1.5">
+              Pick days when this routine should surface on Today.
             </div>
           </div>
 

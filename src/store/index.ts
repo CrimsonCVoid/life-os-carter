@@ -269,6 +269,13 @@ type Actions = {
   ) => void;
   /** Toggle `completed` for a set. Fires the rest timer when flipping to true. */
   toggleActiveWorkoutSetComplete: (exerciseId: string, order: number) => void;
+  /**
+   * Group two adjacent exercises into a superset. If either is already in a
+   * group, both join that group. If neither is, a fresh group id is minted.
+   */
+  toggleActiveWorkoutSuperset: (exerciseIdA: string, exerciseIdB: string) => void;
+  /** Remove an exercise from its superset group. No-op if not grouped. */
+  breakActiveWorkoutSuperset: (exerciseId: string) => void;
 
   // insights / patterns
   setCachedPatterns: (p: CachedPatterns | undefined) => void;
@@ -1334,6 +1341,54 @@ export const useStore = create<State & Actions>()(
                         st.order === order ? { ...st, ...patch } : st
                       ),
                     }
+              ),
+            },
+          };
+        }),
+
+      toggleActiveWorkoutSuperset: (idA, idB) =>
+        set((s) => {
+          if (!s.activeWorkout) return s;
+          const exA = s.activeWorkout.exercises.find((e) => e.id === idA);
+          const exB = s.activeWorkout.exercises.find((e) => e.id === idB);
+          if (!exA || !exB) return s;
+          // If already grouped together, ungroup both.
+          if (
+            exA.supersetGroupId &&
+            exA.supersetGroupId === exB.supersetGroupId
+          ) {
+            return {
+              activeWorkout: {
+                ...s.activeWorkout,
+                exercises: s.activeWorkout.exercises.map((e) =>
+                  e.id === idA || e.id === idB
+                    ? { ...e, supersetGroupId: undefined }
+                    : e
+                ),
+              },
+            };
+          }
+          const group = exA.supersetGroupId ?? exB.supersetGroupId ?? uid();
+          return {
+            activeWorkout: {
+              ...s.activeWorkout,
+              exercises: s.activeWorkout.exercises.map((e) =>
+                e.id === idA || e.id === idB
+                  ? { ...e, supersetGroupId: group }
+                  : e
+              ),
+            },
+          };
+        }),
+
+      breakActiveWorkoutSuperset: (exerciseId) =>
+        set((s) => {
+          if (!s.activeWorkout) return s;
+          return {
+            activeWorkout: {
+              ...s.activeWorkout,
+              exercises: s.activeWorkout.exercises.map((e) =>
+                e.id === exerciseId ? { ...e, supersetGroupId: undefined } : e
               ),
             },
           };

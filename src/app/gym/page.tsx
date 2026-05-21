@@ -10,9 +10,12 @@ import {
   Tooltip,
   CartesianGrid,
 } from "recharts";
-import { ChevronDown, Pencil, Plus, Square, Timer, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { CalendarDays, ChevronDown, ChevronRight, Download, Pencil, Plus, Square, Timer, Trash2 } from "lucide-react";
 import { ActiveWorkoutPage } from "@/components/workout/active-workout-page";
 import { RoutineEditor } from "@/components/workout/routine-editor";
+import { liftSessionsToCsv, downloadCsv } from "@/lib/csv-export";
+import { WEEK_DAY_LABELS } from "@/lib/types";
 import { Screen } from "@/components/screen";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -113,6 +116,7 @@ export default function GymPage() {
       title="Gym"
       subtitle="Start a workout. Routines and progress live below."
     >
+      <TodayRoutineCard />
       <StartWorkoutCTA />
       <RoutinesSection />
 
@@ -179,6 +183,8 @@ export default function GymPage() {
         )}
       </Card>
 
+      <ExportCsvButton />
+
       <ConfirmModal
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
@@ -236,9 +242,15 @@ function ExerciseChart({
   const deltaPct = firstV > 0 ? (delta / firstV) * 100 : null;
 
   return (
-    <div className="rounded-xl border border-[var(--color-stroke)] bg-[var(--color-elevated)]/40 p-3">
+    <Link
+      href={`/gym/exercise/${encodeURIComponent(name)}`}
+      className="block rounded-xl border border-[var(--color-stroke)] bg-[var(--color-elevated)]/40 p-3 active:scale-[0.99] transition-transform duration-[80ms]"
+    >
       <div className="flex items-baseline justify-between mb-1">
-        <span className="text-sm font-medium truncate">{name}</span>
+        <span className="text-sm font-medium truncate inline-flex items-center gap-1">
+          {name}
+          <ChevronRight size={12} className="text-[var(--color-fg-3)]" />
+        </span>
         <span className="text-xs tnum text-[var(--color-fg-2)]">
           {round1(latestV)}
           {metric === "top" || metric === "e1rm" ? " lb" : ""}
@@ -310,7 +322,7 @@ function ExerciseChart({
           </LineChart>
         </ResponsiveContainer>
       </div>
-    </div>
+    </Link>
   );
 }
 
@@ -459,16 +471,22 @@ function ExerciseDetail({ ex }: { ex: LiftExercise }) {
   const e1 = bestE1RM(ex.sets);
   return (
     <div className="rounded-lg bg-[var(--color-card)] border border-[var(--color-stroke)] p-2.5">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium">{ex.name}</span>
-        <span className="text-[10px] text-[var(--color-fg-3)] tnum">
+      <Link
+        href={`/gym/exercise/${encodeURIComponent(ex.name)}`}
+        className="flex items-center justify-between gap-2 active:opacity-70"
+      >
+        <span className="text-sm font-medium inline-flex items-center gap-1 min-w-0">
+          <span className="truncate">{ex.name}</span>
+          <ChevronRight size={12} className="text-[var(--color-fg-3)] shrink-0" />
+        </span>
+        <span className="text-[10px] text-[var(--color-fg-3)] tnum shrink-0">
           {top &&
             (top.weight > 0
               ? `top ${top.weight}×${top.reps}`
               : `top ${top.reps} reps`)}
           {e1 > 0 && ` · e1RM ${round1(e1)}`}
         </span>
-      </div>
+      </Link>
       <ul className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-0.5">
         {ex.sets.map((s, i) => (
           <li
@@ -486,6 +504,11 @@ function ExerciseDetail({ ex }: { ex: LiftExercise }) {
             {s.weight > 0 && (
               <span className="text-[10px] text-[var(--color-fg-3)]">
                 ({round1(estimated1RM(s.weight, s.reps))})
+              </span>
+            )}
+            {s.isDropSet && (
+              <span className="text-[9px] uppercase tracking-wider text-[var(--color-warning)]">
+                drop
               </span>
             )}
           </li>
@@ -632,3 +655,76 @@ function StartWorkoutCTA() {
   );
 }
 
+
+function TodayRoutineCard() {
+  const templates = useStore((s) => s.workoutTemplates);
+  const active = useStore((s) => s.activeWorkout);
+  const startFromTemplate = useStore((s) => s.startWorkoutFromTemplate);
+  const [pageOpen, setPageOpen] = React.useState(false);
+
+  if (active) return null;
+  const today = new Date().getDay();
+  const scheduled = templates.filter((t) =>
+    (t.scheduledDays ?? []).includes(today)
+  );
+  if (scheduled.length === 0) return null;
+
+  return (
+    <>
+      <div className="rounded-2xl border border-[color:color-mix(in_srgb,var(--color-accent)_28%,var(--color-stroke))] bg-[color:color-mix(in_srgb,var(--color-accent)_8%,var(--color-card))] p-3">
+        <div className="flex items-center gap-1.5 mb-2">
+          <CalendarDays size={12} className="text-[var(--color-accent)]" />
+          <span className="text-[10px] uppercase tracking-[0.14em] font-semibold text-[var(--color-accent)]">
+            On the schedule today — {WEEK_DAY_LABELS[today]}
+          </span>
+        </div>
+        <div className="space-y-1.5">
+          {scheduled.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => {
+                haptic("tap");
+                startFromTemplate(t.id);
+                setPageOpen(true);
+              }}
+              className="w-full flex items-center gap-3 px-2.5 py-2 rounded-xl bg-[var(--color-card)] border border-[var(--color-stroke)] active:scale-[0.99] transition-transform duration-[80ms]"
+            >
+              <span className="text-[20px] leading-none">{t.icon ?? "🏋️"}</span>
+              <div className="flex-1 min-w-0 text-left">
+                <div className="text-[14px] font-semibold tracking-tight truncate">
+                  {t.name}
+                </div>
+                <div className="text-[10px] text-[var(--color-fg-3)] tnum">
+                  {t.exercises.length} exercise{t.exercises.length === 1 ? "" : "s"}
+                </div>
+              </div>
+              <ChevronRight size={14} className="text-[var(--color-fg-3)]" />
+            </button>
+          ))}
+        </div>
+      </div>
+      <ActiveWorkoutPage open={pageOpen} onClose={() => setPageOpen(false)} />
+    </>
+  );
+}
+
+function ExportCsvButton() {
+  const liftSessions = useStore((s) => s.liftSessions);
+  if (liftSessions.length === 0) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        const csv = liftSessionsToCsv(liftSessions);
+        const today = new Date().toISOString().slice(0, 10);
+        downloadCsv(`life-os-workouts-${today}.csv`, csv);
+        haptic("success");
+      }}
+      className="w-full inline-flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-dashed border-[var(--color-stroke-strong)] text-[12px] text-[var(--color-fg-2)] active:scale-[0.99] transition-transform duration-[80ms]"
+    >
+      <Download size={12} />
+      Export all sessions to CSV
+    </button>
+  );
+}

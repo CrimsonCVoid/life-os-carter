@@ -135,6 +135,8 @@ export type LiftSet = {
    * Absence = treated as completed for back-compat with sessions logged before this field existed.
    */
   completed?: boolean;
+  /** Drop set marker — typically reduced weight + extra reps right after a top set. */
+  isDropSet?: boolean;
 };
 
 export type LiftExercise = {
@@ -147,6 +149,12 @@ export type LiftExercise = {
   plannedSets?: PlannedSet[];
   /** Per-exercise note from the routine or in-flight log. */
   notes?: string;
+  /**
+   * Superset grouping — exercises sharing the same id are visually grouped and
+   * treated as a single "block" (alternate sets between them). Set on the
+   * active workout; preserved into the finished LiftSession for reference.
+   */
+  supersetGroupId?: string;
 };
 
 export type LiftSession = {
@@ -187,8 +195,21 @@ export type WorkoutTemplate = {
   /** Free-text routine-level note. */
   notes?: string;
   exercises: TemplateExerciseEntry[];
+  /** Day-of-week schedule. 0=Sun, 1=Mon, ..., 6=Sat. Empty/undefined = unscheduled. */
+  scheduledDays?: number[];
   createdAt: string;
 };
+
+export const WEEK_DAY_SHORT_LABELS = ["S", "M", "T", "W", "T", "F", "S"] as const;
+export const WEEK_DAY_LABELS = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+] as const;
 
 const stdSets = (n: number, reps: number): PlannedSet[] =>
   Array.from({ length: n }, () => ({ reps }));

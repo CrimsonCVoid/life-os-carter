@@ -1,16 +1,23 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import {
+  ArrowDownToLine,
+  ArrowUpToLine,
   Calculator,
   Check,
   ChevronDown,
+  ChevronRight,
+  Link2,
+  Link2Off,
   MoreHorizontal,
   Plus,
   Timer,
   Trash2,
   X,
+  Zap,
 } from "lucide-react";
 
 import { useStore } from "@/store";
@@ -69,6 +76,8 @@ export function ActiveWorkoutPage({ open, onClose }: Props) {
   const removeSet = useStore((s) => s.removeActiveWorkoutSet);
   const updateSet = useStore((s) => s.updateActiveWorkoutSet);
   const toggleComplete = useStore((s) => s.toggleActiveWorkoutSetComplete);
+  const toggleSuperset = useStore((s) => s.toggleActiveWorkoutSuperset);
+  const breakSuperset = useStore((s) => s.breakActiveWorkoutSuperset);
   const setRestTarget = useStore((s) => s.setActiveWorkoutRestTarget);
   const dismissRest = useStore((s) => s.dismissActiveWorkoutRest);
   const finish = useStore((s) => s.finishActiveWorkout);
@@ -169,64 +178,111 @@ export function ActiveWorkoutPage({ open, onClose }: Props) {
               {active.exercises.length === 0 ? (
                 <EmptyState onAdd={() => setPickerOpen(true)} />
               ) : (
-                active.exercises.map((ex) => (
-                  <ExerciseCard
-                    key={ex.id}
-                    exercise={ex}
-                    lastSession={findLastSessionFor(liftSessions, ex.name)}
-                    onAddSet={() => {
-                      const lastCompleted = [...ex.sets]
-                        .reverse()
-                        .find((s) => s.completed !== false);
-                      const last = lastCompleted ?? ex.sets[ex.sets.length - 1];
-                      const hist = findLastSessionFor(liftSessions, ex.name);
-                      const seedWeight =
-                        last?.weight ?? hist?.topSet?.weight ?? 45;
-                      const seedReps = last?.reps ?? hist?.topSet?.reps ?? 8;
-                      addSet(ex.name, seedWeight, seedReps, { completed: false });
-                      haptic("tap");
-                    }}
-                    onTapWeight={(order, current) =>
-                      setKeypad({
-                        exerciseId: ex.id,
-                        exerciseName: ex.name,
-                        order,
-                        field: "weight",
-                        initialValue: current,
-                      })
-                    }
-                    onTapReps={(order, current) =>
-                      setKeypad({
-                        exerciseId: ex.id,
-                        exerciseName: ex.name,
-                        order,
-                        field: "reps",
-                        initialValue: current,
-                      })
-                    }
-                    onTapPlate={(weight) => {
-                      setPlateOpen({ totalWeight: weight });
-                      haptic("soft");
-                    }}
-                    onToggleComplete={(order) => {
-                      toggleComplete(ex.id, order);
-                      const set = ex.sets.find((s) => s.order === order);
-                      const willComplete = (set?.completed ?? true) === false;
-                      haptic(willComplete ? "success" : "soft");
-                    }}
-                    onRemoveSet={(order) => {
-                      removeSet(ex.id, order);
-                      haptic("warn");
-                    }}
-                    onOpenRpeNotes={(order) =>
-                      setRpeDrawer({ exerciseId: ex.id, order })
-                    }
-                    onRemoveExercise={() => {
-                      removeExercise(ex.id);
-                      haptic("warn");
-                    }}
-                  />
-                ))
+                active.exercises.map((ex, idx, arr) => {
+                  const prev = idx > 0 ? arr[idx - 1] : undefined;
+                  const next = idx < arr.length - 1 ? arr[idx + 1] : undefined;
+                  const inSuperset = !!ex.supersetGroupId;
+                  const groupFirst =
+                    inSuperset &&
+                    (!prev || prev.supersetGroupId !== ex.supersetGroupId);
+                  const groupLast =
+                    inSuperset &&
+                    (!next || next.supersetGroupId !== ex.supersetGroupId);
+                  return (
+                    <ExerciseCard
+                      key={ex.id}
+                      exercise={ex}
+                      lastSession={findLastSessionFor(liftSessions, ex.name)}
+                      superset={
+                        inSuperset
+                          ? {
+                              isFirstInGroup: groupFirst,
+                              isLastInGroup: groupLast,
+                            }
+                          : null
+                      }
+                      prevExercise={prev}
+                      nextExercise={next}
+                      onAddSet={(isDrop) => {
+                        const completedSets = ex.sets.filter(
+                          (s) => s.completed !== false
+                        );
+                        const lastCompleted = completedSets[completedSets.length - 1];
+                        const last = lastCompleted ?? ex.sets[ex.sets.length - 1];
+                        const hist = findLastSessionFor(liftSessions, ex.name);
+                        let seedWeight =
+                          last?.weight ?? hist?.topSet?.weight ?? 45;
+                        const seedReps = last?.reps ?? hist?.topSet?.reps ?? 8;
+                        if (isDrop && seedWeight > 0) {
+                          // 20% drop, snap to nearest 5 lb
+                          seedWeight =
+                            Math.round((seedWeight * 0.8) / 5) * 5;
+                        }
+                        addSet(ex.name, seedWeight, seedReps, {
+                          completed: false,
+                        });
+                        if (isDrop) {
+                          // Mark the just-added set as a drop set.
+                          const targetOrder = ex.sets.length + 1;
+                          // Defer the patch so the set exists in state first.
+                          window.setTimeout(() => {
+                            updateSet(ex.id, targetOrder, { isDropSet: true });
+                          }, 0);
+                        }
+                        haptic("tap");
+                      }}
+                      onTapWeight={(order, current) =>
+                        setKeypad({
+                          exerciseId: ex.id,
+                          exerciseName: ex.name,
+                          order,
+                          field: "weight",
+                          initialValue: current,
+                        })
+                      }
+                      onTapReps={(order, current) =>
+                        setKeypad({
+                          exerciseId: ex.id,
+                          exerciseName: ex.name,
+                          order,
+                          field: "reps",
+                          initialValue: current,
+                        })
+                      }
+                      onTapPlate={(weight) => {
+                        setPlateOpen({ totalWeight: weight });
+                        haptic("soft");
+                      }}
+                      onToggleComplete={(order) => {
+                        toggleComplete(ex.id, order);
+                        const set = ex.sets.find((s) => s.order === order);
+                        const willComplete = (set?.completed ?? true) === false;
+                        haptic(willComplete ? "success" : "soft");
+                      }}
+                      onRemoveSet={(order) => {
+                        removeSet(ex.id, order);
+                        haptic("warn");
+                      }}
+                      onOpenRpeNotes={(order) =>
+                        setRpeDrawer({ exerciseId: ex.id, order })
+                      }
+                      onRemoveExercise={() => {
+                        removeExercise(ex.id);
+                        haptic("warn");
+                      }}
+                      onSupersetWith={(direction) => {
+                        const other = direction === "up" ? prev : next;
+                        if (!other) return;
+                        toggleSuperset(ex.id, other.id);
+                        haptic("soft");
+                      }}
+                      onBreakSuperset={() => {
+                        breakSuperset(ex.id);
+                        haptic("soft");
+                      }}
+                    />
+                  );
+                })
               )}
 
               {active.exercises.length > 0 && (
@@ -436,6 +492,9 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
 function ExerciseCard({
   exercise,
   lastSession,
+  superset,
+  prevExercise,
+  nextExercise,
   onAddSet,
   onTapWeight,
   onTapReps,
@@ -444,10 +503,15 @@ function ExerciseCard({
   onRemoveSet,
   onOpenRpeNotes,
   onRemoveExercise,
+  onSupersetWith,
+  onBreakSuperset,
 }: {
   exercise: LiftExercise;
   lastSession: ExerciseLastSession;
-  onAddSet: () => void;
+  superset: { isFirstInGroup: boolean; isLastInGroup: boolean } | null;
+  prevExercise: LiftExercise | undefined;
+  nextExercise: LiftExercise | undefined;
+  onAddSet: (isDrop: boolean) => void;
   onTapWeight: (order: number, current: number) => void;
   onTapReps: (order: number, current: number) => void;
   onTapPlate: (totalWeight: number) => void;
@@ -455,8 +519,17 @@ function ExerciseCard({
   onRemoveSet: (order: number) => void;
   onOpenRpeNotes: (order: number) => void;
   onRemoveExercise: () => void;
+  onSupersetWith: (direction: "up" | "down") => void;
+  onBreakSuperset: () => void;
 }) {
   const [menuOpen, setMenuOpen] = React.useState(false);
+  const detailHref = `/gym/exercise/${encodeURIComponent(exercise.name)}`;
+
+  const inSuperset = !!superset;
+  const canSupersetUp =
+    !!prevExercise && prevExercise.supersetGroupId !== exercise.supersetGroupId;
+  const canSupersetDown =
+    !!nextExercise && nextExercise.supersetGroupId !== exercise.supersetGroupId;
 
   return (
     <motion.div
@@ -464,12 +537,49 @@ function ExerciseCard({
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
-      className="rounded-2xl border border-[var(--color-stroke)] bg-[var(--color-card)] overflow-hidden"
+      className={cn(
+        "rounded-2xl border bg-[var(--color-card)] overflow-hidden relative",
+        inSuperset
+          ? "border-[color:color-mix(in_srgb,var(--pillar-strain)_36%,var(--color-stroke))]"
+          : "border-[var(--color-stroke)]"
+      )}
     >
+      {inSuperset && (
+        <div
+          aria-hidden
+          className="absolute left-0 top-0 bottom-0 w-1"
+          style={{ background: "var(--pillar-strain)" }}
+        />
+      )}
+      {inSuperset && superset?.isFirstInGroup && (
+        <div className="px-3.5 pt-2 pb-1 flex items-center gap-1.5">
+          <Zap
+            size={11}
+            className="text-[var(--pillar-strain)]"
+            strokeWidth={2.5}
+          />
+          <span
+            className="text-[9px] uppercase tracking-[0.16em] font-bold"
+            style={{ color: "var(--pillar-strain)" }}
+          >
+            Superset
+          </span>
+        </div>
+      )}
       <div className="flex items-center gap-2 px-3.5 py-3">
-        <div className="flex-1 min-w-0">
-          <div className="text-[15px] font-semibold tracking-tight truncate">
-            {exercise.name}
+        <Link
+          href={detailHref}
+          onClick={() => haptic("tap")}
+          className="flex-1 min-w-0 -m-1 p-1 rounded-md active:bg-[var(--color-elevated)] active:scale-[0.99] transition-transform duration-[80ms]"
+        >
+          <div className="flex items-center gap-1 min-w-0">
+            <div className="text-[15px] font-semibold tracking-tight truncate flex-1 min-w-0">
+              {exercise.name}
+            </div>
+            <ChevronRight
+              size={13}
+              className="text-[var(--color-fg-3)] shrink-0"
+            />
           </div>
           {lastSession ? (
             <div className="text-[10px] text-[var(--color-fg-3)] tnum truncate mt-0.5">
@@ -485,7 +595,7 @@ function ExerciseCard({
               First time logging
             </div>
           )}
-        </div>
+        </Link>
         <div className="relative">
           <button
             type="button"
@@ -501,7 +611,49 @@ function ExerciseCard({
                 className="fixed inset-0 z-40"
                 onClick={() => setMenuOpen(false)}
               />
-              <div className="absolute right-0 top-9 z-50 min-w-[160px] rounded-xl border border-[var(--color-stroke)] bg-[var(--color-card)] shadow-[var(--shadow-float)] py-1">
+              <div className="absolute right-0 top-9 z-50 min-w-[200px] rounded-xl border border-[var(--color-stroke)] bg-[var(--color-card)] shadow-[var(--shadow-float)] py-1">
+                {canSupersetUp && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSupersetWith("up");
+                      setMenuOpen(false);
+                    }}
+                    className="w-full px-3 py-2 text-left text-[13px] text-[var(--color-fg)] inline-flex items-center gap-2"
+                  >
+                    <ArrowUpToLine size={13} />
+                    Superset with above
+                  </button>
+                )}
+                {canSupersetDown && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSupersetWith("down");
+                      setMenuOpen(false);
+                    }}
+                    className="w-full px-3 py-2 text-left text-[13px] text-[var(--color-fg)] inline-flex items-center gap-2"
+                  >
+                    <ArrowDownToLine size={13} />
+                    Superset with below
+                  </button>
+                )}
+                {inSuperset && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onBreakSuperset();
+                      setMenuOpen(false);
+                    }}
+                    className="w-full px-3 py-2 text-left text-[13px] text-[var(--color-fg)] inline-flex items-center gap-2"
+                  >
+                    <Link2Off size={13} />
+                    Break superset
+                  </button>
+                )}
+                {(canSupersetUp || canSupersetDown || inSuperset) && (
+                  <div className="h-px bg-[var(--color-stroke)] my-1" />
+                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -545,16 +697,31 @@ function ExerciseCard({
           ))}
         </div>
 
-        <button
-          type="button"
-          onClick={onAddSet}
-          className="w-full mt-2 h-10 rounded-lg bg-[var(--color-elevated)] border border-[var(--color-stroke)] text-[13px] font-medium text-[var(--color-fg-2)] active:scale-[0.99] transition-transform duration-[80ms]"
-        >
-          <span className="inline-flex items-center gap-1.5">
-            <Plus size={13} />
-            Add set
-          </span>
-        </button>
+        <div className="mt-2 grid grid-cols-[1fr_auto] gap-1.5">
+          <button
+            type="button"
+            onClick={() => onAddSet(false)}
+            className="h-10 rounded-lg bg-[var(--color-elevated)] border border-[var(--color-stroke)] text-[13px] font-medium text-[var(--color-fg-2)] active:scale-[0.99] transition-transform duration-[80ms]"
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <Plus size={13} />
+              Add set
+            </span>
+          </button>
+          {exercise.sets.length > 0 && (
+            <button
+              type="button"
+              onClick={() => onAddSet(true)}
+              aria-label="Add drop set"
+              className="h-10 px-3 rounded-lg border border-dashed border-[color:color-mix(in_srgb,var(--color-warning)_45%,transparent)] text-[12px] font-medium text-[var(--color-warning)] active:scale-[0.99] transition-transform duration-[80ms]"
+            >
+              <span className="inline-flex items-center gap-1">
+                <Plus size={11} />
+                Drop
+              </span>
+            </button>
+          )}
+        </div>
       </div>
     </motion.div>
   );
@@ -612,6 +779,7 @@ function SetRow({
       className={cn(
         "grid grid-cols-[28px_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_34px_32px] gap-2 items-center",
         "rounded-lg px-1 py-1",
+        set.isDropSet ? "pl-3 ml-2 border-l border-dashed border-[color:color-mix(in_srgb,var(--color-warning)_45%,transparent)]" : "",
         completed
           ? "bg-[color:color-mix(in_srgb,var(--color-success)_6%,transparent)]"
           : "bg-transparent"
@@ -622,7 +790,13 @@ function SetRow({
       onPointerCancel={endPress}
     >
       <div className="text-center text-[12px] tnum text-[var(--color-fg-3)] relative">
-        {set.order}
+        {set.isDropSet ? (
+          <span className="text-[9px] uppercase tracking-wider text-[var(--color-warning)] font-semibold">
+            ↓
+          </span>
+        ) : (
+          set.order
+        )}
         {hasExtras && (
           <span
             aria-hidden
