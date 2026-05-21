@@ -15,18 +15,30 @@ type Props = {
 };
 
 type DetectedBarcode = { rawValue: string };
-
 type BarcodeDetectorLike = {
   detect: (source: CanvasImageSource) => Promise<DetectedBarcode[]>;
 };
+type BarcodeDetectorCtor = new (options?: { formats?: string[] }) => BarcodeDetectorLike;
 
-type BarcodeDetectorCtor = new (options?: {
-  formats?: string[];
-}) => BarcodeDetectorLike;
+type CameraState =
+  | "idle"
+  | "starting"
+  | "running"
+  | "denied"
+  | "unsupported"
+  | "error";
 
-type CameraState = "idle" | "starting" | "running" | "denied" | "unsupported" | "error";
+type Engine = "native" | "zxing" | null;
 
-const SCAN_FORMATS = [
+// Subset of zxing-wasm v3 reader API we actually call. Typed locally to avoid
+// dragging the module type at the top level (it's dynamic-imported).
+type ZXingReadResult = { text?: string; isValid?: boolean };
+type ZXingReader = (
+  input: ImageData,
+  options?: { formats?: string[]; tryHarder?: boolean; maxNumberOfSymbols?: number }
+) => Promise<ZXingReadResult[]>;
+
+const NATIVE_FORMATS = [
   "ean_13",
   "ean_8",
   "upc_a",
@@ -36,9 +48,15 @@ const SCAN_FORMATS = [
   "itf",
 ];
 
+const ZXING_FORMATS = ["EAN-13", "EAN-8", "UPC-A", "UPC-E", "Code128", "Code39", "ITF"];
+
+const SCAN_INTERVAL_MS = 500;
+const ZXING_SCAN_INTERVAL_MS = 700;
+const SCAN_WIDTH = 640;
+const SCAN_HEIGHT = 480;
 const MANUAL_RE = /^\d{8,14}$/;
 
-function getBarcodeDetector(): BarcodeDetectorCtor | null {
+function getNativeDetector(): BarcodeDetectorCtor | null {
   if (typeof window === "undefined") return null;
   const ctor = (window as unknown as { BarcodeDetector?: BarcodeDetectorCtor })
     .BarcodeDetector;
@@ -46,18 +64,19 @@ function getBarcodeDetector(): BarcodeDetectorCtor | null {
 }
 
 export function BarcodeScannerModal({ open, onClose, onDetected }: Props) {
-  const detectorCtor = React.useMemo(getBarcodeDetector, []);
-  const supportsCamera = detectorCtor !== null;
+  const nativeCtor = React.useMemo(getNativeDetector, []);
 
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
   const streamRef = React.useRef<MediaStream | null>(null);
   const intervalRef = React.useRef<number | null>(null);
-  const detectorRef = React.useRef<BarcodeDetectorLike | null>(null);
+  const nativeDetectorRef = React.useRef<BarcodeDetectorLike | null>(null);
+  const zxingReadRef = React.useRef<ZXingReader | null>(null);
+  const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
   const firedRef = React.useRef(false);
+  const inFlightRef = React.useRef(false);
 
-  const [cameraState, setCameraState] = React.useState<CameraState>(
-    supportsCamera ? "idle" : "unsupported"
-  );
+  const [engine, setEngine] = React.useState<Engine>(null);
+  const [cameraState, setCameraState] = React.useState<CameraState>("idle");
   const [manual, setManual] = React.useState("");
   const [manualError, setManualError] = React.useState<string | null>(null);
 
@@ -78,12 +97,13 @@ export function BarcodeScannerModal({ open, onClose, onDetected }: Props) {
       intervalRef.current = null;
     }
     if (streamRef.current) {
-      for (const track of streamRef.current.getTracks()) track.stop();
+      for (const t of streamRef.current.getTracks()) t.stop();
       streamRef.current = null;
     }
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
+    inFlightRef.current = false;
   }, []);
 
   React.useEffect(() => {
@@ -92,53 +112,52 @@ export function BarcodeScannerModal({ open, onClose, onDetected }: Props) {
       setManual("");
       setManualError(null);
       stopCamera();
-      if (supportsCamera) setCameraState("idle");
-      return;
-    }
-    if (!supportsCamera) {
-      setCameraState("unsupported");
+      setCameraState("idle");
       return;
     }
 
     let cancelled = false;
     setCameraState("starting");
-    detectorRef.current = detectorCtor
-      ? new detectorCtor({ formats: SCAN_FORMATS })
-      : null;
 
     (async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" },
-          audio: false,
-        });
-        if (cancelled) {
-          for (const t of stream.getTracks()) t.stop();
+      // 1. Pick the scanning engine.
+      let chosenEngine: Engine = nativeCtor ? "native" : null;
+
+      if (chosenEngine === "native" && nativeCtor) {
+        nativeDetectorRef.current = new nativeCtor({ formats: NATIVE_FORMATS });
+      } else {
+        try {
+          const mod = await import("zxing-wasm/reader");
+          // Warm the WASM so the first scan isn't slow. Defaults to a
+          // jsdelivr-hosted .wasm in v3 — no extra config needed.
+          if (typeof mod.prepareZXingModule === "function") {
+            try {
+              await mod.prepareZXingModule({ fireImmediately: true });
+            } catch {
+              /* prepare can throw in older v3 patches if called twice; non-fatal */
+            }
+          }
+          if (cancelled) return;
+          zxingReadRef.current = mod.readBarcodes as unknown as ZXingReader;
+          chosenEngine = "zxing";
+        } catch (err) {
+          if (cancelled) return;
+          console.error("zxing-wasm load failed", err);
+          setCameraState("unsupported");
           return;
         }
-        streamRef.current = stream;
-        const video = videoRef.current;
-        if (video) {
-          video.srcObject = stream;
-          video.setAttribute("playsinline", "true");
-          video.muted = true;
-          await video.play().catch(() => undefined);
-        }
-        setCameraState("running");
+      }
 
-        intervalRef.current = window.setInterval(async () => {
-          const det = detectorRef.current;
-          const v = videoRef.current;
-          if (!det || !v || v.readyState < 2) return;
-          try {
-            const results = await det.detect(v);
-            if (results.length > 0 && results[0].rawValue) {
-              fire(results[0].rawValue);
-            }
-          } catch {
-            /* transient detection errors are fine */
-          }
-        }, 500);
+      if (cancelled) return;
+      setEngine(chosenEngine);
+
+      // 2. Start the camera.
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" } },
+          audio: false,
+        });
       } catch (err) {
         if (cancelled) return;
         const name = err instanceof Error ? err.name : "";
@@ -147,14 +166,86 @@ export function BarcodeScannerModal({ open, onClose, onDetected }: Props) {
         } else {
           setCameraState("error");
         }
+        return;
       }
+      if (cancelled) {
+        for (const t of stream.getTracks()) t.stop();
+        return;
+      }
+      streamRef.current = stream;
+
+      const video = videoRef.current;
+      if (video) {
+        video.srcObject = stream;
+        video.setAttribute("playsinline", "true");
+        video.muted = true;
+        try {
+          await video.play();
+        } catch {
+          /* iOS will sometimes reject the first play() — the user-gesture
+             that opened the modal should cover us, but we don't fail if not */
+        }
+      }
+      setCameraState("running");
+
+      // 3. Start the scan loop.
+      const interval =
+        chosenEngine === "native" ? SCAN_INTERVAL_MS : ZXING_SCAN_INTERVAL_MS;
+      intervalRef.current = window.setInterval(() => {
+        if (inFlightRef.current || firedRef.current) return;
+        void scanOnce(chosenEngine).catch(() => undefined);
+      }, interval);
     })();
 
     return () => {
       cancelled = true;
       stopCamera();
     };
-  }, [open, supportsCamera, detectorCtor, fire, stopCamera]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, nativeCtor]);
+
+  const scanOnce = React.useCallback(async (engineMode: Engine) => {
+    const video = videoRef.current;
+    if (!video || video.readyState < 2) return;
+    inFlightRef.current = true;
+    try {
+      if (engineMode === "native") {
+        const det = nativeDetectorRef.current;
+        if (!det) return;
+        const results = await det.detect(video);
+        if (results.length > 0 && results[0].rawValue) {
+          fire(results[0].rawValue);
+        }
+        return;
+      }
+      if (engineMode === "zxing") {
+        const reader = zxingReadRef.current;
+        if (!reader) return;
+        let canvas = canvasRef.current;
+        if (!canvas) {
+          canvas = document.createElement("canvas");
+          canvasRef.current = canvas;
+        }
+        canvas.width = SCAN_WIDTH;
+        canvas.height = SCAN_HEIGHT;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        if (!ctx) return;
+        ctx.drawImage(video, 0, 0, SCAN_WIDTH, SCAN_HEIGHT);
+        const imageData = ctx.getImageData(0, 0, SCAN_WIDTH, SCAN_HEIGHT);
+        const results = await reader(imageData, {
+          formats: ZXING_FORMATS,
+          tryHarder: true,
+          maxNumberOfSymbols: 1,
+        });
+        const hit = results.find(
+          (r) => r.text && (r.isValid ?? true)
+        );
+        if (hit?.text) fire(hit.text);
+      }
+    } finally {
+      inFlightRef.current = false;
+    }
+  }, [fire]);
 
   const submitManual = () => {
     const value = manual.trim();
@@ -170,32 +261,25 @@ export function BarcodeScannerModal({ open, onClose, onDetected }: Props) {
   return (
     <Modal open={open} onClose={onClose} title="Scan barcode" size="md">
       <div className="flex flex-col gap-4">
-        {supportsCamera ? (
-          <div className="flex flex-col gap-2">
-            <div
-              className={cn(
-                "relative aspect-[4/3] w-full overflow-hidden rounded-[var(--radius-control)]",
-                "bg-[var(--color-elevated)] border border-[var(--color-stroke)]"
-              )}
-            >
-              <video
-                ref={videoRef}
-                className="absolute inset-0 h-full w-full object-cover"
-                playsInline
-                muted
-              />
-              <ScannerOverlay state={cameraState} />
-            </div>
-            <p className="text-[12px] text-[var(--color-fg-2)] text-center">
-              {cameraStateLabel(cameraState)}
-            </p>
+        <div className="flex flex-col gap-2">
+          <div
+            className={cn(
+              "relative aspect-[4/3] w-full overflow-hidden rounded-[var(--radius-control)]",
+              "bg-[var(--color-elevated)] border border-[var(--color-stroke)]"
+            )}
+          >
+            <video
+              ref={videoRef}
+              className="absolute inset-0 h-full w-full object-cover"
+              playsInline
+              muted
+            />
+            <ScannerOverlay state={cameraState} engine={engine} />
           </div>
-        ) : (
-          <div className="rounded-[var(--radius-control)] border border-[var(--color-stroke)] bg-[var(--color-elevated)] p-4 text-[13px] text-[var(--color-fg-2)] leading-snug">
-            Camera scanning isn’t supported in this browser. Enter the barcode
-            number below.
-          </div>
-        )}
+          <p className="text-[12px] text-[var(--color-fg-2)] text-center">
+            {cameraStateLabel(cameraState, engine)}
+          </p>
+        </div>
 
         <div className="flex flex-col gap-2">
           <span className="text-[11px] uppercase tracking-wider text-[var(--color-fg-3)]">
@@ -231,24 +315,34 @@ export function BarcodeScannerModal({ open, onClose, onDetected }: Props) {
   );
 }
 
-function cameraStateLabel(state: CameraState): string {
+function cameraStateLabel(state: CameraState, engine: Engine): string {
   switch (state) {
     case "starting":
-      return "Starting camera…";
+      return engine === "zxing"
+        ? "Loading scanner…"
+        : "Starting camera…";
     case "running":
-      return "Hold the barcode in the frame";
+      return engine === "zxing"
+        ? "Hold steady — ZXing scanner running"
+        : "Hold the barcode in the frame";
     case "denied":
       return "Camera permission denied — use manual entry below";
     case "unsupported":
-      return "Camera scanning unavailable on this device";
+      return "Couldn't load scanner — use manual entry below";
     case "error":
-      return "Couldn’t start camera — use manual entry below";
+      return "Camera failed to start — use manual entry below";
     default:
       return "Preparing…";
   }
 }
 
-function ScannerOverlay({ state }: { state: CameraState }) {
+function ScannerOverlay({
+  state,
+  engine,
+}: {
+  state: CameraState;
+  engine: Engine;
+}) {
   return (
     <div className="pointer-events-none absolute inset-0">
       <div className="absolute inset-0 grid place-items-center">
@@ -259,7 +353,7 @@ function ScannerOverlay({ state }: { state: CameraState }) {
           <Corner pos="br" />
           {state === "running" && (
             <div
-              className="absolute left-2 right-2 h-[2px] rounded-full"
+              className="absolute left-2 right-2 h-[2px] rounded-full animate-pulse"
               style={{
                 top: "50%",
                 background:
@@ -274,7 +368,7 @@ function ScannerOverlay({ state }: { state: CameraState }) {
         <div className="absolute inset-0 grid place-items-center">
           <div className="flex items-center gap-2 rounded-full bg-black/55 px-3 py-1.5 text-[12px] text-white">
             <ScanLine size={14} />
-            {cameraStateLabel(state)}
+            {cameraStateLabel(state, engine)}
           </div>
         </div>
       )}
