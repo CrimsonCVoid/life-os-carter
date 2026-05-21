@@ -52,6 +52,7 @@ import {
   ActiveWorkoutSession,
   DEFAULT_WORKOUT_TEMPLATES,
   LiftSession,
+  LiftSet,
   WorkoutTemplate,
   RecurringGoal,
   RecurringGoalGeneration,
@@ -251,13 +252,24 @@ type Actions = {
   addActiveWorkoutSet: (
     exerciseName: string,
     weight: number,
-    reps: number
+    reps: number,
+    options?: { completed?: boolean }
   ) => void;
   removeActiveWorkoutSet: (exerciseId: string, order: number) => void;
   removeActiveWorkoutExercise: (exerciseId: string) => void;
   setActiveWorkoutFocus: (exerciseId: string | null) => void;
   setActiveWorkoutRestTarget: (seconds: number) => void;
   dismissActiveWorkoutRest: () => void;
+  /** Add a new empty exercise (no sets) to the active workout. No-op if name already present (returns existing). */
+  addActiveWorkoutExercise: (exerciseName: string) => void;
+  /** Patch a specific set within the active workout. */
+  updateActiveWorkoutSet: (
+    exerciseId: string,
+    order: number,
+    patch: Partial<LiftSet>
+  ) => void;
+  /** Toggle `completed` for a set. Fires the rest timer when flipping to true. */
+  toggleActiveWorkoutSetComplete: (exerciseId: string, order: number) => void;
 
   // insights / patterns
   setCachedPatterns: (p: CachedPatterns | undefined) => void;
@@ -430,6 +442,24 @@ void periodForHour; // exported indirectly via setEnergy below if needed
 
 function nextOrder<T extends { order: number }>(arr: T[]) {
   return arr.length ? Math.max(...arr.map((a) => a.order)) + 1 : 0;
+}
+
+/**
+ * Pre-routine-editor templates stored `exercises: string[]`. Convert any
+ * such legacy entries to the new TemplateExerciseEntry[] shape so the
+ * routine editor + active workout sheet don't crash on rehydrate.
+ */
+function migrateWorkoutTemplates(
+  templates: WorkoutTemplate[]
+): WorkoutTemplate[] {
+  return templates.map((t) => ({
+    ...t,
+    exercises: t.exercises.map((e) =>
+      typeof (e as unknown) === "string"
+        ? { name: e as unknown as string }
+        : (e as { name: string })
+    ),
+  }));
 }
 
 export const useStore = create<State & Actions>()(
@@ -1165,11 +1195,13 @@ export const useStore = create<State & Actions>()(
             activeWorkout: {
               id: uid(),
               startedAt: new Date().toISOString(),
-              exercises: tpl.exercises.map((name) => ({
+              exercises: tpl.exercises.map((entry) => ({
                 id: uid(),
-                name,
-                normalizedName: name.trim().toLowerCase(),
+                name: entry.name,
+                normalizedName: entry.name.trim().toLowerCase(),
                 sets: [],
+                plannedSets: entry.plannedSets,
+                notes: entry.notes,
               })),
               workoutType: tpl.name,
             },
@@ -1197,11 +1229,21 @@ export const useStore = create<State & Actions>()(
         const session: LiftSession | null = (() => {
           const aw = get().activeWorkout;
           if (!aw) return null;
-          if (aw.exercises.length === 0) return null;
+          // Drop incomplete (planned-but-not-checked) sets and any exercise
+          // that ends up with zero completed sets — those are aspirational rows.
+          const exercises = aw.exercises
+            .map((ex) => ({
+              ...ex,
+              sets: ex.sets
+                .filter((s) => s.completed !== false)
+                .map((s, i) => ({ ...s, order: i + 1 })),
+            }))
+            .filter((ex) => ex.sets.length > 0);
+          if (exercises.length === 0) return null;
           return {
             id: aw.id,
             date: todayStr(),
-            exercises: aw.exercises,
+            exercises,
             createdAt: aw.startedAt,
           };
         })();
@@ -1216,9 +1258,10 @@ export const useStore = create<State & Actions>()(
         return session;
       },
 
-      addActiveWorkoutSet: (exerciseName, weight, reps) =>
+      addActiveWorkoutSet: (exerciseName, weight, reps, options) =>
         set((s) => {
           if (!s.activeWorkout) return s;
+          const completed = options?.completed ?? true;
           const norm = exerciseName.trim().toLowerCase();
           const existingIdx = s.activeWorkout.exercises.findIndex(
             (e) => e.normalizedName === norm
@@ -1232,7 +1275,7 @@ export const useStore = create<State & Actions>()(
               ...ex,
               sets: [
                 ...ex.sets,
-                { weight, reps, order: ex.sets.length + 1 },
+                { weight, reps, order: ex.sets.length + 1, completed },
               ],
             };
             focusId = ex.id;
@@ -1241,7 +1284,7 @@ export const useStore = create<State & Actions>()(
               id: uid(),
               name: exerciseName.trim(),
               normalizedName: norm,
-              sets: [{ weight, reps, order: 1 }],
+              sets: [{ weight, reps, order: 1, completed }],
             };
             exercises.push(newEx);
             focusId = newEx.id;
@@ -1250,10 +1293,83 @@ export const useStore = create<State & Actions>()(
             activeWorkout: {
               ...s.activeWorkout,
               exercises,
-              lastSetAt: now,
+              // Only completed sets bump the rest timer.
+              lastSetAt: completed ? now : s.activeWorkout.lastSetAt,
               focusedExerciseId: focusId,
-              // Each new set restarts the rest timer — clear the dismissal flag.
-              restDismissedAt: undefined,
+              restDismissedAt: completed ? undefined : s.activeWorkout.restDismissedAt,
+            },
+          };
+        }),
+
+      addActiveWorkoutExercise: (exerciseName) =>
+        set((s) => {
+          if (!s.activeWorkout) return s;
+          const norm = exerciseName.trim().toLowerCase();
+          const exists = s.activeWorkout.exercises.some(
+            (e) => e.normalizedName === norm
+          );
+          if (exists) return s;
+          return {
+            activeWorkout: {
+              ...s.activeWorkout,
+              exercises: [
+                ...s.activeWorkout.exercises,
+                {
+                  id: uid(),
+                  name: exerciseName.trim(),
+                  normalizedName: norm,
+                  sets: [],
+                },
+              ],
+            },
+          };
+        }),
+
+      updateActiveWorkoutSet: (exerciseId, order, patch) =>
+        set((s) => {
+          if (!s.activeWorkout) return s;
+          return {
+            activeWorkout: {
+              ...s.activeWorkout,
+              exercises: s.activeWorkout.exercises.map((e) =>
+                e.id !== exerciseId
+                  ? e
+                  : {
+                      ...e,
+                      sets: e.sets.map((st) =>
+                        st.order === order ? { ...st, ...patch } : st
+                      ),
+                    }
+              ),
+            },
+          };
+        }),
+
+      toggleActiveWorkoutSetComplete: (exerciseId, order) =>
+        set((s) => {
+          if (!s.activeWorkout) return s;
+          const now = new Date().toISOString();
+          let flippedToComplete = false;
+          const exercises = s.activeWorkout.exercises.map((e) => {
+            if (e.id !== exerciseId) return e;
+            return {
+              ...e,
+              sets: e.sets.map((st) => {
+                if (st.order !== order) return st;
+                const nextCompleted = !(st.completed ?? true);
+                if (nextCompleted) flippedToComplete = true;
+                return { ...st, completed: nextCompleted };
+              }),
+            };
+          });
+          return {
+            activeWorkout: {
+              ...s.activeWorkout,
+              exercises,
+              lastSetAt: flippedToComplete ? now : s.activeWorkout.lastSetAt,
+              restDismissedAt: flippedToComplete
+                ? undefined
+                : s.activeWorkout.restDismissedAt,
             },
           };
         }),
@@ -1766,7 +1882,9 @@ export const useStore = create<State & Actions>()(
           liftSessions: p.liftSessions ?? current.liftSessions,
           activeWorkout:
             "activeWorkout" in p ? p.activeWorkout ?? null : current.activeWorkout,
-          workoutTemplates: p.workoutTemplates ?? current.workoutTemplates,
+          workoutTemplates: migrateWorkoutTemplates(
+            p.workoutTemplates ?? current.workoutTemplates
+          ),
           cachedPatterns: p.cachedPatterns ?? current.cachedPatterns,
           dismissedPatterns:
             p.dismissedPatterns ?? current.dismissedPatterns,

@@ -10,8 +10,9 @@ import {
   Tooltip,
   CartesianGrid,
 } from "recharts";
-import { ChevronDown, Plus, Square, Timer, Trash2, X } from "lucide-react";
-import { ActiveWorkoutSheet } from "@/components/workout/active-workout-sheet";
+import { ChevronDown, Pencil, Plus, Square, Timer, Trash2, X } from "lucide-react";
+import { ActiveWorkoutPage } from "@/components/workout/active-workout-page";
+import { RoutineEditor } from "@/components/workout/routine-editor";
 import { Screen } from "@/components/screen";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -118,7 +119,7 @@ export default function GymPage() {
       subtitle="Type + duration + sets, all on one screen. Paste from RepCount."
     >
       <StartWorkoutCTA />
-      <WorkoutTemplatesRow />
+      <RoutinesSection />
       <Button onClick={() => setPasteOpen(true)} className="w-full" size="lg" variant="secondary">
         <Plus size={16} />
         Log past session
@@ -725,48 +726,97 @@ Logged using RepCount`}
   );
 }
 
-function WorkoutTemplatesRow() {
+function RoutinesSection() {
   const templates = useStore((s) => s.workoutTemplates);
   const active = useStore((s) => s.activeWorkout);
   const startFromTemplate = useStore((s) => s.startWorkoutFromTemplate);
-  const [sheetOpenFor, setSheetOpenFor] = React.useState<string | null>(null);
+  const [pageOpen, setPageOpen] = React.useState(false);
+  const [editorRoutineId, setEditorRoutineId] = React.useState<string | null>(null);
+  const [editorOpen, setEditorOpen] = React.useState(false);
 
-  // Hide the template row once a workout is in flight — they can't double-start.
   if (active) return null;
-  if (templates.length === 0) return null;
+
+  const openEditor = (id: string | null) => {
+    setEditorRoutineId(id);
+    setEditorOpen(true);
+    haptic("tap");
+  };
 
   return (
     <>
       <div className="space-y-2">
-        <div className="label">Templates</div>
-        <div className="grid grid-cols-3 gap-2">
-          {templates.slice(0, 3).map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => {
-                haptic("tap");
-                startFromTemplate(t.id);
-                setSheetOpenFor(t.id);
-              }}
-              className={cn(
-                "rounded-xl border border-[var(--color-stroke)] bg-[var(--color-card)]",
-                "p-2.5 text-left active:scale-[0.98]",
-                "transition-transform duration-[80ms] ease-out"
-              )}
-            >
-              <div className="text-[20px] leading-none">{t.icon ?? "🏋️"}</div>
-              <div className="mt-1.5 text-[13px] font-semibold truncate">{t.name}</div>
-              <div className="text-[10px] text-[var(--color-fg-3)] tnum">
-                {t.exercises.length} ex
-              </div>
-            </button>
-          ))}
+        <div className="flex items-center justify-between">
+          <div className="label">Routines</div>
+          <button
+            type="button"
+            onClick={() => openEditor(null)}
+            className="text-[11px] text-[var(--color-accent)] active:opacity-70 inline-flex items-center gap-1"
+          >
+            <Plus size={11} />
+            New
+          </button>
         </div>
+        {templates.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-[var(--color-stroke-strong)] py-5 text-center">
+            <div className="text-[12px] text-[var(--color-fg-3)] mb-2">
+              No routines yet.
+            </div>
+            <Button variant="secondary" size="sm" onClick={() => openEditor(null)}>
+              <Plus size={12} />
+              Create routine
+            </Button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-2">
+            {templates.map((t) => (
+              <div
+                key={t.id}
+                className={cn(
+                  "rounded-xl border border-[var(--color-stroke)] bg-[var(--color-card)]",
+                  "p-2.5 relative"
+                )}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    haptic("tap");
+                    startFromTemplate(t.id);
+                    setPageOpen(true);
+                  }}
+                  className="block w-full text-left active:scale-[0.98] transition-transform duration-[80ms]"
+                >
+                  <div className="text-[20px] leading-none">{t.icon ?? "🏋️"}</div>
+                  <div className="mt-1.5 text-[13px] font-semibold truncate">
+                    {t.name}
+                  </div>
+                  <div className="text-[10px] text-[var(--color-fg-3)] tnum">
+                    {t.exercises.length} ex
+                    {t.exercises.some((e) => (e.plannedSets?.length ?? 0) > 0)
+                      ? " · planned"
+                      : ""}
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openEditor(t.id);
+                  }}
+                  aria-label="Edit routine"
+                  className="absolute top-1.5 right-1.5 h-7 w-7 grid place-items-center rounded-md text-[var(--color-fg-3)] active:scale-90"
+                >
+                  <Pencil size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
-      <ActiveWorkoutSheet
-        open={sheetOpenFor !== null}
-        onClose={() => setSheetOpenFor(null)}
+      <ActiveWorkoutPage open={pageOpen} onClose={() => setPageOpen(false)} />
+      <RoutineEditor
+        open={editorOpen}
+        onClose={() => setEditorOpen(false)}
+        routineId={editorRoutineId}
       />
     </>
   );
@@ -789,24 +839,27 @@ function StartWorkoutCTA() {
           <Timer size={16} />
           Continue workout
         </Button>
-        <ActiveWorkoutSheet open={open} onClose={() => setOpen(false)} />
+        <ActiveWorkoutPage open={open} onClose={() => setOpen(false)} />
       </>
     );
   }
   return (
-    <Button
-      onClick={() => {
-        start();
-        setOpen(true);
-      }}
-      variant="primary"
-      className="w-full"
-      size="lg"
-      haptic="success"
-    >
-      <Square size={14} />
-      Start workout
-    </Button>
+    <>
+      <Button
+        onClick={() => {
+          start();
+          setOpen(true);
+        }}
+        variant="primary"
+        className="w-full"
+        size="lg"
+        haptic="success"
+      >
+        <Square size={14} />
+        Start workout
+      </Button>
+      <ActiveWorkoutPage open={open} onClose={() => setOpen(false)} />
+    </>
   );
 }
 

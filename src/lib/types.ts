@@ -125,6 +125,16 @@ export type LiftSet = {
   weight: number; // lb (0 means bodyweight)
   reps: number;
   order: number;
+  /** RPE 1-10 (rate of perceived exertion). Optional, surfaced via the set row drawer. */
+  rpe?: number;
+  /** Free-text note for this set (form cue, pain, "1RM attempt", etc). */
+  notes?: string;
+  /**
+   * Active-workout-only: false = pre-filled "planned" row awaiting ✓ confirmation,
+   * true = logged. Sets in finished LiftSessions are always completed.
+   * Absence = treated as completed for back-compat with sessions logged before this field existed.
+   */
+  completed?: boolean;
 };
 
 export type LiftExercise = {
@@ -133,6 +143,10 @@ export type LiftExercise = {
   /** Lowercased + trimmed name for matching across sessions. */
   normalizedName: string;
   sets: LiftSet[];
+  /** Routine-derived planned sets for the active workout (greyed-out hint rows). Discarded on finish. */
+  plannedSets?: PlannedSet[];
+  /** Per-exercise note from the routine or in-flight log. */
+  notes?: string;
 };
 
 export type LiftSession = {
@@ -145,19 +159,39 @@ export type LiftSession = {
 };
 
 /**
- * Saved workout template — e.g. "Push Day", "Pull Day", "Legs". Each
- * template seeds an active workout with a pre-loaded exercise list.
- * The user logs sets against those exercises as they go.
+ * Saved workout routine. Each routine seeds an active workout with a
+ * pre-loaded exercise list, optionally with planned sets (weight × reps)
+ * and per-exercise notes. RepCount-style: tap a routine, the active
+ * workout opens with planned sets pre-filled (greyed out) ready to log.
  */
+export type PlannedSet = {
+  weight?: number;
+  reps?: number;
+  rpe?: number;
+  notes?: string;
+};
+
+export type TemplateExerciseEntry = {
+  name: string;
+  /** Free-text per-exercise note (form cue, rest target, "warm-up only"). */
+  notes?: string;
+  /** Optional planned sets. When present, the active workout pre-seeds rows. */
+  plannedSets?: PlannedSet[];
+};
+
 export type WorkoutTemplate = {
   id: string;
   name: string;
   /** Optional emoji for the home tile. */
   icon?: string;
-  /** Ordered list of exercise names that the active workout pre-fills with. */
-  exercises: string[];
+  /** Free-text routine-level note. */
+  notes?: string;
+  exercises: TemplateExerciseEntry[];
   createdAt: string;
 };
+
+const stdSets = (n: number, reps: number): PlannedSet[] =>
+  Array.from({ length: n }, () => ({ reps }));
 
 export const DEFAULT_WORKOUT_TEMPLATES: WorkoutTemplate[] = [
   {
@@ -165,12 +199,12 @@ export const DEFAULT_WORKOUT_TEMPLATES: WorkoutTemplate[] = [
     name: "Push Day",
     icon: "💪",
     exercises: [
-      "Bench press",
-      "Overhead press",
-      "Incline dumbbell press",
-      "Cable fly",
-      "Tricep pushdown",
-      "Lateral raise",
+      { name: "Bench press", plannedSets: stdSets(3, 8) },
+      { name: "Overhead press", plannedSets: stdSets(3, 8) },
+      { name: "Incline dumbbell press", plannedSets: stdSets(3, 10) },
+      { name: "Cable fly", plannedSets: stdSets(3, 12) },
+      { name: "Tricep pushdown", plannedSets: stdSets(3, 12) },
+      { name: "Lateral raise", plannedSets: stdSets(3, 15) },
     ],
     createdAt: "2026-01-01T00:00:00.000Z",
   },
@@ -179,12 +213,12 @@ export const DEFAULT_WORKOUT_TEMPLATES: WorkoutTemplate[] = [
     name: "Pull Day",
     icon: "🪢",
     exercises: [
-      "Deadlift",
-      "Pull-up",
-      "Barbell row",
-      "Lat pulldown",
-      "Face pull",
-      "Barbell curl",
+      { name: "Deadlift", plannedSets: stdSets(3, 5) },
+      { name: "Pull-up", plannedSets: stdSets(3, 8) },
+      { name: "Barbell row", plannedSets: stdSets(3, 8) },
+      { name: "Lat pulldown", plannedSets: stdSets(3, 10) },
+      { name: "Face pull", plannedSets: stdSets(3, 15) },
+      { name: "Barbell curl", plannedSets: stdSets(3, 10) },
     ],
     createdAt: "2026-01-01T00:00:00.000Z",
   },
@@ -193,12 +227,12 @@ export const DEFAULT_WORKOUT_TEMPLATES: WorkoutTemplate[] = [
     name: "Legs",
     icon: "🦵",
     exercises: [
-      "Back squat",
-      "Romanian deadlift",
-      "Leg press",
-      "Walking lunge",
-      "Leg curl",
-      "Calf raise",
+      { name: "Back squat", plannedSets: stdSets(3, 8) },
+      { name: "Romanian deadlift", plannedSets: stdSets(3, 8) },
+      { name: "Leg press", plannedSets: stdSets(3, 10) },
+      { name: "Walking lunge", plannedSets: stdSets(3, 12) },
+      { name: "Leg curl", plannedSets: stdSets(3, 12) },
+      { name: "Calf raise", plannedSets: stdSets(4, 15) },
     ],
     createdAt: "2026-01-01T00:00:00.000Z",
   },

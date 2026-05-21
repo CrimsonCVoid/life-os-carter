@@ -5,7 +5,7 @@ import { Timer, Play, Square, ChevronRight } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useStore } from "@/store";
 import { cn } from "@/lib/utils";
-import { ActiveWorkoutSheet } from "./active-workout-sheet";
+import { ActiveWorkoutPage } from "./active-workout-page";
 
 /**
  * Persistent banner shown across every screen while a workout session is
@@ -74,7 +74,7 @@ export function ActiveWorkoutBanner() {
           </button>
         </div>
       </div>
-      <ActiveWorkoutSheet open={sheetOpen} onClose={() => setSheetOpen(false)} />
+      <ActiveWorkoutPage open={sheetOpen} onClose={() => setSheetOpen(false)} />
     </>
   );
 }
