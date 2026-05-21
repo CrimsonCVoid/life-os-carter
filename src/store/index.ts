@@ -258,6 +258,11 @@ type Actions = {
   dismissActiveWorkoutRest: () => void;
   toggleActiveWorkoutSuperset: (exerciseIdA: string, exerciseIdB: string) => void;
   breakActiveWorkoutSuperset: (exerciseId: string) => void;
+  /** Copy weight + reps of one set across every superset sibling at the
+   *  same set order. Appends a new set on siblings that don't yet have
+   *  the matching order. Used by the swipe-right gesture on a SetRow
+   *  inside a superset. */
+  copySetAcrossSuperset: (exerciseId: string, order: number) => void;
   // Pass the routine object (caller has it from useWorkoutRoutines)
   startWorkoutFromTemplate: (routine: WorkoutRoutine) => void;
 
@@ -1389,6 +1394,48 @@ export const useStore = create<State & Actions>()(
               exercises: s.activeWorkout.exercises.map((e) =>
                 e.id === exerciseId ? { ...e, supersetGroupId: undefined } : e
               ),
+            },
+          };
+        }),
+
+      copySetAcrossSuperset: (exerciseId, order) =>
+        set((s) => {
+          if (!s.activeWorkout) return s;
+          const source = s.activeWorkout.exercises.find((e) => e.id === exerciseId);
+          if (!source?.supersetGroupId) return s;
+          const sourceSet = source.sets.find((st) => st.order === order);
+          if (!sourceSet) return s;
+          const { weight, reps } = sourceSet;
+          const groupId = source.supersetGroupId;
+          return {
+            activeWorkout: {
+              ...s.activeWorkout,
+              exercises: s.activeWorkout.exercises.map((e) => {
+                if (e.id === exerciseId) return e;
+                if (e.supersetGroupId !== groupId) return e;
+                const existing = e.sets.find((st) => st.order === order);
+                if (existing) {
+                  return {
+                    ...e,
+                    sets: e.sets.map((st) =>
+                      st.order === order ? { ...st, weight, reps } : st
+                    ),
+                  };
+                }
+                // Sibling doesn't have a set at this order yet — append one.
+                return {
+                  ...e,
+                  sets: [
+                    ...e.sets,
+                    {
+                      order: e.sets.length + 1,
+                      weight,
+                      reps,
+                      completed: false,
+                    },
+                  ],
+                };
+              }),
             },
           };
         }),

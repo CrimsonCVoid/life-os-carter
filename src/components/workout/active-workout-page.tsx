@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, useMotionValue, useTransform } from "motion/react";
 import {
   ArrowDownToLine,
   ArrowUpToLine,
@@ -80,6 +80,7 @@ export function ActiveWorkoutPage({ open, onClose }: Props) {
   const toggleComplete = useStore((s) => s.toggleActiveWorkoutSetComplete);
   const toggleSuperset = useStore((s) => s.toggleActiveWorkoutSuperset);
   const breakSuperset = useStore((s) => s.breakActiveWorkoutSuperset);
+  const copySetAcrossSuperset = useStore((s) => s.copySetAcrossSuperset);
   const setRestTarget = useStore((s) => s.setActiveWorkoutRestTarget);
   const dismissRest = useStore((s) => s.dismissActiveWorkoutRest);
   const finish = useStore((s) => s.finishActiveWorkout);
@@ -285,6 +286,14 @@ export function ActiveWorkoutPage({ open, onClose }: Props) {
                           breakSuperset(ex.id);
                           haptic("soft");
                         }}
+                        onCopySetAcrossSuperset={
+                          ex.supersetGroupId
+                            ? (order) => {
+                                copySetAcrossSuperset(ex.id, order);
+                                haptic("success");
+                              }
+                            : undefined
+                        }
                       />
                     );
                   };
@@ -569,6 +578,7 @@ function ExerciseCard({
   onRemoveExercise,
   onSupersetWith,
   onBreakSuperset,
+  onCopySetAcrossSuperset,
 }: {
   exercise: LiftExercise;
   lastSession: ExerciseLastSession;
@@ -588,6 +598,10 @@ function ExerciseCard({
   onRemoveExercise: () => void;
   onSupersetWith: (direction: "up" | "down") => void;
   onBreakSuperset: () => void;
+  /** Defined only when this exercise is in a superset group with ≥1 sibling.
+   *  Caller is the active-workout-page; the row uses it to power the
+   *  swipe-right-to-copy gesture. */
+  onCopySetAcrossSuperset?: (order: number) => void;
 }) {
   const [menuOpen, setMenuOpen] = React.useState(false);
   const detailHref = `/gym/exercise/${encodeURIComponent(exercise.name)}`;
@@ -759,6 +773,11 @@ function ExerciseCard({
                 onToggleComplete={() => onToggleComplete(set.order)}
                 onRemove={() => onRemoveSet(set.order)}
                 onOpenRpeNotes={() => onOpenRpeNotes(set.order)}
+                onCopyAcross={
+                  onCopySetAcrossSuperset
+                    ? () => onCopySetAcrossSuperset(set.order)
+                    : undefined
+                }
               />
             ));
           })()}
@@ -806,6 +825,7 @@ function SetRow({
   onToggleComplete,
   onRemove,
   onOpenRpeNotes,
+  onCopyAcross,
 }: {
   set: LiftSet;
   prev: LiftSet | undefined;
@@ -816,9 +836,16 @@ function SetRow({
   onToggleComplete: () => void;
   onRemove: () => void;
   onOpenRpeNotes: () => void;
+  /** RepCount-style: when this set is in a superset, swiping the row right
+   *  copies its weight + reps to every sibling exercise at the same set
+   *  order. undefined → drag is disabled. */
+  onCopyAcross?: () => void;
 }) {
   const completed = set.completed !== false;
   const hasExtras = (set.rpe ?? null) !== null || !!set.notes;
+  const dragX = useMotionValue(0);
+  const swipeProgress = useTransform(dragX, [0, 90], [0, 1]);
+  const canSwipe = !!onCopyAcross && set.weight > 0 && set.reps > 0;
 
   // Long-press on the row → open RPE/notes drawer. Short tap on the row is a
   // no-op (cells handle their own taps); long-press just gives quick access.
@@ -846,7 +873,37 @@ function SetRow({
   const isDrop = !!set.isDropSet && dropDepth > 0;
 
   return (
-    <div
+    <div className="relative">
+      {canSwipe && (
+        <motion.div
+          aria-hidden
+          className="absolute inset-y-1 left-2 flex items-center pl-1 pr-3 rounded-md"
+          style={{
+            opacity: swipeProgress,
+            background:
+              "color-mix(in srgb, var(--color-accent) 22%, transparent)",
+          }}
+        >
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-accent)]">
+            Copy →
+          </span>
+        </motion.div>
+      )}
+    <motion.div
+      drag={canSwipe ? "x" : false}
+      dragConstraints={{ left: 0, right: 110 }}
+      dragElastic={0.15}
+      dragSnapToOrigin
+      style={{
+        x: dragX,
+        touchAction: canSwipe ? "pan-y" : undefined,
+        marginLeft: isDrop ? "12px" : undefined,
+      }}
+      onDragEnd={(_, info) => {
+        if (canSwipe && info.offset.x > 70 && onCopyAcross) {
+          onCopyAcross();
+        }
+      }}
       className={cn(
         "grid grid-cols-[28px_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_34px_32px] gap-2 items-center",
         "rounded-lg px-1 py-1 relative",
@@ -858,7 +915,6 @@ function SetRow({
             ? "bg-[color:color-mix(in_srgb,var(--color-success)_6%,transparent)]"
             : "bg-transparent"
       )}
-      style={isDrop ? { marginLeft: "12px" } : undefined}
       onPointerDown={startPress}
       onPointerUp={endPress}
       onPointerLeave={endPress}
@@ -963,6 +1019,7 @@ function SetRow({
       >
         <X size={13} />
       </button>
+    </motion.div>
     </div>
   );
 }

@@ -25,6 +25,8 @@ import { RoutineEditor } from "@/components/workout/routine-editor";
 import { DetectedSessionCard } from "@/components/workout/detected-session-card";
 import { useWorkoutRoutines } from "@/lib/hooks/use-workout-routines";
 import { liftSessionsToCsv, downloadCsv } from "@/lib/csv-export";
+import { compoundRecords } from "@/lib/pr-detection";
+import { Trophy as TrophyIcon, Flame as StreakIcon } from "lucide-react";
 import { useStore } from "@/store";
 import {
   LiftExercise,
@@ -147,6 +149,8 @@ export default function GymPage() {
         <Dumbbell size={18} />
         {activeWorkout ? "Continue workout" : "Start workout"}
       </Button>
+
+      <RecordsCard liftSessions={liftSessions} />
 
       <DetectedSessionCard />
 
@@ -1107,5 +1111,140 @@ Logged using RepCount`}
         )}
       </div>
     </Modal>
+  );
+}
+
+/* ----------------------------- Records card ----------------------------- */
+
+function computeLiftingStreak(sessions: LiftSession[]): { current: number; longest: number } {
+  if (sessions.length === 0) return { current: 0, longest: 0 };
+  const days = Array.from(new Set(sessions.map((s) => s.date))).sort();
+  let longest = 0;
+  let current = 0;
+  let last: string | null = null;
+  for (const d of days) {
+    if (last == null) {
+      current = 1;
+    } else {
+      const prev = new Date(last + "T00:00:00").getTime();
+      const cur = new Date(d + "T00:00:00").getTime();
+      const gap = Math.round((cur - prev) / 86400000);
+      current = gap === 1 ? current + 1 : 1;
+    }
+    if (current > longest) longest = current;
+    last = d;
+  }
+  // Reset `current` if the last lift wasn't yesterday or today.
+  if (last) {
+    const lastTs = new Date(last + "T00:00:00").getTime();
+    const now = new Date(todayStr() + "T00:00:00").getTime();
+    const sinceLast = Math.round((now - lastTs) / 86400000);
+    if (sinceLast > 1) current = 0;
+  }
+  return { current, longest };
+}
+
+function RecordsCard({ liftSessions }: { liftSessions: LiftSession[] }) {
+  const records = React.useMemo(
+    () => compoundRecords(liftSessions),
+    [liftSessions]
+  );
+  const streak = React.useMemo(
+    () => computeLiftingStreak(liftSessions),
+    [liftSessions]
+  );
+
+  if (liftSessions.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Records</CardTitle>
+        <span className="inline-flex items-center gap-1 text-[11px] text-[var(--color-fg-3)] tnum">
+          <TrophyIcon size={11} />
+          all-time
+        </span>
+      </CardHeader>
+
+      <div className="grid grid-cols-2 gap-2">
+        <RecordTile
+          icon={<StreakIcon size={12} />}
+          label="Current streak"
+          value={`${streak.current}`}
+          unit="days"
+          accent="var(--color-accent)"
+        />
+        <RecordTile
+          icon={<TrophyIcon size={12} />}
+          label="Longest streak"
+          value={`${streak.longest}`}
+          unit="days"
+          accent="var(--mc-calories)"
+        />
+        {records.slice(0, 4).map((r) => (
+          <RecordTile
+            key={r.label}
+            label={r.label}
+            value={
+              r.value >= 1000
+                ? `${(r.value / 1000).toFixed(1)}k`
+                : String(r.value)
+            }
+            unit={r.unit}
+            subtitle={
+              r.date
+                ? format(fromDateStr(r.date), "MMM d, yyyy")
+                : undefined
+            }
+            accent="var(--pillar-strain)"
+          />
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function RecordTile({
+  icon,
+  label,
+  value,
+  unit,
+  subtitle,
+  accent,
+}: {
+  icon?: React.ReactNode;
+  label: string;
+  value: string;
+  unit: string;
+  subtitle?: string;
+  accent: string;
+}) {
+  return (
+    <div
+      className="rounded-xl border p-3"
+      style={{
+        background: `color-mix(in srgb, ${accent} 8%, var(--color-card))`,
+        borderColor: `color-mix(in srgb, ${accent} 22%, var(--color-stroke))`,
+      }}
+    >
+      <div
+        className="flex items-center gap-1 text-[10px] uppercase tracking-wider font-semibold"
+        style={{ color: accent }}
+      >
+        {icon}
+        {label}
+      </div>
+      <div className="mt-1.5 flex items-baseline gap-1">
+        <span className="text-[20px] font-bold tnum text-[var(--color-fg)]">
+          {value}
+        </span>
+        <span className="text-[10px] text-[var(--color-fg-3)]">{unit}</span>
+      </div>
+      {subtitle && (
+        <div className="mt-0.5 text-[10px] text-[var(--color-fg-3)] truncate">
+          {subtitle}
+        </div>
+      )}
+    </div>
   );
 }
