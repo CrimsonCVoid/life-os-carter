@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { ExerciseLibraryPicker } from "@/components/workout/exercise-library-picker";
+import { useStore } from "@/store";
 import {
   useWorkoutRoutines,
   createRoutine,
@@ -66,6 +67,7 @@ const nextExerciseKey = () => `ex-${++exerciseKeySeed}-${Date.now().toString(36)
 
 export function RoutineEditor({ open, onClose, routineId }: Props) {
   const { routines } = useWorkoutRoutines();
+  const customCatalog = useStore((s) => s.customExerciseCatalog);
 
   const existing = React.useMemo<WorkoutRoutine | null>(
     () => routines.find((r) => r.id === routineId) ?? null,
@@ -416,6 +418,7 @@ export function RoutineEditor({ open, onClose, routineId }: Props) {
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
         onPick={addExercise}
+        customCatalog={customCatalog}
       />
 
       <ConfirmModal

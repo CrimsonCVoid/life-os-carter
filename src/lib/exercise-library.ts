@@ -298,17 +298,61 @@ export function searchExercises(
   query: string,
   limit: number = 20
 ): LibraryExercise[] {
+  return searchExercisesWithCustom(query, [], limit);
+}
+
+/**
+ * Map a RepCount Category string to the picker's MuscleGroup enum. CSV
+ * exports use coarse buckets like "Legs" that don't break down further;
+ * we pick the closest match so the picker can still filter usefully.
+ */
+export function categoryToMuscleGroup(category: string): MuscleGroup {
+  const c = category.trim().toLowerCase();
+  if (c === "chest") return "Chest";
+  if (c === "back") return "Back";
+  if (c === "shoulders") return "Shoulders";
+  if (c === "biceps") return "Biceps";
+  if (c === "triceps") return "Triceps";
+  if (c === "legs" || c === "quads" || c === "quadriceps") return "Quads";
+  if (c === "hamstrings" || c === "hams") return "Hamstrings";
+  if (c === "glutes") return "Glutes";
+  if (c === "calves") return "Calves";
+  if (c === "abs" || c === "core") return "Core";
+  if (c === "cardio") return "Cardio";
+  return "Other";
+}
+
+/**
+ * Search across both the premade library and a list of custom exercises
+ * provided by the caller (typically the user's RepCount-imported catalog).
+ * Custom entries that match get the SAME scoring; ties are broken by
+ * preferring user-imported exercises (they're more relevant).
+ */
+export function searchExercisesWithCustom(
+  query: string,
+  custom: LibraryExercise[],
+  limit: number = 20
+): LibraryExercise[] {
   const q = normalize(query);
   if (!q) return [];
 
-  const scored: { ex: LibraryExercise; score: number }[] = [];
-  for (const ex of EXERCISE_LIBRARY) {
+  const scored: { ex: LibraryExercise; score: number; custom: boolean }[] = [];
+  for (const ex of custom) {
     const score = scoreCandidate(ex, q);
-    if (score > 0) scored.push({ ex, score });
+    if (score > 0) scored.push({ ex, score, custom: true });
+  }
+  const customNames = new Set(custom.map((e) => normalize(e.name)));
+  for (const ex of EXERCISE_LIBRARY) {
+    // Drop premade entries whose normalized name collides with a custom
+    // entry so the user sees their own naming first.
+    if (customNames.has(normalize(ex.name))) continue;
+    const score = scoreCandidate(ex, q);
+    if (score > 0) scored.push({ ex, score, custom: false });
   }
 
   scored.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
+    if (a.custom !== b.custom) return a.custom ? -1 : 1;
     return a.ex.name.localeCompare(b.ex.name);
   });
 

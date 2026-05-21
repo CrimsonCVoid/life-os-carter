@@ -9,17 +9,23 @@ import { haptic } from "@/lib/haptics";
 import {
   EXERCISE_LIBRARY,
   MUSCLE_GROUPS,
-  searchExercises,
+  categoryToMuscleGroup,
+  searchExercisesWithCustom,
   groupByMuscle,
   type LibraryExercise,
   type MuscleGroup,
 } from "@/lib/exercise-library";
+import type { CustomExerciseCatalog } from "@/store";
 
 type Props = {
   open: boolean;
   onClose: () => void;
   onPick: (exerciseName: string) => void;
   recentExercises?: string[];
+  /** RepCount-imported exercises. Surfaced first in search and merged
+   *  into the muscle-group browser. Premade library entries whose name
+   *  collides with a custom one are hidden so the user's wording wins. */
+  customCatalog?: CustomExerciseCatalog;
 };
 
 type ChipFilter = MuscleGroup | "All";
@@ -31,6 +37,7 @@ export function ExerciseLibraryPicker({
   onClose,
   onPick,
   recentExercises,
+  customCatalog,
 }: Props) {
   const [query, setQuery] = React.useState("");
   const [filter, setFilter] = React.useState<ChipFilter>("All");
@@ -45,24 +52,51 @@ export function ExerciseLibraryPicker({
   const trimmedQuery = query.trim();
   const isSearching = trimmedQuery.length > 0;
 
+  /** Project the imported catalog into LibraryExercise shape so it can
+   *  flow through the same search / browse rendering paths as the
+   *  premade library. Equipment is unknown for imported entries — we
+   *  default to "other"; categories map via categoryToMuscleGroup. */
+  const customLibrary = React.useMemo<LibraryExercise[]>(() => {
+    if (!customCatalog) return [];
+    return Object.values(customCatalog)
+      .map((entry) => ({
+        name: entry.name,
+        muscleGroup: categoryToMuscleGroup(entry.category),
+        equipment: "other" as const,
+      }));
+  }, [customCatalog]);
+
   const searchResults = React.useMemo<LibraryExercise[]>(
-    () => (isSearching ? searchExercises(trimmedQuery, 50) : []),
-    [isSearching, trimmedQuery]
+    () =>
+      isSearching
+        ? searchExercisesWithCustom(trimmedQuery, customLibrary, 50)
+        : [],
+    [isSearching, trimmedQuery, customLibrary]
   );
 
   const browseGrouped = React.useMemo<Map<MuscleGroup, LibraryExercise[]>>(() => {
+    // Merge custom + premade for the muscle-group browse view. Hide
+    // premade entries that the user already has a same-named custom for.
+    const customNamesLc = new Set(
+      customLibrary.map((e) => e.name.toLowerCase())
+    );
+    const premade = EXERCISE_LIBRARY.filter(
+      (e) => !customNamesLc.has(e.name.toLowerCase())
+    );
+    const merged = [...customLibrary, ...premade];
     const pool =
       filter === "All"
-        ? EXERCISE_LIBRARY
-        : EXERCISE_LIBRARY.filter((e) => e.muscleGroup === filter);
+        ? merged
+        : merged.filter((e) => e.muscleGroup === filter);
     return groupByMuscle(pool);
-  }, [filter]);
+  }, [filter, customLibrary]);
 
   const hasExactMatch = React.useMemo(() => {
     if (!isSearching) return true;
     const q = trimmedQuery.toLowerCase();
-    return EXERCISE_LIBRARY.some((e) => e.name.toLowerCase() === q);
-  }, [isSearching, trimmedQuery]);
+    if (EXERCISE_LIBRARY.some((e) => e.name.toLowerCase() === q)) return true;
+    return customLibrary.some((e) => e.name.toLowerCase() === q);
+  }, [isSearching, trimmedQuery, customLibrary]);
 
   const handlePick = React.useCallback(
     (name: string) => {

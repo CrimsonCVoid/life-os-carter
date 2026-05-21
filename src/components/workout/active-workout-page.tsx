@@ -72,6 +72,7 @@ type RpeDrawerTarget = {
 export function ActiveWorkoutPage({ open, onClose }: Props) {
   const active = useStore((s) => s.activeWorkout);
   const liftSessions = useStore((s) => s.liftSessions);
+  const customCatalog = useStore((s) => s.customExerciseCatalog);
   const addExercise = useStore((s) => s.addActiveWorkoutExercise);
   const removeExercise = useStore((s) => s.removeActiveWorkoutExercise);
   const addSet = useStore((s) => s.addActiveWorkoutSet);
@@ -390,6 +391,7 @@ export function ActiveWorkoutPage({ open, onClose }: Props) {
           haptic("success");
         }}
         recentExercises={recentExercises}
+        customCatalog={customCatalog}
       />
 
       <VoiceLoggerModal
