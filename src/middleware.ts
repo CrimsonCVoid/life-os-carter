@@ -7,9 +7,12 @@ import { SESSION_COOKIE } from "@/lib/auth/config";
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Always-public paths.
+  // Always-public paths. /api/cron and /api/diag self-auth via the
+  // CRON_SECRET bearer header, so they bypass the session cookie gate.
   if (
     pathname.startsWith("/api/auth") ||
+    pathname.startsWith("/api/cron") ||
+    pathname.startsWith("/api/diag") ||
     pathname === "/login" ||
     pathname.startsWith("/_next") ||
     pathname === "/manifest.webmanifest" ||
