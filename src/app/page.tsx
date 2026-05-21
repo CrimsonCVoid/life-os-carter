@@ -16,15 +16,13 @@ import { WeeklyReviewCard } from "@/components/today/weekly-review-card";
 import { PatternCard } from "@/components/today/pattern-card";
 import { DashboardHero } from "@/components/today/dashboard-hero";
 import { FuelCard } from "@/components/today/fuel-card";
-import { ChartsBand } from "@/components/today/charts-band";
-import { StrainTargetCard } from "@/components/today/strain-target-card";
-import { SleepNeedCard } from "@/components/today/sleep-need-card";
+import { PerformanceLane } from "@/components/today/performance-lane";
+import { RecoveryLane } from "@/components/today/recovery-lane";
+import { MovementLane } from "@/components/today/movement-lane";
 import { DayProvider, useDay } from "@/components/today/day-context";
 import { useStore } from "@/store";
 import { haptic } from "@/lib/haptics";
 import { maybeAutoSync } from "@/lib/integrations/google-health/sync-client";
-import { CardioLoadCard } from "@/components/today/cardio-load/cardio-load-card";
-import { PeakStateHero } from "@/components/today/peak-state/peak-state-hero";
 import { PhotoDayBanner } from "@/components/body/photo-day-banner";
 import { PullToRefresh } from "@/components/pull-to-refresh";
 import { mutate as swrMutate } from "swr";
@@ -94,13 +92,11 @@ function DaySurface() {
           <PhotoDayBanner placement="today" />
           <AttentionTicker />
           <DashboardHero />
-          <StrainTargetCard />
-          <SleepNeedCard />
-          <ChartsBand />
+          <PerformanceLane />
+          <RecoveryLane />
           <FuelCard />
+          <MovementLane />
           <DailyStrainCard />
-          <CardioLoadCard />
-          <PeakStateHero />
           <MorningBriefing />
           <WeeklyReviewCard />
           <PatternCard />
