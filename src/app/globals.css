@@ -95,6 +95,29 @@
   --streak-orange: #FB923C;
   --streak-gold: #FCD34D;
 
+  /* ---- Whoop-inspired pillar tokens ----
+   * Each pillar has a base hue used for fills + strokes, plus a soft (~14%
+   * alpha) tint for ring tracks and card gradients. Readiness uses a
+   * bracket-based color picked dynamically (green/yellow/red).
+   * Recovery = green (HRV/RHR pillar)
+   * Strain   = cyan  (workout output + activity)
+   * Sleep    = violet (hours + stages) */
+  --pillar-recovery: #16C47F;
+  --pillar-recovery-2: #5BE3A1;
+  --pillar-recovery-soft: rgba(22, 196, 127, 0.14);
+  --pillar-strain: #38BDF8;
+  --pillar-strain-2: #7DD3FC;
+  --pillar-strain-soft: rgba(56, 189, 248, 0.14);
+  --pillar-sleep: #8B5CF6;
+  --pillar-sleep-2: #A78BFA;
+  --pillar-sleep-soft: rgba(139, 92, 246, 0.14);
+
+  /* Readiness color brackets — used by the hero score card. */
+  --readiness-optimal: #16C47F;
+  --readiness-green:   #16C47F;
+  --readiness-yellow:  #FBBF24;
+  --readiness-red:     #F87171;
+
   --radius-card: 1.25rem;
   --radius-control: 0.75rem;
   --radius-pill: 9999px;
