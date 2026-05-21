@@ -6,20 +6,19 @@ import { LogIn, Loader2 } from "lucide-react";
 /**
  * Real <form> POST to the Auth.js signin endpoint. Top-level navigation
  * works inside iOS-standalone PWAs (where a JS-driven fetch+spinner
- * could get stuck when GitHub/Google opened in Safari and never closed
- * the original tab).
+ * could get stuck when Google opened in Safari and never closed the
+ * original tab).
  */
 
-type Provider = "github" | "google";
+type Provider = "google";
 
 const LABEL: Record<Provider, string> = {
-  github: "Continue with GitHub",
   google: "Continue with Google",
 };
 
 export function SignInButton({
   callbackUrl,
-  provider = "github",
+  provider = "google",
 }: {
   callbackUrl: string;
   provider?: Provider;

@@ -34,16 +34,16 @@ const EXPLANATIONS: Record<string, { heading: string; cause: string; fix: string
     fix: "In Vercel → Settings → Environment Variables, confirm DATABASE_URL and NEXTAUTH_SECRET both exist with Production checked, then redeploy.",
   },
   OAuthSignin: {
-    heading: "Couldn't start GitHub OAuth",
+    heading: "Couldn't start Google OAuth",
     cause:
-      "The redirect to GitHub failed at build time. Usually GITHUB_ID / GITHUB_SECRET missing or NEXTAUTH_URL mismatched.",
-    fix: "Check GITHUB_ID + GITHUB_SECRET in Vercel env. Confirm the GitHub OAuth App's callback URL is exactly https://life-os-two-rust.vercel.app/api/auth/callback/github (no typo).",
+      "The redirect to Google failed at build time. Usually AUTH_GOOGLE_ID / AUTH_GOOGLE_SECRET missing or NEXTAUTH_URL mismatched.",
+    fix: "Check AUTH_GOOGLE_ID + AUTH_GOOGLE_SECRET in Vercel env. Confirm the Google Cloud OAuth client's redirect URI is exactly https://<your-vercel-domain>/api/auth/callback/google (no typo).",
   },
   OAuthCallback: {
-    heading: "GitHub callback failed",
+    heading: "Google callback failed",
     cause:
-      "GitHub returned the user but Auth.js couldn't exchange the code for a token. Most often GITHUB_SECRET is wrong (typo, or you pasted the Client ID into the Secret field).",
-    fix: "Regenerate the Client Secret in the GitHub OAuth App, paste it into Vercel's GITHUB_SECRET, and redeploy.",
+      "Google returned the user but Auth.js couldn't exchange the code for a token. Most often AUTH_GOOGLE_SECRET is wrong (typo, or you pasted the Client ID into the Secret field) — or the redirect URI registered in Google Cloud doesn't match the URL Auth.js sent.",
+    fix: "Regenerate the Client Secret in Google Cloud Console, paste it into Vercel's AUTH_GOOGLE_SECRET, and redeploy. Verify the Authorized redirect URI matches exactly.",
   },
   OAuthCreateAccount: {
     heading: "Couldn't create user record",
@@ -53,8 +53,9 @@ const EXPLANATIONS: Record<string, { heading: string; cause: string; fix: string
   },
   AccessDenied: {
     heading: "Access denied",
-    cause: "You cancelled the GitHub consent screen, or your GitHub account doesn't have access.",
-    fix: "Try signing in again and authorize the app.",
+    cause:
+      "You cancelled the Google consent screen, or the Google account doesn't have access. If the OAuth consent screen is in Testing mode in Google Cloud Console, only added test users can sign in.",
+    fix: "Try signing in again and authorize the app. If using Testing mode, add the email under Google Cloud → OAuth consent screen → Test users.",
   },
   Callback: {
     heading: "Callback error",

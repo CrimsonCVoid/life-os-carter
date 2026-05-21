@@ -31,14 +31,7 @@ export default async function SignInPage({
         </div>
 
         {config.ready ? (
-          <div className="space-y-3">
-            {config.googleReady && (
-              <SignInButton callbackUrl={callbackUrl} provider="google" />
-            )}
-            {config.githubReady && (
-              <SignInButton callbackUrl={callbackUrl} provider="github" />
-            )}
-          </div>
+          <SignInButton callbackUrl={callbackUrl} provider="google" />
         ) : (
           <div
             role="alert"

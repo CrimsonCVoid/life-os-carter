@@ -8,7 +8,10 @@
  * the Edge runtime — the `neon-http` driver does not — which lets the
  * middleware gate run on every request without bouncing to Node.
  *
- * iOS PWA caveat: when the user is in a standalone PWA, the GitHub OAuth
+ * Sign-in: Google SSO only. We previously dual-supported GitHub but
+ * dropped it to make new-user creation a single tap.
+ *
+ * iOS PWA caveat: when the user is in a standalone PWA, the OAuth
  * redirect lands in mobile Safari (not the PWA window). The session cookie
  * still gets set on the right origin, so when the user reopens the PWA
  * they're already signed in. See `signin/page.tsx` for the user-facing
@@ -16,7 +19,6 @@
  */
 
 import NextAuth, { type DefaultSession } from "next-auth";
-import GitHub from "next-auth/providers/github";
 import Google from "next-auth/providers/google";
 import { DrizzleAdapter } from "@auth/drizzle-adapter";
 import { db } from "@/lib/db";
@@ -36,24 +38,17 @@ declare module "next-auth" {
 }
 
 /**
- * Auth.js v5 renamed the canonical env vars (AUTH_SECRET, AUTH_GITHUB_ID,
- * AUTH_GITHUB_SECRET, AUTH_URL) but doesn't auto-fall-back to the v4
+ * Auth.js v5 renamed the canonical env vars (AUTH_SECRET, AUTH_GOOGLE_ID,
+ * AUTH_GOOGLE_SECRET, AUTH_URL) but doesn't auto-fall-back to the v4
  * names in every code path. Pass them explicitly with both-name
- * fallbacks so existing GITHUB_ID / GITHUB_SECRET / NEXTAUTH_SECRET
+ * fallbacks so existing GOOGLE_ID / GOOGLE_SECRET / NEXTAUTH_SECRET
  * vars in Vercel continue to work — no rename required.
+ *
+ * Use `||` (not `??`) so an empty-string env value also falls through —
+ * Vercel sometimes injects "" for un-checked-for-environment vars.
+ * Fallback chain covers the v5 canonical (AUTH_*), the v4 names, and
+ * the common Google-docs alternate (GOOGLE_CLIENT_ID / *_SECRET).
  */
-// Use `||` (not `??`) so an empty-string env value also falls through —
-// Vercel sometimes injects "" for un-checked-for-environment vars.
-// Fallback chain covers the v5 canonical (AUTH_*), the v4 names, and
-// the common GitHub-docs alternate (GITHUB_CLIENT_ID / *_SECRET).
-const githubClientId =
-  process.env.AUTH_GITHUB_ID ||
-  process.env.GITHUB_ID ||
-  process.env.GITHUB_CLIENT_ID;
-const githubClientSecret =
-  process.env.AUTH_GITHUB_SECRET ||
-  process.env.GITHUB_SECRET ||
-  process.env.GITHUB_CLIENT_SECRET;
 const googleClientId =
   process.env.AUTH_GOOGLE_ID ||
   process.env.GOOGLE_ID ||
@@ -68,16 +63,16 @@ const authSecret =
 /**
  * Server-side readiness check for the signin page. Returns the list of
  * required env vars (by either v5 or v4 name) that are missing on this
- * deployment. The signin page calls this before rendering the button
- * so we never redirect to github.com with an undefined client_id —
- * which GitHub serves as a 404.
+ * deployment. The signin page calls this before rendering the button so
+ * we never redirect to Google with an undefined client_id — which Google
+ * serves as a 400.
  */
 export type AuthConfigCheck = {
   ready: boolean;
   missing: string[];
   /**
    * Names of env vars Vercel actually injected at runtime that look
-   * auth-related. Helps spot typos (GITHUB_CLIENTID vs GITHUB_CLIENT_ID),
+   * auth-related. Helps spot typos (AUTH_GOOGLEID vs AUTH_GOOGLE_ID),
    * wrong-environment scoping, or missed redeploys.
    * Keys only — never values.
    */
@@ -86,20 +81,15 @@ export type AuthConfigCheck = {
    * this even though we use JWT sessions — it writes users/accounts on
    * first sign-in. Missing → "Configuration" error during OAuth callback. */
   databaseUrlPresent: boolean;
-  /** Per-provider readiness so the signin page can render only the
-   * buttons whose creds are present. */
-  githubReady: boolean;
+/** Whether Google OAuth creds are configured. Single-provider app. */
   googleReady: boolean;
 };
 
 export function checkAuthConfig(): AuthConfigCheck {
   const missing: string[] = [];
-  const githubReady = !!(githubClientId && githubClientSecret);
   const googleReady = !!(googleClientId && googleClientSecret);
-  if (!githubReady && !googleReady) {
-    missing.push(
-      "At least one provider: AUTH_GITHUB_ID/SECRET or AUTH_GOOGLE_ID/SECRET"
-    );
+  if (!googleReady) {
+    missing.push("AUTH_GOOGLE_ID + AUTH_GOOGLE_SECRET");
   }
   if (!authSecret) missing.push("AUTH_SECRET / NEXTAUTH_SECRET");
 
@@ -113,7 +103,7 @@ export function checkAuthConfig(): AuthConfigCheck {
   if (!databaseUrlPresent) missing.push("DATABASE_URL / DATABASE_URL_UNPOOLED");
 
   const authEnvKeysPresent = Object.keys(process.env)
-    .filter((k) => /^(AUTH_|NEXTAUTH_|GITHUB_|GOOGLE_|DATABASE_)/.test(k))
+    .filter((k) => /^(AUTH_|NEXTAUTH_|GOOGLE_|DATABASE_)/.test(k))
     .filter((k) => {
       const v = process.env[k];
       return typeof v === "string" && v.length > 0;
@@ -125,7 +115,6 @@ export function checkAuthConfig(): AuthConfigCheck {
     missing,
     authEnvKeysPresent,
     databaseUrlPresent,
-    githubReady,
     googleReady,
   };
 }
@@ -137,16 +126,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     sessionsTable: sessions,
     verificationTokensTable: verificationTokens,
   }),
-  providers: [
-    ...(githubClientId && githubClientSecret
-      ? [
-          GitHub({
-            clientId: githubClientId,
-            clientSecret: githubClientSecret,
-          }),
-        ]
-      : []),
-    ...(googleClientId && googleClientSecret
+  providers:
+    googleClientId && googleClientSecret
       ? [
           Google({
             clientId: googleClientId,
@@ -159,8 +140,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             },
           }),
         ]
-      : []),
-  ],
+      : [],
   secret: authSecret,
   session: { strategy: "jwt" },
   callbacks: {
