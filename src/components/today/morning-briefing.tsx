@@ -16,7 +16,6 @@ export function MorningBriefing() {
   const setBriefing = useStore((s) => s.setMorningBriefing);
   const [expanded, setExpanded] = React.useState(true);
   const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
   const [dismissed, setDismissed] = React.useState(false);
 
   React.useEffect(() => {
@@ -35,20 +34,27 @@ export function MorningBriefing() {
       .then(async (res) => {
         if (aborted) return;
         if (!res.ok) {
-          if (res.status === 503) {
-            // no key; silently skip
+          // 503 = no GEMINI_API_KEY, 429 = quota exhausted, 502 = upstream
+          // failure. In every failure mode we silently hide the card and
+          // cache an empty briefing for today so subsequent page loads
+          // don't re-hit the API — the card retries automatically tomorrow.
+          if (!aborted) {
+            setBriefing({ date: today, text: "" });
             setDismissed(true);
-            return;
           }
-          throw new Error(await res.text());
+          return;
         }
         const text = await res.text();
         if (!aborted && text.trim()) {
           setBriefing({ date: today, text: text.trim() });
         }
       })
-      .catch((e) => {
-        if (!aborted) setError(e.message);
+      .catch(() => {
+        // Network / parsing failure: same treatment — cache empty, dismiss.
+        if (!aborted) {
+          setBriefing({ date: today, text: "" });
+          setDismissed(true);
+        }
       })
       .finally(() => {
         if (!aborted) setLoading(false);
@@ -64,7 +70,7 @@ export function MorningBriefing() {
 
   if (!isToday) return null;
   if (dismissed) return null;
-  if (!loading && !text && !error) return null;
+  if (!loading && !text) return null;
   if (!isPast5am()) return null;
 
   return (
@@ -113,11 +119,6 @@ export function MorningBriefing() {
           {text && (
             <p className="text-[14.5px] leading-relaxed whitespace-pre-wrap text-[var(--color-fg)]">
               {text}
-            </p>
-          )}
-          {error && (
-            <p className="text-xs text-[var(--color-danger)]">
-              {error}
             </p>
           )}
         </div>

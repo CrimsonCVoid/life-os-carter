@@ -27,7 +27,9 @@ export async function POST(req: Request) {
 
   try {
     const res = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      // flash-lite: 1000 RPD on the free tier vs flash's 20. Briefing prose
+      // is low-stakes and well within lite's capability.
+      model: "gemini-2.5-flash-lite",
       contents: [
         {
           role: "user",
@@ -50,7 +52,13 @@ export async function POST(req: Request) {
       headers: { "Content-Type": "text/plain; charset=utf-8" },
     });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Gemini call failed";
-    return new Response(msg, { status: 502 });
+    const raw = err instanceof Error ? err.message : "";
+    // The SDK surfaces 429s as Error.message containing the response JSON.
+    // Detect them and return a clean status so the client never shows raw
+    // Google API JSON to the user.
+    if (raw.includes('"code":429') || /RESOURCE_EXHAUSTED/.test(raw)) {
+      return new Response("quota_exceeded", { status: 429 });
+    }
+    return new Response("briefing_failed", { status: 502 });
   }
 }
