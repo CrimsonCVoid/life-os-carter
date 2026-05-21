@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
 import { detectPRs, type PR, type PRType } from "@/lib/pr-detection";
+import { useStore } from "@/store";
+import { HROverlayChart } from "@/components/workout/hr-overlay-chart";
 
 export type WorkoutSummaryProps = {
   open: boolean;
@@ -72,7 +74,33 @@ export function WorkoutSummary(
     prevOpenRef.current = open;
   }, [open, prs.length]);
 
+  const workoutHRSeries = useStore((s) => s.workoutHRSeries);
+  const saveWorkoutHRSeries = useStore((s) => s.saveWorkoutHRSeries);
+
+  // Trigger HR sync once when summary opens for a session that doesn't have HR data yet.
+  React.useEffect(() => {
+    if (!open || !session) return;
+    if (workoutHRSeries[session.id]) return;
+    const startedAt = session.createdAt;
+    const endedAt = new Date(
+      new Date(startedAt).getTime() + durationMs
+    ).toISOString();
+    fetch("/api/workout-hr/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ sessionId: session.id, startedAt, endedAt }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (j && j.ok) saveWorkoutHRSeries(j.series);
+      })
+      .catch(() => undefined);
+  }, [open, session, durationMs, workoutHRSeries, saveWorkoutHRSeries]);
+
   if (!session) return null;
+
+  const hrSeries = workoutHRSeries[session.id];
 
   const totalVolume = session.exercises.reduce(
     (acc, ex) =>
@@ -130,6 +158,15 @@ export function WorkoutSummary(
           subtitle={`${exerciseCount} exercises`}
         />
       </div>
+
+      {hrSeries && hrSeries.samples.length >= 3 && (
+        <div className="mt-3">
+          <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--color-fg-3)] font-medium mb-1.5">
+            Heart rate
+          </div>
+          <HROverlayChart series={hrSeries} />
+        </div>
+      )}
 
       {prs.length > 0 && (
         <div>

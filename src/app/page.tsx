@@ -12,6 +12,11 @@ import { QuickLogTiles } from "@/components/today/quick-log-tiles";
 import { ActivityRings } from "@/components/today/activity-rings";
 import { ReadinessHero } from "@/components/today/readiness-hero";
 import { PillarTiles } from "@/components/today/pillar-tiles";
+import { SleepNeedCard } from "@/components/today/sleep-need-card";
+import { StrainTargetCard } from "@/components/today/strain-target-card";
+import { BehaviorsCard } from "@/components/today/behaviors-card";
+import { MacroRings } from "@/components/today/macro-rings";
+import { FastingTimerCard } from "@/components/nutrition/fasting-timer-card";
 import { MorningRoutine } from "@/components/today/morning-routine";
 import { EveningRoutine } from "@/components/today/evening-routine";
 import { Goals } from "@/components/today/goals";
@@ -72,10 +77,15 @@ function DaySurface() {
       <Screen>
         {!isFuture && <ReadinessHero />}
         {!isFuture && <PillarTiles />}
+        {!isFuture && <StrainTargetCard />}
+        {!isFuture && <SleepNeedCard />}
         {!isFuture && <DailyBriefingCard />}
         {!isFuture && <ActivityRings />}
+        {!isFuture && <MacroRings />}
+        {!isFuture && <FastingTimerCard />}
         {!isFuture && <VitalsTier />}
         {!isFuture && <QuickLogTiles />}
+        {!isFuture && <BehaviorsCard />}
         <MorningBriefing />
         <TodayHeader />
         <WeeklyReviewCard />

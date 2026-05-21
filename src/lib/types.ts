@@ -865,6 +865,18 @@ export type Settings = {
   insights: InsightsSettings;
   weeklyReview: WeeklyReviewSettings;
   dayNavigation: DayNavigationSettings;
+  /** Per-day macro / kcal targets — feeds MacroRings on /today and /nutrition. */
+  macroTargets?: MacroTargets;
+  /** Per-habit time-of-day reminders. */
+  habitReminders?: HabitReminder[];
+  /** Meal-log reminders by mealtime. */
+  mealReminders?: MealReminder[];
+  /** Intermittent-fasting target. Disabled by default. */
+  fasting?: FastingSettings;
+  /** UI unit overrides — separate from nutrition's lb/kg in Units. */
+  workoutWeightUnit?: "lb" | "kg";
+  /** When to send daily strain/recovery briefing pushes (HH:MM, default 06:30). */
+  dailyBriefingTime?: string;
 };
 
 export const DEFAULT_MORNING_ROUTINE: Array<{ name: string; icon: string }> = [
@@ -906,3 +918,155 @@ export const HABIT_TEMPLATES: Array<{ name: string; icon: HabitIcon }> = [
   { name: "No alcohol", icon: "leaf" },
   { name: "Strength training", icon: "dumbbell" },
 ];
+
+/* ---------- MACRO TARGETS + UNITS + FASTING + REMINDERS ---------- */
+
+export type MacroTargets = {
+  /** kcal/day. */
+  calories?: number;
+  /** g/day. */
+  protein?: number;
+  /** g/day. */
+  carbs?: number;
+  /** g/day. */
+  fat?: number;
+  /** g/day. */
+  fiber?: number;
+};
+
+export const DEFAULT_MACRO_TARGETS: MacroTargets = {
+  calories: 2400,
+  protein: 180,
+  carbs: 240,
+  fat: 80,
+  fiber: 35,
+};
+
+export type FastingSettings = {
+  enabled: boolean;
+  /** Target window length (e.g. 16h for 16:8 IF). */
+  targetHours: number;
+};
+
+export type HabitReminder = {
+  habitId: string;
+  /** "HH:MM" 24h, device-local. */
+  time: string;
+};
+
+export type MealReminder = {
+  type: "breakfast" | "lunch" | "dinner" | "snack";
+  time: string; // "HH:MM"
+  enabled: boolean;
+};
+
+/* ---------- BEHAVIOR JOURNAL (Whoop-style next-day correlation) ---------- */
+
+export type BehaviorLog = {
+  date: DateStr;
+  caffeineMg?: number;
+  alcoholDrinks?: number;
+  /** True if the user ate within 2h of bedtime. */
+  lateMeal?: boolean;
+  screenTimeMinBeforeBed?: number;
+  stressLevel?: number; // 1..10
+  meditationMin?: number;
+  cardioMin?: number;
+  saunaMin?: number;
+  coldExposureMin?: number;
+  notes?: string;
+};
+
+/** Catalog of trackable behaviors — used to build the UI tile grid. */
+export const BEHAVIOR_FIELDS: Array<{
+  key: keyof BehaviorLog;
+  label: string;
+  unit: string;
+  numeric: boolean;
+  max?: number;
+  step?: number;
+  icon: string; // lucide name
+}> = [
+  { key: "caffeineMg", label: "Caffeine", unit: "mg", numeric: true, max: 600, step: 50, icon: "coffee" },
+  { key: "alcoholDrinks", label: "Alcohol", unit: "drinks", numeric: true, max: 10, step: 1, icon: "wine" },
+  { key: "lateMeal", label: "Late meal", unit: "", numeric: false, icon: "utensils" },
+  { key: "screenTimeMinBeforeBed", label: "Pre-bed screens", unit: "min", numeric: true, max: 180, step: 15, icon: "smartphone" },
+  { key: "stressLevel", label: "Stress", unit: "/10", numeric: true, max: 10, step: 1, icon: "activity" },
+  { key: "meditationMin", label: "Meditation", unit: "min", numeric: true, max: 90, step: 5, icon: "brain" },
+  { key: "cardioMin", label: "Cardio", unit: "min", numeric: true, max: 180, step: 5, icon: "wind" },
+  { key: "saunaMin", label: "Sauna", unit: "min", numeric: true, max: 60, step: 5, icon: "flame" },
+  { key: "coldExposureMin", label: "Cold exposure", unit: "min", numeric: true, max: 30, step: 1, icon: "snowflake" },
+];
+
+/* ---------- RECIPES (MyFitnessPal-style reusable meals) ---------- */
+
+export type RecipeIngredient = {
+  name: string;
+  quantity?: string;
+  calories: number;
+  protein?: number;
+  carbs?: number;
+  fat?: number;
+  fiber?: number;
+};
+
+export type Recipe = {
+  id: string;
+  name: string;
+  icon?: string;
+  servings: number;
+  ingredients: RecipeIngredient[];
+  /** Computed per-serving totals (set on save). */
+  caloriesPerServing: number;
+  proteinPerServing?: number;
+  carbsPerServing?: number;
+  fatPerServing?: number;
+  fiberPerServing?: number;
+  notes?: string;
+  createdAt: string;
+};
+
+/* ---------- FASTING WINDOWS (IF) ---------- */
+
+export type FastingWindow = {
+  id: string;
+  startedAt: string; // ISO
+  endedAt?: string;  // ISO, undefined = active
+  targetHours: number;
+  notes?: string;
+};
+
+/* ---------- WORKOUT HEART RATE (Fitbit Air via Google Health) ---------- */
+
+export type HRSample = {
+  /** ISO timestamp. */
+  at: string;
+  bpm: number;
+};
+
+export type ZoneMinutes = {
+  zone1: number; // very light
+  zone2: number; // light
+  zone3: number; // moderate
+  zone4: number; // hard
+  zone5: number; // peak
+};
+
+export type WorkoutHRSeries = {
+  /** Same id as the LiftSession this corresponds to. */
+  sessionId: string;
+  startedAt: string;
+  endedAt: string;
+  samples: HRSample[];
+  peakBpm?: number;
+  avgBpm?: number;
+  caloriesBurned?: number;
+  zoneMinutes?: ZoneMinutes;
+  /** When this series was fetched, for cache invalidation. */
+  syncedAt: string;
+};
+
+/* ---------- BAR / PLATE UNITS ---------- */
+
+export const KG_PER_LB = 0.45359237;
+export const LB_PER_KG = 1 / KG_PER_LB;

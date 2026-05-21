@@ -12,11 +12,13 @@ import {
   ListTodo,
   Apple,
   Pen,
+  Search,
 } from "lucide-react";
 import { useStore } from "@/store";
 import { todayStr } from "@/lib/date";
 import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
+import { UniversalSearchModal } from "@/components/universal-search-modal";
 
 /**
  * Floating action button bottom-right. Tap opens a radial / bottom-sheet
@@ -31,6 +33,7 @@ export function QuickCaptureFab() {
   const startWorkout = useStore((s) => s.startActiveWorkout);
   const setHealth = useStore((s) => s.setHealth);
   const [open, setOpen] = React.useState(false);
+  const [searchOpen, setSearchOpen] = React.useState(false);
 
   if (pathname === "/login" || pathname.startsWith("/onboarding")) return null;
   // Don't double-stack with the workout banner — the banner already gives
@@ -49,6 +52,17 @@ export function QuickCaptureFab() {
     color: string;
     onClick: () => void;
   }> = [
+    {
+      key: "search",
+      label: "Search everything",
+      icon: <Search size={16} />,
+      color: "var(--color-accent)",
+      onClick: () => {
+        setSearchOpen(true);
+        haptic("tap");
+        setOpen(false);
+      },
+    },
     {
       key: "workout",
       label: "Start workout",
@@ -196,6 +210,10 @@ export function QuickCaptureFab() {
           </div>
         </div>
       )}
+      <UniversalSearchModal
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+      />
     </>
   );
 }

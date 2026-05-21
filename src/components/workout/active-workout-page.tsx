@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Link2,
   Link2Off,
+  Mic,
   MoreHorizontal,
   Plus,
   Timer,
@@ -46,6 +47,7 @@ import { NumericKeypad } from "@/components/workout/numeric-keypad";
 import { PlateCalculatorPopup } from "@/components/workout/plate-calculator-popup";
 import { ExerciseLibraryPicker } from "@/components/workout/exercise-library-picker";
 import { WorkoutSummary } from "@/components/workout/workout-summary";
+import { VoiceLoggerModal } from "@/components/workout/voice-logger-modal";
 
 const DEFAULT_REST_SECONDS = 120;
 const REST_QUICK_DELTAS = [-30, 30] as const;
@@ -89,6 +91,7 @@ export function ActiveWorkoutPage({ open, onClose }: Props) {
   const [plateOpen, setPlateOpen] = React.useState<{ totalWeight: number } | null>(null);
   const [barWeight, setBarWeight] = React.useState(45);
   const [pickerOpen, setPickerOpen] = React.useState(false);
+  const [voiceOpen, setVoiceOpen] = React.useState(false);
   const [rpeDrawer, setRpeDrawer] = React.useState<RpeDrawerTarget | null>(null);
   const [confirmCancel, setConfirmCancel] = React.useState(false);
   const [summary, setSummary] = React.useState<{
@@ -168,6 +171,10 @@ export function ActiveWorkoutPage({ open, onClose }: Props) {
               canFinish={completedSets > 0}
               onMinimize={onClose}
               onFinish={handleFinish}
+              onOpenVoice={() => {
+                setVoiceOpen(true);
+                haptic("tap");
+              }}
             />
 
             <ReadinessChip />
@@ -379,6 +386,28 @@ export function ActiveWorkoutPage({ open, onClose }: Props) {
         recentExercises={recentExercises}
       />
 
+      <VoiceLoggerModal
+        open={voiceOpen}
+        onClose={() => setVoiceOpen(false)}
+        knownExercises={active?.exercises.map((e) => e.name) ?? []}
+        onCommitSet={(s) => {
+          addSet(s.exerciseName, s.weight, s.reps, { completed: true });
+          if (s.rpe != null) {
+            const ex = active?.exercises.find(
+              (e) => e.normalizedName === s.exerciseName.trim().toLowerCase()
+            );
+            if (ex) {
+              const order =
+                (active?.exercises.find((e) => e.id === ex.id)?.sets.length ??
+                  0) + 1;
+              window.setTimeout(() => {
+                updateSet(ex.id, order, { rpe: s.rpe });
+              }, 0);
+            }
+          }
+        }}
+      />
+
       <RpeNotesDrawer
         target={rpeDrawer}
         active={active}
@@ -425,15 +454,17 @@ function Header({
   canFinish,
   onMinimize,
   onFinish,
+  onOpenVoice,
 }: {
   workoutType: string | undefined;
   elapsedMs: number;
   canFinish: boolean;
   onMinimize: () => void;
   onFinish: () => void;
+  onOpenVoice: () => void;
 }) {
   return (
-    <header className="flex items-center gap-3 px-4 py-3 border-b border-[var(--color-stroke)] bg-[var(--color-card)]">
+    <header className="flex items-center gap-2 px-4 py-3 border-b border-[var(--color-stroke)] bg-[var(--color-card)]">
       <button
         type="button"
         onClick={onMinimize}
@@ -450,6 +481,14 @@ function Header({
           {fmtElapsed(elapsedMs)}
         </div>
       </div>
+      <button
+        type="button"
+        onClick={onOpenVoice}
+        aria-label="Voice log a set"
+        className="h-9 w-9 grid place-items-center rounded-full bg-[var(--color-elevated)] border border-[var(--color-stroke)] text-[var(--color-fg-2)] active:scale-95 transition-transform duration-[80ms]"
+      >
+        <Mic size={16} />
+      </button>
       <Button
         variant="primary"
         size="sm"

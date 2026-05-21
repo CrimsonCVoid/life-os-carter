@@ -54,6 +54,10 @@ import {
   LiftSession,
   LiftSet,
   WorkoutTemplate,
+  BehaviorLog,
+  Recipe,
+  FastingWindow,
+  WorkoutHRSeries,
   RecurringGoal,
   RecurringGoalGeneration,
   SavedMeal,
@@ -104,6 +108,15 @@ type State = {
   dismissedPatterns: DismissedPattern[];
   weeklyReviews: WeeklyReviewData[];
   googleHealth: GoogleHealthState;
+  /** Per-date behavior journal for Whoop-style next-day correlation. */
+  behaviors: Record<DateStr, BehaviorLog>;
+  /** User-built recipes (MyFitnessPal-style reusable meals). */
+  recipes: Recipe[];
+  /** Current IF window (if any) + history. */
+  activeFasting: FastingWindow | null;
+  fastingHistory: FastingWindow[];
+  /** Heart-rate series fetched per workout (keyed by LiftSession.id). */
+  workoutHRSeries: Record<string, WorkoutHRSeries>;
 };
 
 type Actions = {
@@ -277,6 +290,24 @@ type Actions = {
   /** Remove an exercise from its superset group. No-op if not grouped. */
   breakActiveWorkoutSuperset: (exerciseId: string) => void;
 
+  // behaviors journal
+  setBehavior: (date: DateStr, patch: Partial<BehaviorLog>) => void;
+  removeBehavior: (date: DateStr) => void;
+
+  // recipes
+  addRecipe: (r: Omit<Recipe, "id" | "createdAt">) => void;
+  updateRecipe: (id: string, patch: Partial<Recipe>) => void;
+  removeRecipe: (id: string) => void;
+
+  // intermittent fasting
+  startFasting: (targetHours: number) => void;
+  endFasting: (notes?: string) => void;
+  cancelActiveFasting: () => void;
+
+  // workout heart rate series (cached intra-workout HR from Fitbit/Google Health)
+  saveWorkoutHRSeries: (s: WorkoutHRSeries) => void;
+  removeWorkoutHRSeries: (sessionId: string) => void;
+
   // insights / patterns
   setCachedPatterns: (p: CachedPatterns | undefined) => void;
   nextPattern: () => void;
@@ -414,6 +445,11 @@ const initialState: State = {
   dismissedPatterns: [],
   weeklyReviews: [],
   googleHealth: { ...DEFAULT_GOOGLE_HEALTH_STATE },
+  behaviors: {},
+  recipes: [],
+  activeFasting: null,
+  fastingHistory: [],
+  workoutHRSeries: {},
 };
 
 /** Pick the energy period from a clock hour. */
@@ -1717,6 +1753,76 @@ export const useStore = create<State & Actions>()(
           googleHealth: { ...DEFAULT_GOOGLE_HEALTH_STATE },
         })),
 
+      // --- Behaviors ---
+      setBehavior: (date, patch) =>
+        set((s) => ({
+          behaviors: {
+            ...s.behaviors,
+            [date]: { ...(s.behaviors[date] ?? { date }), ...patch, date },
+          },
+        })),
+      removeBehavior: (date) =>
+        set((s) => {
+          const next = { ...s.behaviors };
+          delete next[date];
+          return { behaviors: next };
+        }),
+
+      // --- Recipes ---
+      addRecipe: (r) =>
+        set((s) => ({
+          recipes: [
+            ...s.recipes,
+            { ...r, id: uid(), createdAt: new Date().toISOString() },
+          ],
+        })),
+      updateRecipe: (id, patch) =>
+        set((s) => ({
+          recipes: s.recipes.map((r) => (r.id === id ? { ...r, ...patch } : r)),
+        })),
+      removeRecipe: (id) =>
+        set((s) => ({ recipes: s.recipes.filter((r) => r.id !== id) })),
+
+      // --- Intermittent fasting ---
+      startFasting: (targetHours) =>
+        set((s) => {
+          if (s.activeFasting) return s;
+          return {
+            activeFasting: {
+              id: uid(),
+              startedAt: new Date().toISOString(),
+              targetHours,
+            },
+          };
+        }),
+      endFasting: (notes) =>
+        set((s) => {
+          if (!s.activeFasting) return s;
+          const ended: FastingWindow = {
+            ...s.activeFasting,
+            endedAt: new Date().toISOString(),
+            notes,
+          };
+          return {
+            activeFasting: null,
+            fastingHistory: [...s.fastingHistory, ended],
+          };
+        }),
+      cancelActiveFasting: () =>
+        set(() => ({ activeFasting: null })),
+
+      // --- Workout HR series ---
+      saveWorkoutHRSeries: (s) =>
+        set((state) => ({
+          workoutHRSeries: { ...state.workoutHRSeries, [s.sessionId]: s },
+        })),
+      removeWorkoutHRSeries: (sessionId) =>
+        set((s) => {
+          const next = { ...s.workoutHRSeries };
+          delete next[sessionId];
+          return { workoutHRSeries: next };
+        }),
+
       exportAll: () => {
         const s = get();
         const payload = {
@@ -1934,6 +2040,12 @@ export const useStore = create<State & Actions>()(
               (p.googleHealth as GoogleHealthState | undefined)?.sourceByDate ??
               current.googleHealth.sourceByDate,
           },
+          behaviors: p.behaviors ?? current.behaviors,
+          recipes: p.recipes ?? current.recipes,
+          activeFasting:
+            "activeFasting" in p ? p.activeFasting ?? null : current.activeFasting,
+          fastingHistory: p.fastingHistory ?? current.fastingHistory,
+          workoutHRSeries: p.workoutHRSeries ?? current.workoutHRSeries,
         } as State & Actions;
         return merged;
       },

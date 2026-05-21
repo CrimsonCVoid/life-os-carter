@@ -14,6 +14,7 @@ import Link from "next/link";
 import { CalendarDays, ChevronDown, ChevronRight, Download, Pencil, Plus, Square, Timer, Trash2 } from "lucide-react";
 import { ActiveWorkoutPage } from "@/components/workout/active-workout-page";
 import { RoutineEditor } from "@/components/workout/routine-editor";
+import { DetectedSessionCard } from "@/components/workout/detected-session-card";
 import { liftSessionsToCsv, downloadCsv } from "@/lib/csv-export";
 import { WEEK_DAY_LABELS } from "@/lib/types";
 import { Screen } from "@/components/screen";
@@ -116,6 +117,7 @@ export default function GymPage() {
       title="Gym"
       subtitle="Start a workout. Routines and progress live below."
     >
+      <DetectedSessionCard />
       <TodayRoutineCard />
       <StartWorkoutCTA />
       <RoutinesSection />

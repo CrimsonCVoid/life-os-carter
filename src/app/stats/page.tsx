@@ -19,6 +19,8 @@ import { TimeSpentCard } from "@/components/stats/time-spent-card";
 import { EnergyCurveCard } from "@/components/stats/energy-curve-card";
 import { NutritionStatsCard } from "@/components/stats/nutrition-card";
 import { RecurringGoalsCard } from "@/components/stats/recurring-goals-card";
+import { HrvTrendCard } from "@/components/stats/hrv-trend-card";
+import { MuscleFrequencyCard } from "@/components/stats/muscle-frequency-card";
 
 type Range = "7" | "30" | "90" | "365";
 
@@ -44,6 +46,8 @@ export default function StatsPage() {
         />
       </div>
       <WeekViewCard />
+      <HrvTrendCard />
+      <MuscleFrequencyCard />
       <Heatmap days={Math.min(days, 90)} />
       <TimeSpentCard days={days} />
       <RecurringGoalsCard days={days} />
