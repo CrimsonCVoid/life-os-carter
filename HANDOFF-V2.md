@@ -549,3 +549,220 @@ Estimated total wall-clock: 4-6 focused hours to land Phase 1 + 2 + 4.
 Phase 3 alone is another 3-4 hours.
 
 Good luck.
+
+---
+
+## AMENDMENT — gaps found in audit
+
+After the first pass, audit revealed these missing items. They are
+**hard prerequisites** for the RepCount port and must be done before
+Phase 3 (active workout page) will compile.
+
+### Missing pure libs (Wave 0 — before Phase 1)
+
+- **`src/lib/workout-history.ts`** (carter has it) — exports
+  `findLastSessionFor(sessions, name)`, `formatDaysAgo(n)`,
+  `formatSetsCompact(sets)`. Used by `active-workout-page.tsx` for
+  the "Last time · 3d ago · 185×8, 185×8, 175×6" chip above each
+  exercise. **Drop in clean** — no Zustand deps.
+
+```bash
+cp ~/Downloads/life-os-carter/src/lib/workout-history.ts src/lib/
+```
+
+### Missing pillar palette tokens (Wave 0 — before Phase 2)
+
+hbrady7's `src/app/globals.css` does **not** have the `--pillar-*` or
+`--readiness-*` tokens that carter's pillar-tiles, strain-target-card,
+sleep-need-card, ReadinessChip all reference. They render broken
+until added. Carter's set:
+
+```css
+@theme {
+  /* Pillar palette (Whoop-style) */
+  --pillar-recovery: #16C47F;
+  --pillar-recovery-2: #5BE3A1;
+  --pillar-recovery-soft: rgba(22, 196, 127, 0.14);
+  --pillar-strain: #38BDF8;
+  --pillar-strain-2: #7DD3FC;
+  --pillar-strain-soft: rgba(56, 189, 248, 0.14);
+  --pillar-sleep: #8B5CF6;
+  --pillar-sleep-2: #A78BFA;
+  --pillar-sleep-soft: rgba(139, 92, 246, 0.14);
+
+  /* Readiness brackets */
+  --readiness-optimal: #16C47F;
+  --readiness-green: #34D399;
+  --readiness-yellow: #FBBF24;
+  --readiness-red: #FB7185;
+}
+```
+
+Add these to hbrady7's `src/app/globals.css` `@theme` block before
+porting any pillar/strain/sleep/readiness card.
+
+### Missing ActiveWorkoutSession type + Zustand slice (Wave 0 — before Phase 3)
+
+Per the architecture call: keep active workout in client-only Zustand
+(short-lived, every-tap mutating). Carter's complete shape:
+
+**Type** (add to `src/lib/types.ts`):
+
+```ts
+export type ActiveWorkoutSession = {
+  id: string;
+  startedAt: string;
+  lastSetAt?: string;
+  workoutType?: string;
+  exercises: LiftExercise[];
+  restTargetSeconds?: number;
+  restDismissedAt?: string;
+};
+```
+
+**Store actions** (add to `src/store/index.ts` — hbrady7 already uses
+Zustand for UI state per its CLAUDE.md):
+
+```ts
+// State slice
+activeWorkout: ActiveWorkoutSession | null;
+
+// Actions (all the carter actions, distilled):
+startActiveWorkout: (workoutType?: string) => void;
+cancelActiveWorkout: () => void;
+finishActiveWorkout: () => Promise<LiftSessionRow | null>;  // POSTs to /api/data/workouts then clears
+addActiveWorkoutSet: (
+  exerciseName: string,
+  weight: number,
+  reps: number,
+  options?: { completed?: boolean }
+) => void;
+addActiveWorkoutExercise: (exerciseName: string) => void;
+removeActiveWorkoutSet: (exerciseId: string, order: number) => void;
+removeActiveWorkoutExercise: (exerciseId: string) => void;
+updateActiveWorkoutSet: (
+  exerciseId: string,
+  order: number,
+  patch: Partial<LiftSet>
+) => void;
+toggleActiveWorkoutSetComplete: (exerciseId: string, order: number) => void;
+setActiveWorkoutRestTarget: (seconds: number) => void;
+dismissActiveWorkoutRest: () => void;
+toggleActiveWorkoutSuperset: (exerciseIdA: string, exerciseIdB: string) => void;
+breakActiveWorkoutSuperset: (exerciseId: string) => void;
+startWorkoutFromTemplate: (templateId: string) => void;  // seeds from a WorkoutRoutine
+```
+
+Carter's full implementations live in
+`~/Downloads/life-os-carter/src/store/index.ts` — search for each
+action name and copy the body. The `finishActiveWorkout` needs one
+change: instead of writing to a Zustand `liftSessions` array, POST
+to `/api/data/workouts` (returns the persisted row, then triggers
+`mutate(KEY_WORKOUTS)` so the SWR hook refreshes).
+
+Persist the `activeWorkout` slice via Zustand's `persist` middleware
+to localStorage so a closed PWA mid-workout doesn't lose state.
+
+### Missing component (Wave 2 — alongside the Phase 3 page port)
+
+- **`src/components/workout/active-workout-banner.tsx`** (carter has it) —
+  persistent banner shown across every screen while a workout session
+  is live. Fixed-position above BottomNav on mobile, top-right chip on
+  desktop. Tap → opens the active-workout-page. Already wired into
+  carter's root layout. Port pattern: copy verbatim, swap any
+  `useStore` → existing v2 hook equivalents.
+
+```bash
+cp ~/Downloads/life-os-carter/src/components/workout/active-workout-banner.tsx src/components/workout/
+```
+
+Mount in `src/app/layout.tsx` (or wherever hbrady7 mounts its persistent
+chrome) so it renders globally.
+
+### Missing /gym page wiring (Wave 2 — Phase 5)
+
+Carter's `src/app/gym/page.tsx` slots in five sections that the v2
+version needs added:
+
+```tsx
+<TodayRoutineCard />          // auto-surfaces a routine scheduled for today
+<DetectedSessionCard />        // Fitbit-detected workout import prompt
+<StartWorkoutCTA />            // primary CTA (Start workout / Continue workout)
+<RoutinesSection />            // routine list with edit + start (uses useWorkoutRoutines)
+<ExportCsvButton />            // CSV export using lib/csv-export.ts (already ported)
+```
+
+Full source at `~/Downloads/life-os-carter/src/app/gym/page.tsx`.
+Port the function bodies, swap Zustand reads for SWR hooks.
+
+### Missing pre-workout ReadinessChip (inside active-workout-page)
+
+Carter's active-workout-page has a `<ReadinessChip />` between the
+header and stats strip — shows today's composite readiness score
+(uses `computeReadiness` from `lib/readiness.ts`, already ported in
+`8f3ce1f`). Make sure it's preserved during the Phase 3 port.
+
+### Voice logger details (Phase 2)
+
+- API route `app/api/voice-workout/route.ts` uses Gemini's audio
+  input. Server-side only. Reuse hbrady7's existing
+  `resolveGeminiApiKey()` + `@google/genai` pattern. The route
+  parses spoken sets ("10 reps at 185 for bench") into structured
+  ParsedSet[] using a grounded prompt with the active workout's
+  known exercise names.
+
+- Component `voice-logger-modal.tsx` uses MediaRecorder with
+  dynamic mimeType (`audio/webm;codecs=opus` preferred), base64
+  encodes, POSTs to the route, surfaces a preview UI with
+  per-set include/exclude checkboxes, commits via parent
+  `onCommitSet` callback (which calls `addActiveWorkoutSet` from
+  the Zustand slice).
+
+### Voice-journal vs Voice-workout
+
+Carter has BOTH `voice-journal-modal.tsx` (journal entries, already
+in hbrady7) and `voice-logger-modal.tsx` (sets logging, NEW).
+Don't conflate — they're separate flows.
+
+### CSV export wiring (~10 lines, can ship anytime)
+
+`lib/csv-export.ts` is already ported. To activate, add a button on
+/gym (or as a settings action):
+
+```tsx
+import { liftSessionsToCsv, downloadCsv } from "@/lib/csv-export";
+import { useWorkouts } from "@/lib/hooks/use-workouts";  // existing
+
+function ExportCsvButton() {
+  const { workouts } = useWorkouts();  // adapt to actual hook shape
+  if (!workouts.length) return null;
+  return (
+    <Button onClick={() => {
+      const csv = liftSessionsToCsv(workouts);
+      downloadCsv(`life-os-workouts-${todayStr()}.csv`, csv);
+    }}>
+      Export CSV
+    </Button>
+  );
+}
+```
+
+### Updated phase order
+
+The corrected order (replacing the earlier "Phase 1 first" advice):
+
+1. **Wave 0** — add pillar palette tokens to globals.css, copy
+   workout-history.ts, add ActiveWorkoutSession type + Zustand slice
+2. **Phase 1** — 4 entity REST + hook quads (recipes, fasting,
+   workout_routines, workout_hr_series)
+3. **Phase 2** — port the data-dependent Today/Nutrition/Stats cards
+   + universal-search-modal + voice-workout API + voice-logger-modal
+4. **Phase 3** — port `active-workout-page.tsx` (now possible because
+   Wave 0 + Phase 1 are done) + `active-workout-banner.tsx`
+5. **Phase 4** — per-exercise deep-dive page
+6. **Phase 5** — routine editor + /gym page wiring +
+   `today-routine-card` + `detected-session-card` + CSV button
+
+Wave 0 is small (~1h). Phase 1 is the bulk of the REST/hook work
+(~2h). Phase 2 is wide but mechanical (~2-3h). Phase 3 is the single
+biggest port (~3-4h). Phases 4 + 5 are smaller (~1-2h each).
