@@ -10,15 +10,13 @@ import {
   Tooltip,
   CartesianGrid,
 } from "recharts";
-import { ChevronDown, Pencil, Plus, Square, Timer, Trash2, X } from "lucide-react";
+import { ChevronDown, Pencil, Plus, Square, Timer, Trash2 } from "lucide-react";
 import { ActiveWorkoutPage } from "@/components/workout/active-workout-page";
 import { RoutineEditor } from "@/components/workout/routine-editor";
 import { Screen } from "@/components/screen";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Modal } from "@/components/ui/modal";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
-import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { Slider } from "@/components/ui/slider";
@@ -31,12 +29,10 @@ import {
 import {
   bestE1RM,
   estimated1RM,
-  parseRepCount,
-  parseResultToSession,
   topSet,
   totalVolume,
 } from "@/lib/repcount";
-import { todayStr, format, fromDateStr } from "@/lib/date";
+import { format, fromDateStr } from "@/lib/date";
 import { round1 } from "@/lib/utils";
 import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
@@ -56,7 +52,6 @@ export default function GymPage() {
   const removeWorkout = useStore((s) => s.removeWorkout);
   const unified = useUnifiedGymSessions();
 
-  const [pasteOpen, setPasteOpen] = React.useState(false);
   const [deleteTarget, setDeleteTarget] = React.useState<{
     liftSessionId?: string;
     workoutId?: string;
@@ -116,14 +111,10 @@ export default function GymPage() {
   return (
     <Screen
       title="Gym"
-      subtitle="Type + duration + sets, all on one screen. Paste from RepCount."
+      subtitle="Start a workout. Routines and progress live below."
     >
       <StartWorkoutCTA />
       <RoutinesSection />
-      <Button onClick={() => setPasteOpen(true)} className="w-full" size="lg" variant="secondary">
-        <Plus size={16} />
-        Log past session
-      </Button>
 
       {byExercise.length > 0 && (
         <Card>
@@ -164,15 +155,8 @@ export default function GymPage() {
         {unified.length === 0 ? (
           <div className="py-8 text-center">
             <div className="text-sm text-[var(--color-fg-2)]">
-              No sessions yet.
+              No sessions yet — tap "Start workout" above.
             </div>
-            <button
-              type="button"
-              onClick={() => setPasteOpen(true)}
-              className="mt-2 text-xs text-[var(--color-accent)]"
-            >
-              Log your first →
-            </button>
           </div>
         ) : (
           <ul className="space-y-2">
@@ -194,11 +178,6 @@ export default function GymPage() {
           </ul>
         )}
       </Card>
-
-      <NewSessionModal
-        open={pasteOpen}
-        onClose={() => setPasteOpen(false)}
-      />
 
       <ConfirmModal
         open={!!deleteTarget}
@@ -513,216 +492,6 @@ function ExerciseDetail({ ex }: { ex: LiftExercise }) {
         ))}
       </ul>
     </div>
-  );
-}
-
-function NewSessionModal({
-  open,
-  onClose,
-}: {
-  open: boolean;
-  onClose: () => void;
-}) {
-  const addLiftSession = useStore((s) => s.addLiftSession);
-  const upsertWorkoutForDate = useStore((s) => s.upsertWorkoutForDate);
-  const dayTypePresets = useStore((s) => s.settings.dayTypePresets);
-  const [raw, setRaw] = React.useState("");
-  const [fallbackDate, setFallbackDate] = React.useState(todayStr());
-  const [workoutType, setWorkoutType] = React.useState("");
-  const [durationMin, setDurationMin] = React.useState("");
-  const [intensity, setIntensity] = React.useState(0);
-
-  React.useEffect(() => {
-    if (open) {
-      setRaw("");
-      setFallbackDate(todayStr());
-      setWorkoutType("");
-      setDurationMin("");
-      setIntensity(0);
-    }
-  }, [open]);
-
-  const parsed = React.useMemo(
-    () => (raw.trim() ? parseRepCount(raw, fallbackDate) : null),
-    [raw, fallbackDate]
-  );
-
-  const hasMetadata =
-    workoutType.trim().length > 0 ||
-    durationMin.trim().length > 0 ||
-    intensity > 0;
-  const hasLog = !!parsed && parsed.exercises.length > 0;
-  const canSave = hasLog || hasMetadata;
-
-  const save = () => {
-    const date = parsed?.date ?? fallbackDate;
-    if (hasLog && parsed) {
-      const session = parseResultToSession(parsed, raw);
-      addLiftSession(session);
-    }
-    if (hasMetadata) {
-      const dur = parseInt(durationMin, 10);
-      upsertWorkoutForDate(date, {
-        type: workoutType.trim() || undefined,
-        durationMin: Number.isFinite(dur) ? dur : undefined,
-        intensity: intensity > 0 ? intensity : undefined,
-      });
-    }
-    haptic("success");
-    onClose();
-  };
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="New gym session"
-      description="Type + duration + intensity are optional. Paste a log for set-by-set tracking."
-      size="lg"
-      footer={
-        <div className="flex items-center justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button onClick={save} disabled={!canSave}>
-            Save
-          </Button>
-        </div>
-      }
-    >
-      <div className="space-y-4">
-        <div>
-          <div className="label mb-2">Workout type (optional)</div>
-          <div className="flex flex-wrap gap-1.5 mb-2">
-            {dayTypePresets.map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => setWorkoutType(t)}
-                className={cn(
-                  "h-8 px-3 rounded-full text-xs border transition",
-                  workoutType === t
-                    ? "bg-[var(--color-accent-soft)] text-[var(--color-accent)] border-[color:color-mix(in_srgb,var(--color-accent)_24%,transparent)]"
-                    : "border-[var(--color-stroke)] text-[var(--color-fg-2)]"
-                )}
-              >
-                {t}
-              </button>
-            ))}
-          </div>
-          <Input
-            value={workoutType}
-            onChange={(e) => setWorkoutType(e.target.value)}
-            placeholder="Or type a custom name…"
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <div className="label mb-2">Duration (min)</div>
-            <Input
-              type="number"
-              inputMode="numeric"
-              value={durationMin}
-              onChange={(e) => setDurationMin(e.target.value)}
-              placeholder="—"
-            />
-          </div>
-          <div>
-            <div className="label mb-2">Intensity {intensity}/10</div>
-            <Slider
-              value={intensity}
-              min={0}
-              max={10}
-              step={1}
-              onChange={setIntensity}
-            />
-          </div>
-        </div>
-
-        <div>
-          <div className="label mb-2">Paste log (optional)</div>
-          <Textarea
-            value={raw}
-            onChange={(e) => setRaw(e.target.value)}
-            rows={8}
-            placeholder={`May 11, 2026
-
-Machine chest press
-110 x 13
-130 x 9
-130 x 10
-
-Pushups
-0 x 24
-0 x 21
-
-Logged using RepCount`}
-            className="font-mono text-[13px]"
-          />
-        </div>
-
-        <div>
-          <div className="label mb-2">Default date (if missing in log)</div>
-          <Input
-            type="date"
-            value={fallbackDate}
-            onChange={(e) => setFallbackDate(e.target.value)}
-          />
-        </div>
-
-        {parsed && (
-          <div className="space-y-2">
-            <div className="flex items-baseline justify-between">
-              <div className="label">Preview</div>
-              <div className="text-[11px] text-[var(--color-fg-3)] tnum">
-                {format(fromDateStr(parsed.date), "MMM d, yyyy")} ·{" "}
-                {parsed.exercises.length} exercise
-                {parsed.exercises.length === 1 ? "" : "s"}
-              </div>
-            </div>
-            {parsed.exercises.length === 0 ? (
-              <div className="text-xs text-[var(--color-fg-3)] text-center py-3">
-                Nothing parsed yet.
-              </div>
-            ) : (
-              <ul className="space-y-2 max-h-48 overflow-y-auto nice-scroll pr-1">
-                {parsed.exercises.map((ex, i) => (
-                  <li
-                    key={i}
-                    className="rounded-lg bg-[var(--color-elevated)] border border-[var(--color-stroke)] p-2.5"
-                  >
-                    <div className="text-sm font-medium">{ex.name}</div>
-                    <div className="mt-1 text-[12px] text-[var(--color-fg-2)] tnum flex flex-wrap gap-x-3">
-                      {ex.sets.map((s, j) => (
-                        <span key={j}>
-                          {s.weight > 0
-                            ? `${s.weight}×${s.reps}`
-                            : `bw×${s.reps}`}
-                        </span>
-                      ))}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {parsed.warnings.length > 0 && (
-              <details className="text-[11px] text-[var(--color-warning)]">
-                <summary className="cursor-pointer">
-                  <X size={10} className="inline" /> {parsed.warnings.length}{" "}
-                  warning{parsed.warnings.length === 1 ? "" : "s"}
-                </summary>
-                <ul className="mt-1 list-disc pl-4">
-                  {parsed.warnings.map((w, i) => (
-                    <li key={i}>{w}</li>
-                  ))}
-                </ul>
-              </details>
-            )}
-          </div>
-        )}
-      </div>
-    </Modal>
   );
 }
 

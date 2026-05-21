@@ -79,7 +79,7 @@ export function Modal({
   if (!shouldRender) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center">
       <button
         type="button"
         aria-label="Close"

@@ -250,8 +250,6 @@ export type ActiveWorkoutSession = {
   lastSetAt?: string;       // ISO — drives the rest timer
   workoutType?: string;     // optional Push/Pull/Legs/etc tag
   exercises: LiftExercise[];
-  /** Currently focused exercise id (which one shows in the stepper). */
-  focusedExerciseId?: string;
   /** Default rest duration in seconds. RepCount-style auto-rest after each set. */
   restTargetSeconds?: number;
   /** When the user manually dismisses the active rest, we stop counting. */

@@ -172,7 +172,7 @@ export function NumericKeypad({
             type="button"
             aria-label="Close keypad"
             onClick={onClose}
-            className="fixed inset-0 z-50 bg-black/55 backdrop-blur-sm"
+            className="fixed inset-0 z-[80] bg-black/55 backdrop-blur-sm"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -183,7 +183,7 @@ export function NumericKeypad({
             aria-modal="true"
             onClick={(e) => e.stopPropagation()}
             className={cn(
-              "fixed inset-x-0 bottom-0 z-[60]",
+              "fixed inset-x-0 bottom-0 z-[85]",
               "bg-[var(--color-card)] border-t border-[var(--color-stroke-strong)]",
               "rounded-t-[24px] shadow-[var(--shadow-float)] select-none"
             )}

@@ -257,7 +257,6 @@ type Actions = {
   ) => void;
   removeActiveWorkoutSet: (exerciseId: string, order: number) => void;
   removeActiveWorkoutExercise: (exerciseId: string) => void;
-  setActiveWorkoutFocus: (exerciseId: string | null) => void;
   setActiveWorkoutRestTarget: (seconds: number) => void;
   dismissActiveWorkoutRest: () => void;
   /** Add a new empty exercise (no sets) to the active workout. No-op if name already present (returns existing). */
@@ -1268,7 +1267,6 @@ export const useStore = create<State & Actions>()(
           );
           const now = new Date().toISOString();
           const exercises = [...s.activeWorkout.exercises];
-          let focusId: string | undefined = s.activeWorkout.focusedExerciseId;
           if (existingIdx >= 0) {
             const ex = exercises[existingIdx];
             exercises[existingIdx] = {
@@ -1278,16 +1276,13 @@ export const useStore = create<State & Actions>()(
                 { weight, reps, order: ex.sets.length + 1, completed },
               ],
             };
-            focusId = ex.id;
           } else {
-            const newEx = {
+            exercises.push({
               id: uid(),
               name: exerciseName.trim(),
               normalizedName: norm,
               sets: [{ weight, reps, order: 1, completed }],
-            };
-            exercises.push(newEx);
-            focusId = newEx.id;
+            });
           }
           return {
             activeWorkout: {
@@ -1295,7 +1290,6 @@ export const useStore = create<State & Actions>()(
               exercises,
               // Only completed sets bump the rest timer.
               lastSetAt: completed ? now : s.activeWorkout.lastSetAt,
-              focusedExerciseId: focusId,
               restDismissedAt: completed ? undefined : s.activeWorkout.restDismissedAt,
             },
           };
@@ -1370,17 +1364,6 @@ export const useStore = create<State & Actions>()(
               restDismissedAt: flippedToComplete
                 ? undefined
                 : s.activeWorkout.restDismissedAt,
-            },
-          };
-        }),
-
-      setActiveWorkoutFocus: (exerciseId) =>
-        set((s) => {
-          if (!s.activeWorkout) return s;
-          return {
-            activeWorkout: {
-              ...s.activeWorkout,
-              focusedExerciseId: exerciseId ?? undefined,
             },
           };
         }),
