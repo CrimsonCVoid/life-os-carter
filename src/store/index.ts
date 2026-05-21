@@ -1594,8 +1594,15 @@ export const useStore = create<State & Actions>()(
         } as State & Actions;
         return merged;
       },
-      onRehydrateStorage: () => (state) => {
-        if (!state) return;
+      onRehydrateStorage: () => (state, error) => {
+        // If hydration threw (corrupt JSON, merge() raised), Zustand calls
+        // this with `state === undefined` and `error` set. We must still
+        // flip `hydrated` true on the live store so HydrateGate releases
+        // the loading screen — otherwise the app is bricked client-side.
+        if (!state || error) {
+          useStore.setState({ hydrated: true });
+          return;
+        }
         state.setHydrated();
         // first-run seed (also fires for existing users upgrading)
         if (!state.settings.routineSeeded) {

@@ -21,6 +21,18 @@ export function HydrateGate({ children }: { children: React.ReactNode }) {
     return () => window.clearTimeout(t);
   }, []);
 
+  // Safety net: if Zustand's persist middleware never flips `hydrated` —
+  // e.g. localStorage parse error, merge() threw, or onRehydrateStorage
+  // received an undefined state — give up after 2.5s and lift the gate so
+  // the user isn't trapped on a "Loading…" screen forever.
+  React.useEffect(() => {
+    if (hydrated) return;
+    const t = window.setTimeout(() => {
+      useStore.getState().setHydrated();
+    }, 2500);
+    return () => window.clearTimeout(t);
+  }, [hydrated]);
+
   React.useEffect(() => {
     if (!hydrated) return;
     if (!hasOnboarded && pathname !== "/onboarding") {

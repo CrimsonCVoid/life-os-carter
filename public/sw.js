@@ -5,7 +5,9 @@
 // request after the new SW installs gets fresh assets across the board.
 // (v1 → v2 bump: previously-cached chunks on desktop browsers were
 //  pinning the broken sign-in JS even after the fix shipped.)
-const CACHE = "life-os-v2";
+// (v2 → v3 bump: stale chunks were pinning a HydrateGate that could
+//  hang forever on desktop; new build adds a safety-net timeout.)
+const CACHE = "life-os-v3";
 const APP_SHELL = ["/"];
 
 self.addEventListener("install", (event) => {
