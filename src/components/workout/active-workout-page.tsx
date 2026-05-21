@@ -556,10 +556,15 @@ function ExerciseCard({
   const detailHref = `/gym/exercise/${encodeURIComponent(exercise.name)}`;
 
   const inSuperset = variant === "in-superset";
-  const canSupersetUp =
-    !!prevExercise && prevExercise.supersetGroupId !== exercise.supersetGroupId;
-  const canSupersetDown =
-    !!nextExercise && nextExercise.supersetGroupId !== exercise.supersetGroupId;
+  // Hide only when the neighbor is already in *this* exercise's group.
+  // Both-undefined means "neither is grouped yet" — that's the most common
+  // case for creating a new superset, and must be allowed.
+  const alreadyGroupedWith = (other: LiftExercise | undefined) =>
+    !!other &&
+    !!exercise.supersetGroupId &&
+    other.supersetGroupId === exercise.supersetGroupId;
+  const canSupersetUp = !!prevExercise && !alreadyGroupedWith(prevExercise);
+  const canSupersetDown = !!nextExercise && !alreadyGroupedWith(nextExercise);
 
   return (
     <motion.div
@@ -816,7 +821,7 @@ function SetRow({
             ? "bg-[color:color-mix(in_srgb,var(--color-success)_6%,transparent)]"
             : "bg-transparent"
       )}
-      style={isDrop ? { marginLeft: `${Math.min(dropDepth, 3) * 10}px` } : undefined}
+      style={isDrop ? { marginLeft: "12px" } : undefined}
       onPointerDown={startPress}
       onPointerUp={endPress}
       onPointerLeave={endPress}
