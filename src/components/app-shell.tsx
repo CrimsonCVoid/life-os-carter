@@ -10,6 +10,7 @@ import { Overseer } from "@/components/overseer/overseer";
 import { ImportModal } from "@/components/import-modal";
 import { OfflineBanner } from "@/components/offline-banner";
 import { ActiveWorkoutBanner } from "@/components/workout/active-workout-banner";
+import { CapacitorBootstrap } from "@/components/capacitor-bootstrap";
 
 /**
  * Conditional chrome wrapper. The sign-in route lives at /signin and
@@ -35,6 +36,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <Overseer />
       <ImportModal />
       <ActiveWorkoutBanner />
+      <CapacitorBootstrap />
     </HydrateGate>
   );
 }

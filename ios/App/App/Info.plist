@@ -47,5 +47,24 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Life OS uses the microphone for voice journal entries and voice-logged workout sets.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Life OS uses the camera for food photo logging and body progress photos.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Life OS reads photos from your library when you attach an existing image to a meal or progress check-in.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Life OS can save progress photos you take in-app to your Photos library on request.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Life OS uses the local network to load development builds during testing.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<false/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 </dict>
 </plist>

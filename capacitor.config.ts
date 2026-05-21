@@ -16,14 +16,27 @@ import type { CapacitorConfig } from "@capacitor/cli";
  * To change the bundle ID before App Store submission, edit appId here
  * AND in ios/App/App.xcodeproj (PRODUCT_BUNDLE_IDENTIFIER) via Xcode.
  */
+// Dev mode: point the native shell at your local Next dev server so saving
+// a file live-reloads on device. Set CAP_DEV_URL before running `cap sync`
+// to switch — leaving it unset goes to production.
+//
+// Examples:
+//   simulator:    CAP_DEV_URL=http://localhost:3000 npm run ios:sync
+//   physical iPhone (wifi, replace with your Mac's LAN IP):
+//                 CAP_DEV_URL=http://192.168.1.42:3000 npm run ios:sync
+//
+// Pair this with `npm run dev -- -H 0.0.0.0` so Next.js accepts LAN connections.
+const devUrl = process.env.CAP_DEV_URL;
+
 const config: CapacitorConfig = {
   appId: "com.hbrady.lifeos",
   appName: "Life OS",
   // webDir is required by the CLI but unused when server.url is set.
   webDir: "public",
   server: {
-    url: "https://life-os-carter.vercel.app",
-    cleartext: false,
+    url: devUrl ?? "https://life-os-carter.vercel.app",
+    // Allow http only for the dev URL — production is HTTPS-only.
+    cleartext: Boolean(devUrl),
   },
   ios: {
     contentInset: "always",
