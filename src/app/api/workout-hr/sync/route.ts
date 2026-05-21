@@ -21,7 +21,8 @@ import {
   fetchHeartRateSeries,
 } from "@/lib/integrations/google-health/heart-rate";
 import { upsertWorkoutHrSeries } from "@/lib/data/workout-hr-series";
-import type { WorkoutHRSeries } from "@/lib/types";
+import { getSettings } from "@/lib/data/settings";
+import { resolveMaxHr, type GymSettings, type WorkoutHRSeries } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,13 +52,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const { sessionId, startedAt, endedAt, maxHr } = body;
+  const { sessionId, startedAt, endedAt } = body;
   if (!sessionId || !startedAt || !endedAt) {
     return NextResponse.json<ErrorResponse>(
       { ok: false, error: "missing_fields" },
       { status: 400 }
     );
   }
+
+  // Resolve the user's max HR for accurate zone bucketing. Body override
+  // wins (e.g. for testing); else read from settings.gym; else default.
+  const userSettings = await getSettings(user.id);
+  const gymSettings = userSettings?.gym as GymSettings | undefined;
+  const maxHr = body.maxHr ?? resolveMaxHr(gymSettings);
 
   let accessToken: string;
   try {

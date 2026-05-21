@@ -463,6 +463,15 @@ export type GymSettings = {
       incrementLb?: number;
     }
   >;
+  /**
+   * User's max heart rate in bpm. Drives accurate HR-zone bucketing for
+   * workout strain. If unset, derived as `220 − age` where age = current
+   * year − birthYear (also from settings). If neither is set, falls back
+   * to a 190 default (≈ age 30) — accurate for nobody but not catastrophic.
+   */
+  maxHr?: number;
+  /** Birth year — used to compute maxHr when maxHr isn't set explicitly. */
+  birthYear?: number;
 };
 
 export const DEFAULT_GYM_SETTINGS: GymSettings = {
@@ -470,6 +479,16 @@ export const DEFAULT_GYM_SETTINGS: GymSettings = {
   defaultIncrementLb: 2.5,
   perExercise: {},
 };
+
+/** Resolve effective max HR from settings, with cascade: explicit > age-derived > default. */
+export function resolveMaxHr(gym: GymSettings | undefined): number {
+  if (gym?.maxHr && gym.maxHr > 0) return gym.maxHr;
+  if (gym?.birthYear && gym.birthYear > 1900) {
+    const age = new Date().getFullYear() - gym.birthYear;
+    if (age >= 8 && age <= 100) return 220 - age;
+  }
+  return 190;
+}
 
 /* ---------- INTEGRATIONS: GOOGLE HEALTH ---------- */
 

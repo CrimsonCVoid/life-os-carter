@@ -91,6 +91,8 @@ export default function SettingsPage() {
 
       <PeakStateCard />
 
+      <HeartRateZonesCard />
+
       <Card>
         <CardHeader>
           <CardTitle>Units</CardTitle>
@@ -377,6 +379,93 @@ export default function SettingsPage() {
         </p>
       </Modal>
     </Screen>
+  );
+}
+
+function HeartRateZonesCard() {
+  const gym = useStore((s) => s.settings.gym);
+  const setGymSettings = useStore((s) => s.setGymSettings);
+  const [maxHrInput, setMaxHrInput] = React.useState<string>(
+    gym.maxHr ? String(gym.maxHr) : ""
+  );
+  const [birthYearInput, setBirthYearInput] = React.useState<string>(
+    gym.birthYear ? String(gym.birthYear) : ""
+  );
+
+  React.useEffect(() => {
+    setMaxHrInput(gym.maxHr ? String(gym.maxHr) : "");
+  }, [gym.maxHr]);
+  React.useEffect(() => {
+    setBirthYearInput(gym.birthYear ? String(gym.birthYear) : "");
+  }, [gym.birthYear]);
+
+  const effectiveMaxHr =
+    gym.maxHr ??
+    (gym.birthYear ? 220 - (new Date().getFullYear() - gym.birthYear) : 190);
+
+  const saveMaxHr = () => {
+    const n = Number(maxHrInput);
+    setGymSettings({ maxHr: n >= 100 && n <= 230 ? n : undefined });
+    haptic("success");
+  };
+  const saveBirthYear = () => {
+    const n = Number(birthYearInput);
+    const currentYear = new Date().getFullYear();
+    setGymSettings({
+      birthYear: n >= 1900 && n <= currentYear - 8 ? n : undefined,
+    });
+    haptic("success");
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Heart rate zones</CardTitle>
+      </CardHeader>
+      <div className="space-y-3">
+        <div className="text-xs text-[var(--color-fg-2)]">
+          Drives the Whoop-style strain calculation and zone bars on every
+          completed workout. Effective max HR:{" "}
+          <span className="tnum font-medium text-[var(--color-fg)]">
+            {effectiveMaxHr} bpm
+          </span>
+          .
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <div className="label mb-1.5">Max HR (bpm)</div>
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                inputMode="numeric"
+                placeholder="auto"
+                value={maxHrInput}
+                onChange={(e) => setMaxHrInput(e.target.value)}
+                onBlur={saveMaxHr}
+                className="no-zoom"
+              />
+            </div>
+          </div>
+          <div>
+            <div className="label mb-1.5">Birth year</div>
+            <Input
+              type="number"
+              inputMode="numeric"
+              placeholder="e.g. 1995"
+              value={birthYearInput}
+              onChange={(e) => setBirthYearInput(e.target.value)}
+              onBlur={saveBirthYear}
+              className="no-zoom"
+            />
+          </div>
+        </div>
+        <div className="text-[11px] text-[var(--color-fg-3)]">
+          If you know your tested max HR (treadmill / lab), enter it directly.
+          Otherwise enter birth year and we compute 220 − age. Either field
+          works; max HR wins if both are set.
+        </div>
+      </div>
+    </Card>
   );
 }
 

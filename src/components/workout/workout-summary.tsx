@@ -10,7 +10,13 @@ import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
 import { detectPRs, type PR, type PRType } from "@/lib/pr-detection";
 import { HROverlayChart } from "@/components/workout/hr-overlay-chart";
+import { HrZoneBars } from "@/components/workout/hr-zone-bars";
 import { useWorkoutHrSeries } from "@/lib/hooks/use-workout-hr-series";
+import {
+  computeWorkoutStrain,
+  STRAIN_BAND_LABEL,
+  strainBandColor,
+} from "@/lib/workout-strain";
 
 export type WorkoutSummaryProps = {
   open: boolean;
@@ -161,14 +167,7 @@ export function WorkoutSummary(
         />
       </div>
 
-      {hrSeries && hrSeries.samples.length >= 3 && (
-        <div className="mt-3">
-          <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--color-fg-3)] font-medium mb-1.5">
-            Heart rate
-          </div>
-          <HROverlayChart series={hrSeries} />
-        </div>
-      )}
+      {hrSeries && hrSeries.samples.length >= 3 && <WhoopStatsPanel series={hrSeries} />}
 
       {prs.length > 0 && (
         <div>
@@ -290,6 +289,109 @@ function StatCell({
           {subtitle}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Whoop-style cardiovascular stats panel: prominent strain score with band
+ * label, supporting stats (peak/avg BPM, calories, high-intensity minutes),
+ * zone-time breakdown bars, then the raw HR overlay chart.
+ */
+function WhoopStatsPanel({
+  series,
+}: {
+  series: import("@/lib/types").WorkoutHRSeries;
+}): React.JSX.Element {
+  const strain = React.useMemo(() => computeWorkoutStrain(series), [series]);
+  const peakBpm = series.peakBpm ?? null;
+  const avgBpm = series.avgBpm ?? null;
+  const calories = series.caloriesBurned ?? null;
+
+  return (
+    <div className="mt-4 space-y-3">
+      {strain && (
+        <div
+          className="rounded-xl border p-4"
+          style={{
+            background: `linear-gradient(135deg, color-mix(in srgb, ${strainBandColor(strain.band)} 14%, var(--color-card)) 0%, var(--color-card) 75%)`,
+            borderColor: `color-mix(in srgb, ${strainBandColor(strain.band)} 32%, var(--color-stroke))`,
+          }}
+        >
+          <div className="flex items-baseline justify-between gap-3">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.16em] font-semibold text-[var(--color-fg-3)]">
+                Workout strain
+              </div>
+              <div className="flex items-baseline gap-2 mt-0.5">
+                <span
+                  className="text-[36px] font-bold tnum leading-none"
+                  style={{ color: strainBandColor(strain.band) }}
+                >
+                  {strain.score.toFixed(1)}
+                </span>
+                <span className="text-[14px] text-[var(--color-fg-2)] tnum">/ 21</span>
+              </div>
+            </div>
+            <div className="text-right">
+              <div
+                className="text-[11px] uppercase tracking-[0.14em] font-semibold"
+                style={{ color: strainBandColor(strain.band) }}
+              >
+                {STRAIN_BAND_LABEL[strain.band]}
+              </div>
+              <div className="text-[10px] text-[var(--color-fg-3)] mt-0.5 tnum">
+                {Math.round(strain.averagePercentHRR * 100)}% avg HRR
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-3 gap-2">
+        <StatCell
+          label="Peak HR"
+          value={peakBpm ? `${peakBpm}` : "—"}
+          subtitle={peakBpm ? "bpm" : undefined}
+        />
+        <StatCell
+          label="Avg HR"
+          value={avgBpm ? `${avgBpm}` : "—"}
+          subtitle={avgBpm ? "bpm" : undefined}
+        />
+        <StatCell
+          label="Calories"
+          value={calories ? `${Math.round(calories)}` : "—"}
+          subtitle={calories ? "kcal" : undefined}
+        />
+      </div>
+
+      {strain && strain.highIntensityMinutes > 0 && (
+        <div className="rounded-xl border border-[var(--color-stroke)] bg-[var(--color-card)] p-3">
+          <div className="text-[10px] uppercase tracking-wider text-[var(--color-fg-3)] mb-0.5">
+            High intensity (Z4 + Z5)
+          </div>
+          <div className="text-[16px] font-semibold tnum text-[var(--color-fg)]">
+            {strain.highIntensityMinutes} min
+          </div>
+        </div>
+      )}
+
+      {series.zoneMinutes && (
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--color-fg-3)] font-medium mb-2">
+            Time in zone
+          </div>
+          <HrZoneBars zoneMinutes={series.zoneMinutes} />
+        </div>
+      )}
+
+      <div>
+        <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--color-fg-3)] font-medium mb-1.5">
+          Heart rate
+        </div>
+        <HROverlayChart series={series} />
+      </div>
     </div>
   );
 }

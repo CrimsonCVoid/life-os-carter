@@ -10,6 +10,7 @@ import { MorningRoutine } from "@/components/today/morning-routine";
 import { EveningRoutine } from "@/components/today/evening-routine";
 import { Goals } from "@/components/today/goals";
 import { TodayRoutineCard } from "@/components/today/today-routine-card";
+import { DailyStrainCard } from "@/components/today/daily-strain-card";
 import { ReflectionCard } from "@/components/today/reflection";
 import { WeeklyReviewCard } from "@/components/today/weekly-review-card";
 import { PatternCard } from "@/components/today/pattern-card";
@@ -111,6 +112,7 @@ function PresentOrPastBody() {
         <Goals />
       </div>
       <TodayRoutineCard />
+      <DailyStrainCard />
       <div id="anchor-evening" style={{ scrollMarginTop: "5rem" }}>
         <EveningRoutine />
       </div>
