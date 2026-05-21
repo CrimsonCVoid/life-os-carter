@@ -4,7 +4,8 @@ import * as React from "react";
 import { motion, PanInfo } from "motion/react";
 import { Screen } from "@/components/screen";
 import { TodayHeader } from "@/components/today/header";
-import { SleepCard } from "@/components/today/sleep-card";
+// SleepCard removed — Fitbit / Google Health sync owns sleep tracking; manual
+// entry only appears as a fallback in the ActivityRings (read-only display).
 import { MorningBriefing } from "@/components/today/morning-briefing";
 import { DailyBriefingCard } from "@/components/today/daily-briefing-card";
 import { QuickLogTiles } from "@/components/today/quick-log-tiles";
@@ -84,7 +85,6 @@ function DaySurface() {
 function PresentOrPastBody() {
   return (
     <>
-      <SleepCard />
       <MorningRoutine />
       <Goals />
       <EveningRoutine />

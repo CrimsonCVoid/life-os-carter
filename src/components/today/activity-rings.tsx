@@ -37,61 +37,17 @@ export function ActivityRings() {
   const stepsPct = clamp01(steps / STEP_TARGET);
   const sleepPct = clamp01(sleepHours / SLEEP_TARGET_HOURS);
 
+  // SVG concentric rings only need color + pct. The right-side RingRows
+  // own the rest of the metric UI.
   const rings = [
-    {
-      key: "hydration",
-      label: "Water",
-      value: `${water}`,
-      unit: "oz",
-      target: waterTargetOz,
-      pct: waterPct,
-      color: "var(--mc-water)",
-      icon: <Droplet size={13} fill="currentColor" />,
-      onTap: () => {
-        setHealth(date, { waterOz: water + 16 });
-        haptic("tap");
-      },
-    },
-    {
-      key: "movement",
-      label: "Steps",
-      value: formatThousands(steps),
-      unit: "",
-      target: STEP_TARGET,
-      pct: stepsPct,
-      color: "var(--mc-steps)",
-      icon: <Footprints size={13} />,
-      onTap: () => {
-        // Steps are usually synced — long-press opens a manual override
-        // modal via the existing Today health-log surface. For now a tap
-        // just provides haptic acknowledgement.
-        haptic("soft");
-      },
-    },
-    {
-      key: "recovery",
-      label: "Sleep",
-      value: sleepHours > 0 ? sleepHours.toFixed(1) : "—",
-      unit: "h",
-      target: SLEEP_TARGET_HOURS,
-      pct: sleepPct,
-      color: "var(--mc-sleep)",
-      icon: <Moon size={13} />,
-      onTap: () => {
-        window.dispatchEvent(new CustomEvent("life-os:open-sleep-log"));
-        haptic("soft");
-      },
-    },
+    { key: "hydration", pct: waterPct, color: "var(--mc-water)" },
+    { key: "movement", pct: stepsPct, color: "var(--mc-steps)" },
+    { key: "recovery", pct: sleepPct, color: "var(--mc-sleep)" },
   ];
 
   const editWater = (next: string) => {
     const n = parseFloat(next);
     setHealth(date, { waterOz: Number.isFinite(n) ? Math.max(0, n) : 0 });
-    haptic("soft");
-  };
-  const editSleep = (next: string) => {
-    const n = parseFloat(next);
-    setHealth(date, { sleepHours: Number.isFinite(n) ? Math.max(0, n) : 0 });
     haptic("soft");
   };
   const editSteps = (next: string) => {
@@ -155,25 +111,22 @@ export function ActivityRings() {
             }
           />
 
-          {/* Sleep — inline edit hours */}
+          {/* Sleep — read-only. Fitbit / Google Health sync owns this metric;
+              we don't want a manual override surface that drifts from device data. */}
           <RingRow
             color="var(--mc-sleep)"
             icon={<Moon size={13} />}
             label="Sleep"
             pct={sleepPct}
             inline={
-              <InlineEdit
-                value={sleepHours > 0 ? sleepHours.toFixed(1) : "0"}
-                onCommit={editSleep}
-                unit="h"
-                inputMode="decimal"
-                step={0.25}
-                min={0}
-                max={14}
-                className="text-[15px] font-semibold"
-                aria-label="Sleep hours"
-                treatZeroAsEmpty
-              />
+              <span className={cn("tnum", sleepHours <= 0 && "text-[var(--color-fg-3)]")}>
+                <span className="text-[15px] font-semibold">
+                  {sleepHours > 0 ? sleepHours.toFixed(1) : "—"}
+                </span>
+                {sleepHours > 0 && (
+                  <span className="text-[11px] text-[var(--color-fg-3)] ml-0.5">h</span>
+                )}
+              </span>
             }
           />
         </div>
@@ -305,7 +258,3 @@ function clamp01(n: number): number {
   return Math.max(0, Math.min(1, n));
 }
 
-function formatThousands(n: number): string {
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
-  return String(n);
-}

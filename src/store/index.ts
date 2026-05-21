@@ -255,6 +255,9 @@ type Actions = {
   ) => void;
   removeActiveWorkoutSet: (exerciseId: string, order: number) => void;
   removeActiveWorkoutExercise: (exerciseId: string) => void;
+  setActiveWorkoutFocus: (exerciseId: string | null) => void;
+  setActiveWorkoutRestTarget: (seconds: number) => void;
+  dismissActiveWorkoutRest: () => void;
 
   // insights / patterns
   setCachedPatterns: (p: CachedPatterns | undefined) => void;
@@ -1222,6 +1225,7 @@ export const useStore = create<State & Actions>()(
           );
           const now = new Date().toISOString();
           const exercises = [...s.activeWorkout.exercises];
+          let focusId: string | undefined = s.activeWorkout.focusedExerciseId;
           if (existingIdx >= 0) {
             const ex = exercises[existingIdx];
             exercises[existingIdx] = {
@@ -1231,19 +1235,58 @@ export const useStore = create<State & Actions>()(
                 { weight, reps, order: ex.sets.length + 1 },
               ],
             };
+            focusId = ex.id;
           } else {
-            exercises.push({
+            const newEx = {
               id: uid(),
               name: exerciseName.trim(),
               normalizedName: norm,
               sets: [{ weight, reps, order: 1 }],
-            });
+            };
+            exercises.push(newEx);
+            focusId = newEx.id;
           }
           return {
             activeWorkout: {
               ...s.activeWorkout,
               exercises,
               lastSetAt: now,
+              focusedExerciseId: focusId,
+              // Each new set restarts the rest timer — clear the dismissal flag.
+              restDismissedAt: undefined,
+            },
+          };
+        }),
+
+      setActiveWorkoutFocus: (exerciseId) =>
+        set((s) => {
+          if (!s.activeWorkout) return s;
+          return {
+            activeWorkout: {
+              ...s.activeWorkout,
+              focusedExerciseId: exerciseId ?? undefined,
+            },
+          };
+        }),
+
+      setActiveWorkoutRestTarget: (seconds) =>
+        set((s) => {
+          if (!s.activeWorkout) return s;
+          return {
+            activeWorkout: {
+              ...s.activeWorkout,
+              restTargetSeconds: Math.max(0, Math.round(seconds)),
+            },
+          };
+        }),
+
+      dismissActiveWorkoutRest: () =>
+        set((s) => {
+          if (!s.activeWorkout) return s;
+          return {
+            activeWorkout: {
+              ...s.activeWorkout,
+              restDismissedAt: new Date().toISOString(),
             },
           };
         }),
