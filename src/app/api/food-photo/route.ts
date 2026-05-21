@@ -218,6 +218,7 @@ export async function POST(req: Request) {
     }
   } catch (err) {
     clearTimeout(timer);
+    console.error("[food-photo] gemini call failed", err);
     return geminiErrorJsonResponse(err, "food_photo");
   } finally {
     clearTimeout(timer);

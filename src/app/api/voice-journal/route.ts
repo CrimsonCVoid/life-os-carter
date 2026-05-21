@@ -164,6 +164,7 @@ export async function POST(req: Request) {
     }
   } catch (err) {
     clearTimeout(timer);
+    console.error("[voice-journal] gemini call failed", err);
     return geminiErrorJsonResponse(err, "voice_journal");
   } finally {
     clearTimeout(timer);

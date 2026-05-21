@@ -153,6 +153,7 @@ export async function POST(req: Request) {
     }
   } catch (err) {
     clearTimeout(timer);
+    console.error("[patterns] gemini call failed", err);
     return geminiErrorJsonResponse(err, "patterns");
   } finally {
     clearTimeout(timer);

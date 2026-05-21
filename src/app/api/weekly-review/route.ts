@@ -142,6 +142,7 @@ export async function POST(req: Request) {
     }
   } catch (err) {
     clearTimeout(timer);
+    console.error("[weekly-review] gemini call failed", err);
     return geminiErrorJsonResponse(err, "weekly_review");
   } finally {
     clearTimeout(timer);

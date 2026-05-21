@@ -25,6 +25,7 @@ import { saveMealPhoto } from "@/lib/meal-photo-store";
 import { compressImage } from "@/lib/photo-store";
 import type { Meal, MealAiAnalysis } from "@/lib/types";
 import type { FoodPhotoPayload } from "@/app/api/food-photo/route";
+import { geminiUserMessage } from "@/lib/gemini-error";
 
 const MAX_WIDTH = 1024;
 const JPEG_QUALITY = 0.85;
@@ -476,24 +477,15 @@ function ProcessingScreen({
           body: form,
         });
         if (!res.ok) {
-          // Route returns { error: "quota_exceeded" | "food_photo_timeout"
-          // | "food_photo_failed" | "bad-request" | "missing-key" | ... }.
-          // Map the taxonomy to friendly copy — never display the raw body.
+          // Map the route's error taxonomy to friendly copy via the central
+          // helper. Never display the raw response body.
           const body = await res.json().catch(() => null);
           const tag = body && typeof body.error === "string" ? body.error : "";
-          let msg: string;
-          if (tag === "quota_exceeded") {
-            msg = "Daily AI quota reached. Try again later or log this meal manually.";
-          } else if (tag === "missing-key") {
-            msg = "Photo nutrition needs a GEMINI_API_KEY in the server env.";
-          } else if (tag === "food_photo_timeout") {
-            msg = "The AI took too long. Try a clearer photo, or log manually.";
-          } else if (tag === "bad-output" || tag === "bad-request") {
-            msg = "Couldn't read that photo. Try a clearer shot.";
-          } else {
-            msg = "Couldn't analyze that photo. Try again or log manually.";
+          if (tag === "bad-output" || tag === "bad-request") {
+            onError("Couldn't read that photo. Try a clearer shot.");
+            return;
           }
-          onError(msg);
+          onError(geminiUserMessage(res.status, tag).userMessage);
           return;
         }
         const payload = (await res.json()) as FoodPhotoPayload;

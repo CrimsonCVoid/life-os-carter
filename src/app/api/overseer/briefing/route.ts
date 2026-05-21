@@ -5,7 +5,10 @@ import {
   buildContextBlock,
 } from "@/lib/prompts";
 import { resolveGeminiApiKey } from "@/lib/gemini-key";
-import { geminiErrorPlainResponse } from "@/lib/gemini-error";
+import {
+  geminiErrorPlainResponse,
+  withGeminiRetry,
+} from "@/lib/gemini-error";
 import type { OverseerContext } from "@/store/selectors";
 
 export const runtime = "nodejs";
@@ -27,23 +30,27 @@ export async function POST(req: Request) {
   const ai = new GoogleGenAI({ apiKey });
 
   try {
-    const res = await ai.models.generateContent({
-      // flash-lite: 1000 RPD on the free tier vs flash's 20. Briefing prose
-      // is low-stakes and well within lite's capability.
-      model: "gemini-2.5-flash-lite",
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: BRIEFING_PROMPT }],
+    const res = await withGeminiRetry(() =>
+      ai.models.generateContent({
+        // flash-lite: 1000 RPD on the free tier vs flash's 20. Briefing
+        // prose is low-stakes and well within lite's capability.
+        model: "gemini-2.5-flash-lite",
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: BRIEFING_PROMPT }],
+          },
+        ],
+        config: {
+          systemInstruction:
+            PERSONA_SYSTEM +
+            "\n\n--- USER CONTEXT ---\n" +
+            buildContextBlock(body.context),
+          temperature: 0.6,
+          maxOutputTokens: 256,
         },
-      ],
-      config: {
-        systemInstruction:
-          PERSONA_SYSTEM + "\n\n--- USER CONTEXT ---\n" + buildContextBlock(body.context),
-        temperature: 0.6,
-        maxOutputTokens: 256,
-      },
-    });
+      })
+    );
     const text =
       (res as { text?: string }).text ??
       (res as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> })
@@ -53,6 +60,7 @@ export async function POST(req: Request) {
       headers: { "Content-Type": "text/plain; charset=utf-8" },
     });
   } catch (err) {
+    console.error("[briefing] gemini call failed", err);
     return geminiErrorPlainResponse(err, "briefing");
   }
 }

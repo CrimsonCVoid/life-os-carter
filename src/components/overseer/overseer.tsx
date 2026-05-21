@@ -2,8 +2,9 @@
 
 import * as React from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Send, Sparkles, X, ExternalLink } from "lucide-react";
+import { RefreshCw, Send, Sparkles, X, ExternalLink } from "lucide-react";
 import { getOverseerContext } from "@/store/selectors";
+import { geminiUserMessage } from "@/lib/gemini-error";
 import { uid } from "@/lib/utils";
 import { haptic } from "@/lib/haptics";
 import { OverseerProvider } from "./overseer-context";
@@ -29,8 +30,10 @@ export function Overseer() {
   const [streaming, setStreaming] = React.useState(false);
   const [error, setError] = React.useState<
     | null
-    | { kind: "no-key" | "quota" | "other"; msg: string }
+    | { kind: "no-key" | "quota" | "other"; msg: string; retryable: boolean }
   >(null);
+  // Last user message that hit an error — drives the Retry button.
+  const [lastFailedText, setLastFailedText] = React.useState<string | null>(null);
   const abortRef = React.useRef<AbortController | null>(null);
   const scrollerRef = React.useRef<HTMLDivElement>(null);
 
@@ -69,6 +72,7 @@ export function Overseer() {
     const text = (textOverride ?? draft).trim();
     if (!text || streaming) return;
     setError(null);
+    setLastFailedText(null);
 
     const userMsg: ChatMessage = { id: uid(), role: "user", content: text };
     const assistantId = uid();
@@ -82,6 +86,22 @@ export function Overseer() {
     setMessages([...newMessages, placeholder]);
     setDraft("");
     setStreaming(true);
+
+    /**
+     * Drop the user message + placeholder on error so a Retry re-issues
+     * a clean send instead of double-appending the same user text.
+     */
+    const rollbackAndError = (
+      kind: "no-key" | "quota" | "other",
+      msg: string,
+      retryable: boolean
+    ) => {
+      setError({ kind, msg, retryable });
+      if (retryable) setLastFailedText(text);
+      setMessages((cur) =>
+        cur.filter((m) => m.id !== assistantId && m.id !== userMsg.id)
+      );
+    };
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -97,28 +117,16 @@ export function Overseer() {
         signal: controller.signal,
       });
 
-      if (res.status === 503) {
-        setError({ kind: "no-key", msg: "missing-key" });
-        setMessages((cur) => cur.filter((m) => m.id !== assistantId));
-        return;
-      }
-      if (res.status === 429) {
-        setError({
-          kind: "quota",
-          msg: "Daily AI quota reached. Try again later.",
-        });
-        setMessages((cur) => cur.filter((m) => m.id !== assistantId));
-        return;
-      }
       if (!res.ok || !res.body) {
-        // Route handlers return short tags like "overseer_failed" /
-        // "overseer_timeout". Never display the raw response body to the
-        // user — it can leak SDK JSON if the route ever changes shape.
-        setError({
-          kind: "other",
-          msg: "Something went wrong reaching Overseer. Try again in a moment.",
-        });
-        setMessages((cur) => cur.filter((m) => m.id !== assistantId));
+        const tag = await res.text().catch(() => "");
+        const friendly = geminiUserMessage(res.status, tag);
+        if (friendly.type === "missing-key") {
+          rollbackAndError("no-key", "missing-key", false);
+        } else if (friendly.type === "quota") {
+          rollbackAndError("quota", friendly.userMessage, false);
+        } else {
+          rollbackAndError("other", friendly.userMessage, true);
+        }
         return;
       }
 
@@ -150,11 +158,11 @@ export function Overseer() {
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
       // Network / parsing failure: friendly fallback, never raw error text.
-      setError({
-        kind: "other",
-        msg: "Couldn't reach Overseer. Check your connection and try again.",
-      });
-      setMessages((cur) => cur.filter((m) => m.id !== assistantId));
+      rollbackAndError(
+        "other",
+        "Couldn't reach Overseer. Check your connection and try again.",
+        true
+      );
     } finally {
       setStreaming(false);
       abortRef.current = null;
@@ -249,8 +257,23 @@ export function Overseer() {
                   </div>
                 )}
                 {error?.kind === "other" && (
-                  <div className="text-xs text-[var(--color-danger)] bg-[color:color-mix(in_srgb,var(--color-danger)_10%,transparent)] border border-[color:color-mix(in_srgb,var(--color-danger)_30%,transparent)] rounded-xl px-3 py-2">
-                    {error.msg}
+                  <div className="text-xs text-[var(--color-danger)] bg-[color:color-mix(in_srgb,var(--color-danger)_10%,transparent)] border border-[color:color-mix(in_srgb,var(--color-danger)_30%,transparent)] rounded-xl px-3 py-2 flex items-center justify-between gap-2">
+                    <span>{error.msg}</span>
+                    {error.retryable && lastFailedText && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const txt = lastFailedText;
+                          setLastFailedText(null);
+                          setError(null);
+                          send(txt);
+                        }}
+                        className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-[11px] font-medium bg-[var(--color-elevated)] border border-[var(--color-stroke)] text-[var(--color-fg)] hover:bg-[var(--color-card-hover)] transition shrink-0"
+                      >
+                        <RefreshCw size={11} />
+                        Retry
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

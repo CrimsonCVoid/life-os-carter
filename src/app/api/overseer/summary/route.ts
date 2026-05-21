@@ -5,7 +5,10 @@ import {
   buildContextBlock,
 } from "@/lib/prompts";
 import { resolveGeminiApiKey } from "@/lib/gemini-key";
-import { geminiErrorPlainResponse } from "@/lib/gemini-error";
+import {
+  geminiErrorPlainResponse,
+  withGeminiRetry,
+} from "@/lib/gemini-error";
 import type { OverseerContext } from "@/store/selectors";
 
 export const runtime = "nodejs";
@@ -27,18 +30,22 @@ export async function POST(req: Request) {
   const ai = new GoogleGenAI({ apiKey });
 
   try {
-    const res = await ai.models.generateContent({
-      // flash-lite: short prose summary, well within lite's capability,
-      // and the 1000 RPD free tier keeps the daily quota out of reach.
-      model: "gemini-2.5-flash-lite",
-      contents: [{ role: "user", parts: [{ text: EVENING_PROMPT }] }],
-      config: {
-        systemInstruction:
-          PERSONA_SYSTEM + "\n\n--- USER CONTEXT ---\n" + buildContextBlock(body.context),
-        temperature: 0.7,
-        maxOutputTokens: 320,
-      },
-    });
+    const res = await withGeminiRetry(() =>
+      ai.models.generateContent({
+        // flash-lite: short prose summary, well within lite's capability,
+        // and the 1000 RPD free tier keeps the daily quota out of reach.
+        model: "gemini-2.5-flash-lite",
+        contents: [{ role: "user", parts: [{ text: EVENING_PROMPT }] }],
+        config: {
+          systemInstruction:
+            PERSONA_SYSTEM +
+            "\n\n--- USER CONTEXT ---\n" +
+            buildContextBlock(body.context),
+          temperature: 0.7,
+          maxOutputTokens: 320,
+        },
+      })
+    );
     const text =
       (res as { text?: string }).text ??
       (res as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> })
@@ -48,6 +55,7 @@ export async function POST(req: Request) {
       headers: { "Content-Type": "text/plain; charset=utf-8" },
     });
   } catch (err) {
+    console.error("[summary] gemini call failed", err);
     return geminiErrorPlainResponse(err, "summary");
   }
 }

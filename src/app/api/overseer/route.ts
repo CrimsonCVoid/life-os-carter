@@ -4,6 +4,7 @@ import { resolveGeminiApiKey } from "@/lib/gemini-key";
 import {
   classifyGeminiError,
   geminiErrorPlainResponse,
+  withGeminiRetry,
 } from "@/lib/gemini-error";
 import { getCurrentUser } from "@/lib/auth-server";
 import { listFacts } from "@/lib/data/user-facts";
@@ -84,16 +85,19 @@ export async function POST(req: Request) {
 
   let stream: AsyncIterable<StreamChunk>;
   try {
-    stream = (await ai.models.generateContentStream({
-      model: MODEL,
-      contents,
-      config: {
-        systemInstruction,
-        temperature: 0.7,
-        maxOutputTokens: 1024,
-      },
-    })) as unknown as AsyncIterable<StreamChunk>;
+    stream = (await withGeminiRetry(() =>
+      ai.models.generateContentStream({
+        model: MODEL,
+        contents,
+        config: {
+          systemInstruction,
+          temperature: 0.7,
+          maxOutputTokens: 1024,
+        },
+      })
+    )) as unknown as AsyncIterable<StreamChunk>;
   } catch (err) {
+    console.error("[overseer] stream connect failed", err);
     return geminiErrorPlainResponse(err, "overseer");
   }
 
@@ -107,6 +111,7 @@ export async function POST(req: Request) {
         }
         controller.close();
       } catch (err) {
+        console.error("[overseer] mid-stream failure", err);
         // Mid-stream failure: we can't switch to an error Response (headers
         // already flushed), so emit a sanitized inline marker. Never the
         // raw SDK message — that would leak the Google API JSON.
