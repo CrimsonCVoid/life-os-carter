@@ -58,7 +58,7 @@ export function MovementLane() {
   const accent = metricHex("steps");
 
   return (
-    <Link href="/stats" aria-label="Movement details">
+    <Link href="/stats" aria-label="Movement details" className="block">
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}

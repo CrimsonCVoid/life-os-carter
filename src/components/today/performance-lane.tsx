@@ -62,7 +62,7 @@ function LaneShell({
   children: React.ReactNode;
 }) {
   return (
-    <Link href={href} aria-label="Performance details">
+    <Link href={href} aria-label="Performance details" className="block">
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -224,12 +224,12 @@ function ColdStart({
   return (
     <LaneShell href="/gym" accent={accent}>
       <LaneHeader accent={accent} label="Performance" icon={<Dumbbell size={13} />} />
-      <div className="flex items-baseline justify-between">
-        <div>
+      <div className="flex items-baseline justify-between gap-3">
+        <div className="min-w-0 flex-1">
           <div className="text-[18px] font-semibold text-[var(--color-fg)]">
             Start workout
           </div>
-          <div className="text-[11px] text-[var(--color-fg-3)] mt-0.5">
+          <div className="text-[11px] text-[var(--color-fg-3)] mt-0.5 leading-snug">
             {daysSince == null
               ? "Log your first session to start tracking."
               : daysSince === 0
@@ -239,7 +239,10 @@ function ColdStart({
                   : `Last lifted ${daysSince} days ago.`}
           </div>
         </div>
-        <span className="text-[12px] font-semibold" style={{ color: accent }}>
+        <span
+          className="text-[12px] font-semibold shrink-0"
+          style={{ color: accent }}
+        >
           Open →
         </span>
       </div>
