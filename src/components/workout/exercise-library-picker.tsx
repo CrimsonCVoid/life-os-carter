@@ -123,7 +123,6 @@ export function ExerciseLibraryPicker({
     <Modal open={open} onClose={onClose} title="Add exercise" size="lg">
       <div className="space-y-3">
         <Input
-          autoFocus
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search exercises…"
