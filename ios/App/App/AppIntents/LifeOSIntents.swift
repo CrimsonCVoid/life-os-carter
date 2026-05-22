@@ -82,6 +82,71 @@ struct StartFastIntent: AppIntent {
 }
 
 @available(iOS 16.0, *)
+struct LogWaterIntent: AppIntent {
+    static var title: LocalizedStringResource = "Log water"
+    static var description = IntentDescription("Add a glass of water (8 oz) to today's hydration.")
+
+    @Parameter(title: "Ounces", default: 8)
+    var ounces: Int
+
+    static var openAppWhenRun: Bool = true
+
+    @MainActor
+    func perform() async throws -> some IntentResult & OpensIntent {
+        let url = URL(string: "lifeos://water/log?oz=\(ounces)")!
+        return .result(opensIntent: OpenURLIntent(url))
+    }
+}
+
+@available(iOS 16.0, *)
+struct LogMoodIntent: AppIntent {
+    static var title: LocalizedStringResource = "Log mood"
+    static var description = IntentDescription("Open Life OS to log how you're feeling right now.")
+    static var openAppWhenRun: Bool = true
+
+    @MainActor
+    func perform() async throws -> some IntentResult & OpensIntent {
+        return .result(opensIntent: OpenURLIntent(URL(string: "lifeos://mood/log")!))
+    }
+}
+
+@available(iOS 16.0, *)
+struct LogWeightIntent: AppIntent {
+    static var title: LocalizedStringResource = "Log weight"
+    static var description = IntentDescription("Open Life OS to record today's body weight.")
+    static var openAppWhenRun: Bool = true
+
+    @MainActor
+    func perform() async throws -> some IntentResult & OpensIntent {
+        return .result(opensIntent: OpenURLIntent(URL(string: "lifeos://weight/log")!))
+    }
+}
+
+@available(iOS 16.0, *)
+struct OpenJournalIntent: AppIntent {
+    static var title: LocalizedStringResource = "Open journal"
+    static var description = IntentDescription("Jump straight into a new journal entry.")
+    static var openAppWhenRun: Bool = true
+
+    @MainActor
+    func perform() async throws -> some IntentResult & OpensIntent {
+        return .result(opensIntent: OpenURLIntent(URL(string: "lifeos://journal/new")!))
+    }
+}
+
+@available(iOS 16.0, *)
+struct FinishWorkoutIntent: AppIntent {
+    static var title: LocalizedStringResource = "Finish workout"
+    static var description = IntentDescription("Open the active workout to wrap it up.")
+    static var openAppWhenRun: Bool = true
+
+    @MainActor
+    func perform() async throws -> some IntentResult & OpensIntent {
+        return .result(opensIntent: OpenURLIntent(URL(string: "lifeos://workout/finish")!))
+    }
+}
+
+@available(iOS 16.0, *)
 struct LifeOSShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
@@ -119,6 +184,52 @@ struct LifeOSShortcuts: AppShortcutsProvider {
             ],
             shortTitle: "Start fast",
             systemImageName: "timer"
+        )
+        AppShortcut(
+            intent: LogWaterIntent(),
+            phrases: [
+                "Log water in \(.applicationName)",
+                "\(.applicationName) water",
+                "I drank water in \(.applicationName)",
+            ],
+            shortTitle: "Log water",
+            systemImageName: "drop.fill"
+        )
+        AppShortcut(
+            intent: LogMoodIntent(),
+            phrases: [
+                "Log my mood in \(.applicationName)",
+                "\(.applicationName) mood",
+            ],
+            shortTitle: "Log mood",
+            systemImageName: "face.smiling"
+        )
+        AppShortcut(
+            intent: LogWeightIntent(),
+            phrases: [
+                "Log my weight in \(.applicationName)",
+                "\(.applicationName) weight",
+            ],
+            shortTitle: "Log weight",
+            systemImageName: "scalemass.fill"
+        )
+        AppShortcut(
+            intent: OpenJournalIntent(),
+            phrases: [
+                "Journal in \(.applicationName)",
+                "New journal entry in \(.applicationName)",
+            ],
+            shortTitle: "New journal",
+            systemImageName: "book.fill"
+        )
+        AppShortcut(
+            intent: FinishWorkoutIntent(),
+            phrases: [
+                "Finish my \(.applicationName) workout",
+                "End \(.applicationName) workout",
+            ],
+            shortTitle: "Finish workout",
+            systemImageName: "checkmark.circle.fill"
         )
     }
 }
