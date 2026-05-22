@@ -5,12 +5,14 @@ import { useRouter, usePathname } from "next/navigation";
 import { useStore } from "@/store";
 
 /**
- * Blocks render until Zustand has hydrated from localStorage,
- * and redirects to /onboarding if the user hasn't onboarded yet.
+ * Blocks render until Zustand has hydrated from localStorage. Onboarding
+ * has been dropped — /signin is now the only entry gate. First-time users
+ * land on the home screen with sensible defaults right after the Google
+ * SSO handshake. If someone hits /onboarding directly (old bookmark,
+ * deep link), bounce them home.
  */
 export function HydrateGate({ children }: { children: React.ReactNode }) {
   const hydrated = useStore((s) => s.hydrated);
-  const hasOnboarded = useStore((s) => s.settings.hasOnboarded);
   const router = useRouter();
   const pathname = usePathname();
   const [showLoader, setShowLoader] = React.useState(false);
@@ -21,10 +23,9 @@ export function HydrateGate({ children }: { children: React.ReactNode }) {
     return () => window.clearTimeout(t);
   }, []);
 
-  // Safety net: if Zustand's persist middleware never flips `hydrated` —
-  // e.g. localStorage parse error, merge() threw, or onRehydrateStorage
-  // received an undefined state — give up after 2.5s and lift the gate so
-  // the user isn't trapped on a "Loading…" screen forever.
+  // Safety net: if Zustand's persist middleware never flips `hydrated`,
+  // give up after 2.5s and lift the gate so the user isn't trapped on
+  // "Loading…" forever.
   React.useEffect(() => {
     if (hydrated) return;
     const t = window.setTimeout(() => {
@@ -35,13 +36,10 @@ export function HydrateGate({ children }: { children: React.ReactNode }) {
 
   React.useEffect(() => {
     if (!hydrated) return;
-    if (!hasOnboarded && pathname !== "/onboarding") {
-      router.replace("/onboarding");
-    }
-    if (hasOnboarded && pathname === "/onboarding") {
+    if (pathname === "/onboarding" || pathname.startsWith("/onboarding/")) {
       router.replace("/");
     }
-  }, [hydrated, hasOnboarded, pathname, router]);
+  }, [hydrated, pathname, router]);
 
   if (!hydrated) {
     return (

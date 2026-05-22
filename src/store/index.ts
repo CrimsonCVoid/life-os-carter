@@ -347,7 +347,9 @@ const defaultSettings = (): Settings => ({
   units: { weight: "lb", liquid: "oz" },
   accent: "violet",
   dayTypePresets: DEFAULT_DAY_TYPES,
-  hasOnboarded: false,
+  // Onboarding flow dropped — every user defaults to onboarded so
+  // first-time sign-in lands on the home screen, not a wall-of-form.
+  hasOnboarded: true,
   waterTargetOz: 96,
   habitTemplates: HABIT_TEMPLATES,
   morningRoutine: { ...DEFAULT_MORNING_ROUTINE_SETTINGS },
