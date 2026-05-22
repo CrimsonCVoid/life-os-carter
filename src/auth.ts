@@ -20,6 +20,7 @@
 
 import NextAuth, { type DefaultSession } from "next-auth";
 import Google from "next-auth/providers/google";
+import Apple from "next-auth/providers/apple";
 import { DrizzleAdapter } from "@auth/drizzle-adapter";
 import { db } from "@/lib/db";
 import {
@@ -60,6 +61,15 @@ const googleClientSecret =
 const authSecret =
   process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
 
+// Apple Sign In creds. The "secret" here is the JWT client secret
+// generated from the Apple Developer .p8 key — see `.env.local.example`
+// for the generation snippet. Optional — the app falls back to Google
+// only when Apple isn't configured.
+const appleClientId =
+  process.env.AUTH_APPLE_ID || process.env.APPLE_ID;
+const appleClientSecret =
+  process.env.AUTH_APPLE_SECRET || process.env.APPLE_SECRET;
+
 /**
  * Server-side readiness check for the signin page. Returns the list of
  * required env vars (by either v5 or v4 name) that are missing on this
@@ -81,15 +91,23 @@ export type AuthConfigCheck = {
    * this even though we use JWT sessions — it writes users/accounts on
    * first sign-in. Missing → "Configuration" error during OAuth callback. */
   databaseUrlPresent: boolean;
-/** Whether Google OAuth creds are configured. Single-provider app. */
+/** Whether Google OAuth creds are configured. */
   googleReady: boolean;
+  /** Whether Apple Sign In creds are configured. Optional second provider. */
+  appleReady: boolean;
 };
 
 export function checkAuthConfig(): AuthConfigCheck {
   const missing: string[] = [];
   const googleReady = !!(googleClientId && googleClientSecret);
-  if (!googleReady) {
-    missing.push("AUTH_GOOGLE_ID + AUTH_GOOGLE_SECRET");
+  const appleReady = !!(appleClientId && appleClientSecret);
+  // At least one provider must be configured; Apple is optional, Google
+  // is the historical baseline. If neither is set, the page shows the
+  // missing-vars error.
+  if (!googleReady && !appleReady) {
+    missing.push(
+      "At least one of: (AUTH_GOOGLE_ID + AUTH_GOOGLE_SECRET) or (AUTH_APPLE_ID + AUTH_APPLE_SECRET)"
+    );
   }
   if (!authSecret) missing.push("AUTH_SECRET / NEXTAUTH_SECRET");
 
@@ -103,7 +121,7 @@ export function checkAuthConfig(): AuthConfigCheck {
   if (!databaseUrlPresent) missing.push("DATABASE_URL / DATABASE_URL_UNPOOLED");
 
   const authEnvKeysPresent = Object.keys(process.env)
-    .filter((k) => /^(AUTH_|NEXTAUTH_|GOOGLE_|DATABASE_)/.test(k))
+    .filter((k) => /^(AUTH_|NEXTAUTH_|GOOGLE_|APPLE_|DATABASE_)/.test(k))
     .filter((k) => {
       const v = process.env[k];
       return typeof v === "string" && v.length > 0;
@@ -116,6 +134,7 @@ export function checkAuthConfig(): AuthConfigCheck {
     authEnvKeysPresent,
     databaseUrlPresent,
     googleReady,
+    appleReady,
   };
 }
 
@@ -126,8 +145,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     sessionsTable: sessions,
     verificationTokensTable: verificationTokens,
   }),
-  providers:
-    googleClientId && googleClientSecret
+  providers: [
+    ...(googleClientId && googleClientSecret
       ? [
           Google({
             clientId: googleClientId,
@@ -140,7 +159,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             },
           }),
         ]
-      : [],
+      : []),
+    ...(appleClientId && appleClientSecret
+      ? [
+          Apple({
+            clientId: appleClientId,
+            clientSecret: appleClientSecret,
+          }),
+        ]
+      : []),
+  ],
   secret: authSecret,
   session: { strategy: "jwt" },
   callbacks: {

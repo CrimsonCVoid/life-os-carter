@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { LogIn, Loader2 } from "lucide-react";
+import { LogIn, Loader2, Apple } from "lucide-react";
 
 /**
  * Real <form> POST to the Auth.js signin endpoint. Top-level navigation
@@ -10,10 +10,11 @@ import { LogIn, Loader2 } from "lucide-react";
  * original tab).
  */
 
-type Provider = "google";
+type Provider = "google" | "apple";
 
 const LABEL: Record<Provider, string> = {
   google: "Continue with Google",
+  apple: "Continue with Apple",
 };
 
 export function SignInButton({
@@ -57,9 +58,21 @@ export function SignInButton({
         <button
           type="submit"
           disabled={!csrfToken}
-          className="w-full h-12 rounded-xl bg-[var(--color-accent-strong)] text-white font-medium inline-flex items-center justify-center gap-2 shadow-[var(--shadow-glow)] active:scale-[0.98] transition disabled:opacity-70"
+          className={
+            provider === "apple"
+              ? "w-full h-12 rounded-xl bg-white text-black font-medium inline-flex items-center justify-center gap-2 shadow-[var(--shadow-float)] active:scale-[0.98] transition disabled:opacity-70"
+              : "w-full h-12 rounded-xl bg-[var(--color-accent-strong)] text-white font-medium inline-flex items-center justify-center gap-2 shadow-[var(--shadow-glow)] active:scale-[0.98] transition disabled:opacity-70"
+          }
         >
-          {csrfToken ? <LogIn size={18} /> : <Loader2 size={18} className="animate-spin" />}
+          {csrfToken ? (
+            provider === "apple" ? (
+              <Apple size={18} fill="currentColor" />
+            ) : (
+              <LogIn size={18} />
+            )
+          ) : (
+            <Loader2 size={18} className="animate-spin" />
+          )}
           {LABEL[provider]}
         </button>
       </form>

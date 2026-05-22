@@ -71,10 +71,17 @@ export default async function SignInPage({
       <div className="w-full max-w-sm mx-auto">
         {config.ready ? (
           <>
-            <SignInButton callbackUrl={callbackUrl} provider="google" />
+            <div className="space-y-2.5">
+              {config.googleReady && (
+                <SignInButton callbackUrl={callbackUrl} provider="google" />
+              )}
+              {config.appleReady && (
+                <SignInButton callbackUrl={callbackUrl} provider="apple" />
+              )}
+            </div>
             <p className="mt-3 text-[11px] text-[var(--color-fg-3)] text-center leading-snug">
-              New here? Signing in with Google creates your account
-              automatically. Existing users land back on their data.
+              New here? Signing in creates your account automatically.
+              Existing users land back on their data.
             </p>
           </>
         ) : (
