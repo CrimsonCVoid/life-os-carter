@@ -33,9 +33,9 @@ struct AddMealSheet: View {
             Form {
                 if editing == nil {
                     Section("Quick capture") {
-                        captureButton(icon: "barcode.viewfinder", title: "Scan barcode", subtitle: "VisionKit · OpenFoodFacts")
-                        captureButton(icon: "camera.fill", title: "Photo scan", subtitle: "Gemini macro estimate")
-                        captureButton(icon: "mic.fill", title: "Voice log", subtitle: "Speech → meal entry")
+                        captureButton(icon: "barcode.viewfinder", title: "Scan barcode", subtitle: "Pulls nutrition from the label")
+                        captureButton(icon: "camera.fill", title: "Photo scan", subtitle: "AI macro estimate from a meal photo")
+                        captureButton(icon: "mic.fill", title: "Voice log", subtitle: "Describe what you ate")
                     }
                     .listRowBackground(LifeOSColor.card)
                 }

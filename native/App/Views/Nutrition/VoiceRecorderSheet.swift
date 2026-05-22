@@ -66,7 +66,7 @@ struct VoiceRecorderSheet: View {
                     case .uploading:
                         HStack(spacing: 10) {
                             ProgressView().tint(LifeOSColor.accent)
-                            Text("Asking Gemini…")
+                            Text("Analyzing…")
                                 .font(.system(size: 14))
                                 .foregroundStyle(LifeOSColor.fg2)
                         }

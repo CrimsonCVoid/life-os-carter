@@ -2,10 +2,12 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(AuthStore.self) private var auth
+    @Environment(\.modelContext) private var modelContext
     @State private var healthGranted = false
     @State private var liveActivitiesEnabled = LiveActivityManager.shared.isSupported
     @State private var linking: LinkingState = .idle
     @State private var linkError: String?
+    @State private var confirmWipe = false
 
     enum LinkingState { case idle, apple, google }
 
@@ -14,6 +16,7 @@ struct SettingsView: View {
             VStack(spacing: 14) {
                 accountCard
                 integrationsCard
+                testDataCard
                 aboutCard
                 Spacer(minLength: 80)
             }
@@ -231,6 +234,52 @@ struct SettingsView: View {
                 ) {}
                     .disabled(true)
             }
+        }
+    }
+
+    /// Throwaway test-data controls. Card meant to be deleted before
+    /// public release — kept here so the user can populate realistic
+    /// data and exercise every screen end-to-end.
+    private var testDataCard: some View {
+        Card(tint: LifeOSColor.warning) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("TEST DATA")
+                    .font(.system(size: 10, weight: .semibold)).tracking(1.2)
+                    .foregroundStyle(LifeOSColor.warning)
+                Text("Populate the local store with 30 days of meals, workouts, habits, journal entries, and daily metrics. Sync drains these to your account on the next foreground.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(LifeOSColor.fg3)
+                HStack(spacing: 10) {
+                    Button {
+                        MockDataSeeder.seed(modelContext)
+                    } label: {
+                        Text("Populate")
+                            .font(.system(size: 13, weight: .semibold))
+                            .padding(.horizontal, 14).padding(.vertical, 9)
+                            .background(Capsule().fill(LifeOSColor.accent))
+                            .foregroundStyle(.white)
+                    }
+                    .buttonStyle(.plain)
+                    Button(role: .destructive) {
+                        confirmWipe = true
+                    } label: {
+                        Text("Wipe")
+                            .font(.system(size: 13, weight: .semibold))
+                            .padding(.horizontal, 14).padding(.vertical, 9)
+                            .background(Capsule().stroke(LifeOSColor.danger))
+                            .foregroundStyle(LifeOSColor.danger)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .alert("Wipe all local data?", isPresented: $confirmWipe) {
+            Button("Cancel", role: .cancel) {}
+            Button("Wipe", role: .destructive) {
+                MockDataSeeder.wipe(modelContext)
+            }
+        } message: {
+            Text("Deletes every meal, workout, habit, journal entry, daily metric, and personal record from this device. Cannot be undone.")
         }
     }
 

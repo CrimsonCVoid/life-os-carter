@@ -343,8 +343,8 @@ enum MealCaptureSource {
         switch self {
         case .manual:  return "Manual entry"
         case .barcode: return "Scanned barcode"
-        case .photo:   return "Photo · Gemini estimate"
-        case .voice:   return "Voice · Gemini estimate"
+        case .photo:   return "Photo · AI estimate"
+        case .voice:   return "Voice · AI estimate"
         }
     }
     var icon: String {
@@ -440,7 +440,7 @@ struct PrefilledMeal {
             isServingsCentric: true,
             servingUnit: product.servingSize,
             confidence: nil,
-            subtitle: subtitleParts.isEmpty ? "From OpenFoodFacts" : subtitleParts.joined(separator: " · "),
+            subtitle: subtitleParts.isEmpty ? "Pulled from the label" : subtitleParts.joined(separator: " · "),
             notes: nil
         )
     }

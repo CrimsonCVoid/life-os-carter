@@ -35,7 +35,8 @@ struct AnalysisView: View {
             ScrollView {
                 LazyVStack(spacing: 16) {
                     rangeSelector
-                    revealCard(delay: 0.00) { performanceHero }
+                    revealCard(delay: 0.00) { CoachChatView() }
+                    revealCard(delay: 0.02) { performanceHero }
                     revealCard(delay: 0.04) { sleepArchitectureCard }
                     revealCard(delay: 0.08) { heartHealthCard }
                     revealCard(delay: 0.12) { hrvSleepCorrelation }
