@@ -139,11 +139,24 @@ final class ActiveWorkoutStore {
         pushLiveActivity()
     }
 
-    func addSet(toExercise exerciseID: UUID, isDropSet: Bool = false) {
+    /// Prefill cascade for a new set's weight + reps:
+    ///   1. last completed set in this session
+    ///   2. last set in this session (even if incomplete)
+    ///   3. `historyTopSet` — top set from the most recent prior session
+    ///      of this exercise (view layer fetches this from SwiftData)
+    ///   4. 45 lb × 8 reps fallback
+    /// Drop sets auto-decay the resulting weight to 80%, rounded to 5 lb.
+    func addSet(
+        toExercise exerciseID: UUID,
+        isDropSet: Bool = false,
+        historyTopSet: WorkoutSet? = nil
+    ) {
         guard let idx = exercises.firstIndex(where: { $0.id == exerciseID }) else { return }
-        let lastSet = exercises[idx].sets.last
-        var seedWeight = lastSet?.weight ?? 45
-        let seedReps = lastSet?.reps ?? 8
+        let lastCompleted = exercises[idx].sets.last(where: \.completed)
+        let lastAny = exercises[idx].sets.last
+        let seedSet = lastCompleted ?? lastAny ?? historyTopSet
+        var seedWeight = seedSet?.weight ?? 45
+        let seedReps = seedSet?.reps ?? 8
         if isDropSet, seedWeight > 0 {
             seedWeight = (seedWeight * 0.8 / 5).rounded() * 5
         }

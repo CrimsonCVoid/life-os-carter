@@ -8,6 +8,11 @@ struct ActiveWorkoutView: View {
     @Bindable var store: ActiveWorkoutStore
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    /// Past sessions, most recent first. Used for two prefill features:
+    /// (1) "Recent" exercises surfaced at the top of the picker,
+    /// (2) seeding a new set's weight/reps from this exercise's previous
+    /// top set when the current session has nothing to copy from yet.
+    @Query(sort: \LiftSessionEntry.startedAt, order: .reverse) private var sessions: [LiftSessionEntry]
 
     @State private var pickerOpen = false
     @State private var rpeTarget: (UUID, UUID)?
@@ -41,7 +46,7 @@ struct ActiveWorkoutView: View {
         }
         .background(LifeOSColor.base.ignoresSafeArea())
         .sheet(isPresented: $pickerOpen) {
-            ExercisePickerView { name in
+            ExercisePickerView(recentNames: recentExerciseNames()) { name in
                 store.addExercise(named: name)
             }
         }
@@ -152,10 +157,10 @@ struct ActiveWorkoutView: View {
                     .font(.system(size: 16, weight: .semibold))
                 Spacer()
                 Menu {
-                    Button { store.addSet(toExercise: ex.id) } label: {
+                    Button { addSet(to: ex, isDrop: false) } label: {
                         Label("Add set", systemImage: "plus")
                     }
-                    Button { store.addSet(toExercise: ex.id, isDropSet: true) } label: {
+                    Button { addSet(to: ex, isDrop: true) } label: {
                         Label("Add drop set", systemImage: "arrow.down.right")
                     }
                     if !inSuperset, ex.sets.contains(where: \.completed) {
@@ -198,7 +203,7 @@ struct ActiveWorkoutView: View {
                 }
 
                 HStack(spacing: 8) {
-                    Button { store.addSet(toExercise: ex.id) } label: {
+                    Button { addSet(to: ex, isDrop: false) } label: {
                         Label("Set", systemImage: "plus")
                             .font(.system(size: 12, weight: .semibold))
                             .frame(maxWidth: .infinity)
@@ -211,7 +216,7 @@ struct ActiveWorkoutView: View {
                     }
                     .buttonStyle(.plain)
 
-                    Button { store.addSet(toExercise: ex.id, isDropSet: true) } label: {
+                    Button { addSet(to: ex, isDrop: true) } label: {
                         Label("Drop", systemImage: "arrow.down.right")
                             .font(.system(size: 12, weight: .semibold))
                             .frame(maxWidth: .infinity)
@@ -417,6 +422,51 @@ struct ActiveWorkoutView: View {
         let id: UUID
         let isSuperset: Bool
         let exercises: [WorkoutExercise]
+    }
+
+    // MARK: - History-seeded add-set
+
+    /// Adds a set to `ex`, first looking up the top set from the user's
+    /// most recent prior session of this exercise so the new set seeds
+    /// with realistic weight + reps instead of the 45 × 8 fallback.
+    private func addSet(to ex: WorkoutExercise, isDrop: Bool) {
+        let seed = historyTopSet(for: ex.name)
+        store.addSet(toExercise: ex.id, isDropSet: isDrop, historyTopSet: seed)
+    }
+
+    /// Walks past sessions (most recent first) for the first one that
+    /// logged this exercise. Returns its best completed set by volume,
+    /// falling back to the last logged set if no completed set exists.
+    private func historyTopSet(for exerciseName: String) -> WorkoutSet? {
+        let key = exerciseName.trimmingCharacters(in: .whitespaces).lowercased()
+        for session in sessions {
+            let decoded = CSVExporter.decodeExercises(session.detailsJSON)
+            guard let match = decoded.first(where: {
+                $0.name.trimmingCharacters(in: .whitespaces).lowercased() == key
+            }) else { continue }
+            let completed = match.sets.filter(\.completed)
+            return completed.max(by: { $0.weight * Double($0.reps) < $1.weight * Double($1.reps) })
+                ?? match.sets.last
+        }
+        return nil
+    }
+
+    /// Last `limit` unique exercise names from session history (most
+    /// recent first). Surfaced in the picker's "Recent" section.
+    private func recentExerciseNames(limit: Int = 6) -> [String] {
+        var seen: Set<String> = []
+        var out: [String] = []
+        for session in sessions {
+            let decoded = CSVExporter.decodeExercises(session.detailsJSON)
+            for ex in decoded.reversed() {
+                let key = ex.name.trimmingCharacters(in: .whitespaces).lowercased()
+                if seen.insert(key).inserted {
+                    out.append(ex.name)
+                    if out.count >= limit { return out }
+                }
+            }
+        }
+        return out
     }
 
     // sheet-item helper for the RPE drawer (needs an Identifiable wrapper)

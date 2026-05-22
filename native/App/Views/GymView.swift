@@ -1,18 +1,16 @@
 import SwiftUI
 import SwiftData
 
-/// Gym home — split-based workflow. Top of the screen shows the
-/// currently-selected split with each day as a "Start workout" card.
-/// Below: PR highlights + recent sessions + CSV export.
+/// Gym home. Single Start CTA when there's no in-flight workout; Resume
+/// banner when there is. Below: PRs + recent sessions + CSV export.
+/// The session itself is freeform — pick exercises by muscle once you
+/// land on the active screen, no split or template required.
 struct GymView: View {
     @Environment(ActiveWorkoutStore.self) private var workoutStore
     @Environment(\.modelContext) private var modelContext
-    @Query private var splits: [WorkoutSplit]
     @Query(sort: \LiftSessionEntry.startedAt, order: .reverse) private var sessions: [LiftSessionEntry]
     @Query(sort: \PersonalRecord.achievedAt, order: .reverse) private var allPRs: [PersonalRecord]
 
-    @State private var splitPickerOpen = false
-    @State private var editingTemplate: WorkoutTemplate?
     @State private var activeOpen = false
     @State private var csvShareURL: URL?
     @State private var revealed = false
@@ -23,10 +21,11 @@ struct GymView: View {
                 LazyVStack(spacing: 16) {
                     if workoutStore.isActive {
                         activeCard.cascadeReveal(index: 0, visible: revealed)
+                    } else {
+                        startCard.cascadeReveal(index: 0, visible: revealed)
                     }
-                    splitSection.cascadeReveal(index: 1, visible: revealed)
-                    prSection.cascadeReveal(index: 2, visible: revealed)
-                    historySection.cascadeReveal(index: 3, visible: revealed)
+                    prSection.cascadeReveal(index: 1, visible: revealed)
+                    historySection.cascadeReveal(index: 2, visible: revealed)
                     Spacer(minLength: 80)
                 }
                 .padding(.horizontal, 14)
@@ -36,23 +35,16 @@ struct GymView: View {
             .onAppear { if !revealed { revealed = true } }
             .navigationTitle("Gym")
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button {
-                            splitPickerOpen = true
-                        } label: { Label("Change split", systemImage: "arrow.triangle.2.circlepath") }
+                if !sessions.isEmpty {
+                    ToolbarItem(placement: .topBarTrailing) {
                         Button {
                             exportCSV()
-                        } label: { Label("Export CSV", systemImage: "square.and.arrow.up") }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                            .foregroundStyle(LifeOSColor.fg2)
+                        } label: {
+                            Image(systemName: "square.and.arrow.up")
+                                .foregroundStyle(LifeOSColor.fg2)
+                        }
                     }
                 }
-            }
-            .sheet(isPresented: $splitPickerOpen) { SplitPickerView() }
-            .sheet(item: $editingTemplate) { tpl in
-                TemplateEditorView(template: tpl)
             }
             .sheet(item: $csvShareURL.mapped()) { wrapper in
                 ShareSheet(items: [wrapper.url])
@@ -67,189 +59,64 @@ struct GymView: View {
         }
     }
 
-    // MARK: - Split section
+    // MARK: - Start CTA
 
-    @ViewBuilder
-    private var splitSection: some View {
-        if let split = splits.first {
-            VStack(spacing: 10) {
-                HStack {
-                    Image(systemName: split.splitKind.icon)
-                        .foregroundStyle(LifeOSColor.accent)
-                    Text(split.displayName.uppercased())
-                        .font(.system(size: 11, weight: .semibold)).tracking(1.3)
-                        .foregroundStyle(LifeOSColor.accent)
-                    Spacer()
-                    Button {
-                        splitPickerOpen = true
-                    } label: {
-                        Text("Switch")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(LifeOSColor.fg2)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 4)
-
-                if split.days.isEmpty {
-                    emptySplitRecovery(for: split)
-                } else {
-                    ForEach(split.days.sorted(by: { $0.order < $1.order })) { day in
-                        dayCard(day)
-                    }
-                }
-            }
-        } else {
-            chooseSplitCTA
-        }
-    }
-
-    /// Fallback for the broken-relationship state — re-seeds default
-    /// days from the split's kind. Single tap to self-heal.
-    private func emptySplitRecovery(for split: WorkoutSplit) -> some View {
-        Card(tint: LifeOSColor.warning) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(LifeOSColor.warning)
-                    Text("No days saved")
-                        .font(.system(size: 14, weight: .semibold))
-                }
-                Text("Re-seed default days for \(split.displayName), or pick a different split.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(LifeOSColor.fg2)
-                HStack(spacing: 8) {
-                    Button {
-                        reseedDays(for: split)
-                    } label: {
-                        Text("Restore default days")
-                            .font(.system(size: 13, weight: .semibold))
-                            .padding(.horizontal, 14).padding(.vertical, 9)
-                            .background(Capsule().fill(LifeOSColor.accentStrong))
-                            .foregroundStyle(.white)
-                    }
-                    .buttonStyle(.plain)
-                    Button {
-                        splitPickerOpen = true
-                    } label: {
-                        Text("Switch split")
-                            .font(.system(size: 13, weight: .semibold))
-                            .padding(.horizontal, 14).padding(.vertical, 9)
-                            .background(Capsule().stroke(LifeOSColor.stroke))
-                            .foregroundStyle(LifeOSColor.fg2)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-
-    private func reseedDays(for split: WorkoutSplit) {
-        let templates = split.splitKind.makeTemplates()
-        for tpl in templates { modelContext.insert(tpl) }
-        split.days = templates
-        for tpl in templates { tpl.split = split }
-        try? modelContext.save()
-        Haptics.success()
-    }
-
-    private var chooseSplitCTA: some View {
+    /// Hero "Start workout" card — large, prominent, the only thing the
+    /// user has to look at on a fresh gym tab. Lands them on the active
+    /// workout view with zero preloaded exercises; they pick by muscle
+    /// once inside.
+    private var startCard: some View {
         Button {
-            splitPickerOpen = true
+            startBlankWorkout()
         } label: {
-            Card {
-                HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
                     ZStack {
                         Circle().fill(LifeOSColor.accentSoft)
-                        Image(systemName: "sparkles")
+                        Image(systemName: "dumbbell.fill")
+                            .font(.system(size: 22, weight: .semibold))
                             .foregroundStyle(LifeOSColor.accent)
                     }
-                    .frame(width: 44, height: 44)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Choose your split")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(.white)
-                        Text("Upper/Lower · PPL · Bro · Arnold · Full Body")
-                            .font(.system(size: 12))
-                            .foregroundStyle(LifeOSColor.fg2)
-                    }
+                    .frame(width: 56, height: 56)
                     Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12))
-                        .foregroundStyle(LifeOSColor.fg3)
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 34, height: 34)
+                        .background(Circle().fill(Color.white.opacity(0.18)))
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Start workout")
+                        .font(.system(size: 26, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text("Pick exercises by muscle group as you go.")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.white.opacity(0.75))
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(20)
+            .background(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(LinearGradient(
+                        colors: [LifeOSColor.accent, LifeOSColor.accentStrong],
+                        startPoint: .topLeading, endPoint: .bottomTrailing
+                    ))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
+            )
+            .shadow(color: LifeOSColor.accent.opacity(0.4), radius: 18, x: 0, y: 8)
         }
         .buttonStyle(.plain)
+        .pressable()
     }
 
-    private func dayCard(_ day: WorkoutTemplate) -> some View {
-        Card(tint: LifeOSColor.accent) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .center) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(day.name)
-                            .font(.system(size: 19, weight: .bold))
-                            .foregroundStyle(.white)
-                        HStack(spacing: 12) {
-                            Label("\(day.exerciseNames.count) exercises", systemImage: "list.bullet")
-                            Label("Rest \(day.defaultRestSeconds / 60)m", systemImage: "timer")
-                        }
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(LifeOSColor.fg2)
-                    }
-                    Spacer()
-                    Button {
-                        editingTemplate = day
-                        Haptics.tap()
-                    } label: {
-                        Image(systemName: "pencil")
-                            .font(.system(size: 13))
-                            .frame(width: 32, height: 32)
-                            .foregroundStyle(LifeOSColor.fg2)
-                            .background(Circle().fill(LifeOSColor.elevated))
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                if !day.exerciseNames.isEmpty {
-                    Text(day.exerciseNames.prefix(4).joined(separator: " · ")
-                         + (day.exerciseNames.count > 4 ? " · +\(day.exerciseNames.count - 4) more" : ""))
-                        .font(.system(size: 12))
-                        .foregroundStyle(LifeOSColor.fg2)
-                        .lineLimit(2)
-                } else {
-                    Text("No exercises yet — tap the pencil to add some.")
-                        .font(.system(size: 12))
-                        .foregroundStyle(LifeOSColor.warning)
-                }
-
-                Button {
-                    startFromTemplate(day)
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "play.fill")
-                        Text("Start workout").fontWeight(.bold)
-                    }
-                    .font(.system(size: 14))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(LinearGradient(
-                                colors: [LifeOSColor.accent, LifeOSColor.accentStrong],
-                                startPoint: .topLeading, endPoint: .bottomTrailing
-                            ))
-                    )
-                    .foregroundStyle(.white)
-                    .shadow(color: LifeOSColor.accent.opacity(0.35), radius: 10, x: 0, y: 4)
-                }
-                .buttonStyle(.plain)
-                .disabled(day.exerciseNames.isEmpty)
-                .opacity(day.exerciseNames.isEmpty ? 0.45 : 1)
-            }
-        }
+    private func startBlankWorkout() {
+        workoutStore.start(workoutType: "Workout")
+        Haptics.success()
     }
 
     // MARK: - Active card (when workout is mid-flight)
@@ -376,15 +243,6 @@ struct GymView: View {
     }
 
     // MARK: - Actions
-
-    private func startFromTemplate(_ template: WorkoutTemplate) {
-        workoutStore.start(workoutType: template.name)
-        workoutStore.setRestTarget(template.defaultRestSeconds)
-        for name in template.exerciseNames {
-            workoutStore.addExercise(named: name)
-        }
-        Haptics.success()
-    }
 
     private func exportCSV() {
         let decoded = sessions.map { ($0, CSVExporter.decodeExercises($0.detailsJSON)) }

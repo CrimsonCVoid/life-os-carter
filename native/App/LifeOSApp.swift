@@ -4,12 +4,9 @@ import SwiftData
 @main
 struct LifeOSApp: App {
     @State private var workoutStore = ActiveWorkoutStore()
+    @State private var auth = AuthStore.shared
     private let commandConsumer = WorkoutCommandConsumer()
 
-    // SwiftData container — local-first persistence for everything the
-    // user logs offline. Mirrors the Zustand store shape from the Next.js
-    // version. Backend sync via APIClient happens opportunistically when
-    // the user is signed in + online.
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             DailyEntry.self,
@@ -17,6 +14,7 @@ struct LifeOSApp: App {
             JournalEntry.self,
             MealLog.self,
             LiftSessionEntry.self,
+            PersonalRecord.self,
         ])
         let configuration = ModelConfiguration(
             schema: schema,
@@ -26,10 +24,7 @@ struct LifeOSApp: App {
         do {
             return try ModelContainer(for: schema, configurations: [configuration])
         } catch {
-            // Falling back to in-memory keeps the UI alive instead of
-            // crashing on a corrupt store. The user can re-sync from
-            // server on next sign-in.
-            print("[LifeOS] SwiftData container failed, falling back to in-memory: \(error)")
+            print("[LifeOS] SwiftData container failed: \(error)")
             return try! ModelContainer(
                 for: schema,
                 configurations: [ModelConfiguration(isStoredInMemoryOnly: true)]
@@ -39,19 +34,27 @@ struct LifeOSApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
-                .preferredColorScheme(.dark)
-                .tint(LifeOSColor.accent)
-                .environment(workoutStore)
-                .onAppear {
-                    Task { await HealthKitManager.shared.requestAuthorization() }
-                    Haptics.prepareAll()
-                    // Drain Live Activity intent commands from the widget
-                    // process into the workout store.
-                    commandConsumer.start { cmd in
-                        workoutStore.apply(cmd)
-                    }
+            Group {
+                if auth.isSignedIn {
+                    RootView()
+                        .transition(.opacity)
+                } else {
+                    SignInView()
+                        .transition(.opacity)
                 }
+            }
+            .preferredColorScheme(.dark)
+            .tint(LifeOSColor.accent)
+            .environment(workoutStore)
+            .environment(auth)
+            .animation(.easeInOut(duration: 0.35), value: auth.isSignedIn)
+            .onAppear {
+                Task { await HealthKitManager.shared.requestAuthorization() }
+                Haptics.prepareAll()
+                commandConsumer.start { cmd in
+                    workoutStore.apply(cmd)
+                }
+            }
         }
         .modelContainer(sharedModelContainer)
     }

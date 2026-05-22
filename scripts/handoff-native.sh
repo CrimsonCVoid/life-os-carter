@@ -27,13 +27,20 @@ if [[ ! -f "$HANDOFF_PATH" ]]; then
 fi
 
 # Find a working Claude CLI binary. Prefer the global install; fall
-# back to npx invocation. Either way, --dangerously-skip-permissions
-# is the flag that auto-approves Bash / Write / Edit / Agent calls so
-# the resumed session can move quickly through the planned work.
+# back to npx invocation.
+#
+# BYPASS PERMISSIONS — both flags are passed so this works on every
+# Claude Code release (newer ones use --permission-mode, older ones
+# use --dangerously-skip-permissions; passing both is harmless on
+# either side). The session auto-approves Bash / Write / Edit / Agent
+# calls so the resumed session can move quickly through planned work
+# without a permission prompt on every tool use.
+BYPASS_FLAGS=(--permission-mode bypassPermissions --dangerously-skip-permissions)
+
 if command -v claude >/dev/null 2>&1; then
-  CLAUDE_CMD=(claude --dangerously-skip-permissions)
+  CLAUDE_CMD=(claude "${BYPASS_FLAGS[@]}")
 else
-  CLAUDE_CMD=(npx --yes @anthropic-ai/claude-code --dangerously-skip-permissions)
+  CLAUDE_CMD=(npx --yes @anthropic-ai/claude-code "${BYPASS_FLAGS[@]}")
 fi
 
 # Keep the Mac awake for 2h so a long-running session doesn't die.
@@ -67,6 +74,7 @@ item to tackle next.
 EOF
 )
 
-echo "🚀 launching Claude Code (skip-permissions) in $REPO_ROOT"
+echo "🚀 launching Claude Code in $REPO_ROOT"
+echo "   permission-mode: bypassPermissions (no tool-use prompts)"
 echo "──────────────────────────────────────────────────────────"
 echo "$PROMPT" | "${CLAUDE_CMD[@]}"

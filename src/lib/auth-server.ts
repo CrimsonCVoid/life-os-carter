@@ -3,10 +3,21 @@
  * MUST call `requireUser()` (or `getCurrentUser()` + manual guard) before
  * touching the database. There must be no path to a query that doesn't
  * filter by `userId`.
+ *
+ * Auth lookup order:
+ *   1. `Authorization: Bearer <jwt>` header — native iOS client. The
+ *      bearer JWT is minted by /api/auth/native-mint after Sign in with
+ *      Apple verification.
+ *   2. Auth.js session cookie — web client. Falls through to this.
  */
 
 import { auth } from "@/auth";
 import { NextResponse } from "next/server";
+import { headers } from "next/headers";
+import { db } from "@/lib/db";
+import { users } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
+import { verifyNativeToken } from "@/lib/native-jwt";
 
 export type CurrentUser = {
   id: string;
@@ -16,6 +27,29 @@ export type CurrentUser = {
 };
 
 export async function getCurrentUser(): Promise<CurrentUser | null> {
+  // 1. Bearer-token path (native iOS app)
+  try {
+    const hdrs = await headers();
+    const bearer = hdrs.get("authorization")?.match(/^Bearer (.+)$/i)?.[1];
+    if (bearer) {
+      const userId = await verifyNativeToken(bearer);
+      if (userId) {
+        const row = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+        if (row[0]) {
+          return {
+            id: row[0].id,
+            email: row[0].email,
+            name: row[0].name,
+            image: row[0].image,
+          };
+        }
+      }
+    }
+  } catch {
+    // headers() throws outside a request context — fall through.
+  }
+
+  // 2. Auth.js session cookie (web)
   const session = await auth();
   if (!session?.user?.id) return null;
   return {
@@ -26,15 +60,6 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
   };
 }
 
-/**
- * Throws a JSON 401 response if there's no session. Designed to be used
- * inside an API route:
- *
- *   const userOrResponse = await requireUser();
- *   if (userOrResponse instanceof NextResponse) return userOrResponse;
- *   const user = userOrResponse;
- *   // ... use user.id ...
- */
 export async function requireUser(): Promise<CurrentUser | NextResponse> {
   const user = await getCurrentUser();
   if (!user) {
