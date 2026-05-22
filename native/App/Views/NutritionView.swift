@@ -23,6 +23,7 @@ struct NutritionView: View {
     // Result waiting to be reviewed. Identifiable so we can use sheet(item:).
     @State private var pendingReview: PendingReview?
     @State private var manualOpen = false
+    @State private var editingMeal: MealLog?
     @State private var lookupError: String?
 
     enum CaptureFlow: Identifiable {
@@ -78,6 +79,10 @@ struct NutritionView: View {
             }
             .sheet(isPresented: $manualOpen) {
                 AddMealSheet()
+                    .presentationDetents([.large])
+            }
+            .sheet(item: $editingMeal) { meal in
+                AddMealSheet(editing: meal)
                     .presentationDetents([.large])
             }
             .sheet(item: $activeCapture) { flow in
@@ -229,38 +234,49 @@ struct NutritionView: View {
     }
 
     private func mealRow(_ meal: MealLog) -> some View {
-        Card {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(meal.name).font(.system(size: 15, weight: .semibold))
-                        HStack(spacing: 6) {
-                            Text(meal.loggedAt.formatted(date: .omitted, time: .shortened))
-                                .font(.system(size: 11))
-                                .foregroundStyle(LifeOSColor.fg3)
-                            sourceBadge(meal.source)
+        Button {
+            Haptics.tap()
+            editingMeal = meal
+        } label: {
+            Card {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(meal.name).font(.system(size: 15, weight: .semibold))
+                            HStack(spacing: 6) {
+                                Text(meal.loggedAt.formatted(date: .omitted, time: .shortened))
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(LifeOSColor.fg3)
+                                sourceBadge(meal.source)
+                            }
                         }
+                        Spacer()
+                        Text("\(Int(meal.calories)) kcal")
+                            .font(.system(size: 14, weight: .semibold))
+                            .monospacedDigit()
+                            .foregroundStyle(LifeOSColor.Metric.calories)
                     }
-                    Spacer()
-                    Text("\(Int(meal.calories)) kcal")
-                        .font(.system(size: 14, weight: .semibold))
-                        .monospacedDigit()
-                        .foregroundStyle(LifeOSColor.Metric.calories)
-                }
-                HStack(spacing: 6) {
-                    macroChip("P", value: meal.proteinG, tint: LifeOSColor.Metric.protein)
-                    macroChip("C", value: meal.carbsG, tint: LifeOSColor.Metric.carbs)
-                    macroChip("F", value: meal.fatG, tint: LifeOSColor.Metric.fat)
+                    HStack(spacing: 6) {
+                        macroChip("P", value: meal.proteinG, tint: LifeOSColor.Metric.protein)
+                        macroChip("C", value: meal.carbsG, tint: LifeOSColor.Metric.carbs)
+                        macroChip("F", value: meal.fatG, tint: LifeOSColor.Metric.fat)
+                    }
                 }
             }
         }
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button {
+                editingMeal = meal
+            } label: {
+                Label("Edit meal", systemImage: "pencil")
+            }
             Button(role: .destructive) {
                 modelContext.delete(meal)
                 try? modelContext.save()
                 Haptics.warning()
             } label: {
-                Label("Delete", systemImage: "trash")
+                Label("Delete meal", systemImage: "trash")
             }
         }
     }
