@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { hapticSelection } from "@/lib/haptics";
 
 type Props = {
   value: number;
@@ -32,7 +33,14 @@ export function Slider({
         min={min}
         max={max}
         step={step}
-        onChange={(e) => onChange(Number(e.target.value))}
+        onPointerDown={() => hapticSelection.start()}
+        onPointerUp={() => hapticSelection.end()}
+        onPointerCancel={() => hapticSelection.end()}
+        onChange={(e) => {
+          const next = Number(e.target.value);
+          if (next !== value) hapticSelection.tick();
+          onChange(next);
+        }}
         className="absolute inset-0 w-full h-full opacity-0 cursor-grab active:cursor-grabbing"
         aria-label="slider"
       />

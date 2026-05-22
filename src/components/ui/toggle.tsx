@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { haptic } from "@/lib/haptics";
 
 type Props = {
   checked: boolean;
@@ -29,7 +30,10 @@ export function Toggle({
       role="switch"
       aria-checked={checked}
       aria-label={rest["aria-label"] ?? label}
-      onClick={() => onChange(!checked)}
+      onClick={() => {
+        haptic("selection");
+        onChange(!checked);
+      }}
       className={cn(
         "relative inline-flex shrink-0 items-center rounded-full transition-colors",
         checked

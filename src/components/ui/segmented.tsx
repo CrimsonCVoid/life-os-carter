@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { haptic } from "@/lib/haptics";
 
 type Option<T extends string> = { value: T; label: React.ReactNode };
 
@@ -37,7 +38,10 @@ export function Segmented<T extends string>({
             type="button"
             role="radio"
             aria-checked={active}
-            onClick={() => onChange(o.value)}
+            onClick={() => {
+              if (!active) haptic("selection");
+              onChange(o.value);
+            }}
             className={cn(
               "h-full px-3 rounded-lg text-xs font-medium transition active:scale-[0.97]",
               active

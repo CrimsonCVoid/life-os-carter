@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { haptic } from "@/lib/haptics";
 
 type Props = {
   checked: boolean;
@@ -25,7 +26,10 @@ export function Checkbox({
       role="checkbox"
       aria-checked={checked}
       aria-label={label ?? "Checkbox"}
-      onClick={onChange}
+      onClick={() => {
+        haptic(checked ? "soft" : "tap");
+        onChange();
+      }}
       className={cn(
         "shrink-0 grid place-items-center rounded-md border transition active:scale-90",
         checked
