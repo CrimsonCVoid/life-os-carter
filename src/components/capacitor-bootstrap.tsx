@@ -2,6 +2,8 @@
 
 import * as React from "react";
 import { Capacitor } from "@capacitor/core";
+import { useStore } from "@/store";
+import { reconcileLocalReminders } from "@/lib/native/local-notifications";
 
 /**
  * Wires native-platform lifecycle on mount: hides the splash screen
@@ -12,6 +14,8 @@ import { Capacitor } from "@capacitor/core";
  * theme color path; only Capacitor native gets these calls.
  */
 export function CapacitorBootstrap() {
+  const localReminders = useStore((s) => s.settings.localReminders);
+
   React.useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
 
@@ -38,6 +42,15 @@ export function CapacitorBootstrap() {
       cancelled = true;
     };
   }, []);
+
+  // Re-reconcile local notification schedules whenever the user's
+  // localReminders prefs change AND on every cold start. iOS keeps the
+  // calendar-repeat schedules persistent across reboots, but a fresh
+  // install or a permission flip needs this to repopulate.
+  React.useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    void reconcileLocalReminders(localReminders);
+  }, [localReminders]);
 
   return null;
 }

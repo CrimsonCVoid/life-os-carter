@@ -722,6 +722,33 @@ export type Settings = {
   macroTargets?: MacroTargets;
   /** Intermittent-fasting target window length + enabled flag. */
   fasting?: FastingSettings;
+  /** Device-scheduled local notifications. iOS-only effect; web is no-op. */
+  localReminders: LocalRemindersSettings;
+};
+
+export type LocalReminderSlot = {
+  enabled: boolean;
+  /** 0-23 — uses the device's local time zone. */
+  hour: number;
+  /** 0-59 */
+  minute: number;
+};
+
+export type LocalRemindersSettings = {
+  morningBriefing: LocalReminderSlot;
+  hydrationMidday: LocalReminderSlot;
+  hydrationAfternoon: LocalReminderSlot;
+  eveningReflection: LocalReminderSlot;
+  /** Per-habit reminder when the user has selected a daily time. */
+  habitCheckin: LocalReminderSlot;
+};
+
+export const DEFAULT_LOCAL_REMINDERS_SETTINGS: LocalRemindersSettings = {
+  morningBriefing:    { enabled: false, hour: 7,  minute: 30 },
+  hydrationMidday:    { enabled: false, hour: 11, minute: 30 },
+  hydrationAfternoon: { enabled: false, hour: 15, minute: 0 },
+  eveningReflection:  { enabled: false, hour: 21, minute: 0 },
+  habitCheckin:       { enabled: false, hour: 20, minute: 0 },
 };
 
 export const DEFAULT_MORNING_ROUTINE: Array<{ name: string; icon: string }> = [

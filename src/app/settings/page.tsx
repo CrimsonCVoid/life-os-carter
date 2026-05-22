@@ -15,6 +15,7 @@ import { GoogleHealthCard } from "@/components/settings/google-health-card";
 import { AccountCard } from "@/components/settings/account-card";
 import { PeakStateCard } from "@/components/settings/peak-state-card";
 import { RemindersCard } from "@/components/settings/reminders-card";
+import { LocalRemindersCard } from "@/components/settings/local-reminders-card";
 import { MemoryCard } from "@/components/settings/memory-card";
 import { LiftSessionsSyncCard } from "@/components/settings/lift-sessions-sync-card";
 import { DangerZoneCard } from "@/components/settings/danger-zone-card";
@@ -269,6 +270,8 @@ export default function SettingsPage() {
       <MemoryCard />
 
       <RemindersCard />
+
+      <LocalRemindersCard />
 
       <React.Suspense fallback={null}>
         <GoogleHealthCard />

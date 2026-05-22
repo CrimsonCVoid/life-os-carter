@@ -21,6 +21,7 @@ import {
   DEFAULT_INSIGHTS_SETTINGS,
   DEFAULT_MORNING_ROUTINE,
   DEFAULT_MORNING_ROUTINE_SETTINGS,
+  DEFAULT_LOCAL_REMINDERS_SETTINGS,
   DEFAULT_PHOTO_FOOD_SETTINGS,
   DEFAULT_VOICE_JOURNAL_SETTINGS,
   DEFAULT_WEEKLY_REVIEW_SETTINGS,
@@ -370,6 +371,7 @@ const defaultSettings = (): Settings => ({
   weeklyReview: { ...DEFAULT_WEEKLY_REVIEW_SETTINGS },
   dayNavigation: { ...DEFAULT_DAY_NAVIGATION_SETTINGS },
   gym: { ...DEFAULT_GYM_SETTINGS },
+  localReminders: { ...DEFAULT_LOCAL_REMINDERS_SETTINGS },
 });
 
 function buildDefaultRoutine(
@@ -1983,6 +1985,10 @@ export const useStore = create<State & Actions>()(
                 ...current.settings.gym.perExercise,
                 ...(((p.settings as Partial<Settings>)?.gym?.perExercise) ?? {}),
               },
+            },
+            localReminders: {
+              ...current.settings.localReminders,
+              ...((p.settings as Partial<Settings>)?.localReminders ?? {}),
             },
           },
           routine: p.routine ?? current.routine,
