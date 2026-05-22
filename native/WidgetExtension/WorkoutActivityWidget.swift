@@ -281,7 +281,7 @@ struct PulseActionRow: View {
     private let pulseWindow: TimeInterval = 0.7
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.15)) { ctx in
+        TimelineView(.periodic(from: .now, by: 0.05)) { ctx in
             HStack(spacing: 8) {
                 pulseButton(
                     intent: CompleteCurrentSetIntent(),

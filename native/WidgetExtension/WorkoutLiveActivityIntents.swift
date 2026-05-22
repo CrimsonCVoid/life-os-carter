@@ -67,23 +67,37 @@ private func fireNotification(_ kind: UINotificationFeedbackGenerator.FeedbackTy
     gen.notificationOccurred(kind)
 }
 
-/// Push optimistic state updates to BOTH activities (Info + Controls).
-/// The caller mutates state in the closure; we await both pushes so
-/// iOS re-renders the Lock Screen before the intent returns. Without
-/// the awaits, the user sees a perceptible delay between tap and
-/// counter updating.
+/// Push optimistic state updates to BOTH activities (Info + Controls)
+/// IN PARALLEL via `async let`. Awaiting them serially added ~100ms
+/// per tap because each Activity.update is a ~50-100ms IPC round-trip
+/// to ActivityKit. Doing them concurrently halves that latency — the
+/// transform is identical for both so we can compute next state once
+/// and ship to both surfaces simultaneously.
 @available(iOS 17.0, *)
 private func updateLiveActivity(_ transform: (inout WorkoutContentState) -> Void) async {
-    if let info = Activity<WorkoutActivityAttributes>.activities.first {
-        var next = info.content.state
-        transform(&next)
-        await info.update(ActivityContent(state: next, staleDate: nil, relevanceScore: 50))
-    }
-    if let controls = Activity<WorkoutControlsAttributes>.activities.first {
-        var next = controls.content.state
-        transform(&next)
-        await controls.update(ActivityContent(state: next, staleDate: nil, relevanceScore: 100))
-    }
+    let infoActivity = Activity<WorkoutActivityAttributes>.activities.first
+    let controlsActivity = Activity<WorkoutControlsAttributes>.activities.first
+    guard infoActivity != nil || controlsActivity != nil else { return }
+
+    // Compute the next state once from whichever activity we have a
+    // current state for. Both surfaces are kept in lockstep by the
+    // main app, so reading either one gives the same starting point.
+    var next = infoActivity?.content.state
+        ?? controlsActivity?.content.state
+        ?? WorkoutContentState()
+    transform(&next)
+
+    async let infoTask: Void = {
+        if let info = infoActivity {
+            await info.update(ActivityContent(state: next, staleDate: nil, relevanceScore: 50))
+        }
+    }()
+    async let controlsTask: Void = {
+        if let controls = controlsActivity {
+            await controls.update(ActivityContent(state: next, staleDate: nil, relevanceScore: 100))
+        }
+    }()
+    _ = await (infoTask, controlsTask)
 }
 
 @available(iOS 17.0, *)

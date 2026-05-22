@@ -38,21 +38,59 @@ function extractText(chunk: StreamChunk): string {
   return parts.map((p) => p.text ?? "").join("");
 }
 
-export async function POST(req: Request) {
-  const apiKey = resolveGeminiApiKey();
-  if (!apiKey) {
-    return new Response("missing-key", { status: 503 });
-  }
+// Empty-but-shaped OverseerContext. Returned when the caller (the
+// native iOS Coach right now) doesn't have a populated context to
+// send. buildContextBlock dereferences every field, so missing ones
+// crash the route — normalizing here keeps the prompt building
+// permissive without forcing the iOS client to mirror the web app's
+// full selector graph.
+function emptyContext(): OverseerContext {
+  return {
+    today: "",
+    weekday: "",
+    goalsToday: [],
+    habits: [],
+    morningRoutine: undefined,
+    eveningRoutine: undefined,
+    workoutsToday: [],
+    schedule: [],
+    mood: undefined,
+    sleep: undefined,
+    water: undefined,
+    weight: undefined,
+    energyCurve: undefined,
+    steps: undefined,
+    nutrition: undefined,
+    body: undefined,
+    journalToday: [],
+    voiceJournalRecent: [],
+    recurringGoals: [],
+    pattern: undefined,
+    recentWeeklyReviews: [],
+  } as unknown as OverseerContext;
+}
 
-  let body: Body;
+export async function POST(req: Request) {
   try {
-    body = (await req.json()) as Body;
-  } catch {
-    return new Response("Invalid JSON body", { status: 400 });
-  }
-  if (!body?.messages?.length) {
-    return new Response("No messages", { status: 400 });
-  }
+    const apiKey = resolveGeminiApiKey();
+    if (!apiKey) {
+      return new Response("missing-key", { status: 503 });
+    }
+
+    let body: Body;
+    try {
+      body = (await req.json()) as Body;
+    } catch {
+      return new Response("Invalid JSON body", { status: 400 });
+    }
+    if (!body?.messages?.length) {
+      return new Response("No messages", { status: 400 });
+    }
+
+    // Native iOS sends a stub context object — fill in any missing
+    // fields with their empty/undefined equivalents so the prompt
+    // builder doesn't crash on .length access.
+    body.context = { ...emptyContext(), ...(body.context ?? {}) };
 
   const ai = new GoogleGenAI({ apiKey });
 
@@ -126,11 +164,19 @@ export async function POST(req: Request) {
     },
   });
 
-  return new Response(out, {
-    headers: {
-      "Content-Type": "text/plain; charset=utf-8",
-      "Cache-Control": "no-store, no-transform",
-      "X-Accel-Buffering": "no",
-    },
-  });
+    return new Response(out, {
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-store, no-transform",
+        "X-Accel-Buffering": "no",
+      },
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[overseer] uncaught:", msg);
+    return new Response(`[Coach error: ${msg}]`, {
+      status: 500,
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
+  }
 }
