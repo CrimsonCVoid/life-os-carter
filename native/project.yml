@@ -66,9 +66,10 @@ targets:
         NSMicrophoneUsageDescription: Life OS records a short voice clip describing a meal so Gemini can estimate calories and macros.
         # Google OAuth iOS client ID. Created in Google Cloud Console
         # → APIs & Services → Credentials → iOS application. Read at
-        # runtime by IdentityLinker. Empty string == "Link Google"
-        # button shows a config-missing error instead of opening OAuth.
-        GOOGLE_IOS_CLIENT_ID: ""
+        # runtime by IdentityLinker. The reversed-DNS form is also the
+        # OAuth callback URL scheme — ASWebAuthenticationSession listens
+        # for it automatically, no CFBundleURLTypes entry needed.
+        GOOGLE_IOS_CLIENT_ID: "778767465909-49jj6q2nd2gcn4qocvnlmgvbv8lhknuk.apps.googleusercontent.com"
         NSSupportsLiveActivities: true
         NSSupportsLiveActivitiesFrequentUpdates: true
         ITSAppUsesNonExemptEncryption: false
