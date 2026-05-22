@@ -7,7 +7,9 @@
  * to both the App target AND the WidgetExtension target.
  */
 
+#if os(iOS)
 import ActivityKit
+import AppIntents
 import SwiftUI
 import WidgetKit
 
@@ -67,6 +69,17 @@ private struct LockScreenView: View {
     let context: ActivityViewContext<WorkoutActivityAttributes>
 
     var body: some View {
+        VStack(spacing: 10) {
+            topRow
+            if #available(iOS 17.0, *) {
+                ActionButtonRow(restActive: (context.state.restEndsAt ?? .distantPast) > Date())
+            }
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+    }
+
+    private var topRow: some View {
         HStack(spacing: 14) {
             // Icon disc
             ZStack {
@@ -134,8 +147,76 @@ private struct LockScreenView: View {
                 }
             }
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 14)
+    }
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Interactive button row — Complete Set / +30s / Skip rest
+// ────────────────────────────────────────────────────────────────────────
+
+@available(iOS 17.0, *)
+private struct ActionButtonRow: View {
+    let restActive: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button(intent: CompleteCurrentSetIntent()) {
+                ActionLabel(
+                    icon: "checkmark.circle.fill",
+                    text: "Set",
+                    tint: .cyan
+                )
+            }
+            .buttonStyle(.plain)
+            .tint(.cyan)
+
+            Button(intent: AddRestIntent()) {
+                ActionLabel(
+                    icon: "plus",
+                    text: "30s",
+                    tint: .orange
+                )
+            }
+            .buttonStyle(.plain)
+            .tint(.orange)
+
+            Button(intent: SkipRestIntent()) {
+                ActionLabel(
+                    icon: "forward.fill",
+                    text: "Skip",
+                    tint: restActive ? .white : .white.opacity(0.45)
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(!restActive)
+        }
+    }
+}
+
+@available(iOS 17.0, *)
+private struct ActionLabel: View {
+    let icon: String
+    let text: String
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .semibold))
+            Text(text)
+                .font(.system(size: 12, weight: .semibold))
+        }
+        .foregroundStyle(tint)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .background(
+            Capsule()
+                .fill(.white.opacity(0.08))
+        )
+        .overlay(
+            Capsule()
+                .stroke(.white.opacity(0.12), lineWidth: 0.5)
+        )
     }
 }
 
@@ -180,35 +261,43 @@ private struct ExpandedTrailing: View {
 private struct ExpandedBottom: View {
     let context: ActivityViewContext<WorkoutActivityAttributes>
     var body: some View {
-        HStack {
-            if let name = context.state.lastExerciseName, let summary = context.state.lastSetSummary {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Last set")
-                        .font(.system(size: 9, weight: .semibold))
-                        .tracking(1.2)
-                        .foregroundStyle(.secondary)
-                    HStack(spacing: 6) {
-                        Text(name).font(.system(size: 13, weight: .semibold)).lineLimit(1)
-                        Text(summary)
-                            .font(.system(size: 12).monospacedDigit())
+        VStack(spacing: 8) {
+            HStack {
+                if let name = context.state.lastExerciseName, let summary = context.state.lastSetSummary {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Last set")
+                            .font(.system(size: 9, weight: .semibold))
+                            .tracking(1.2)
                             .foregroundStyle(.secondary)
+                        HStack(spacing: 6) {
+                            Text(name).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                            Text(summary)
+                                .font(.system(size: 12).monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                } else {
+                    Text("Tap a set on your phone to begin")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                if let restEnds = context.state.restEndsAt, restEnds > Date() {
+                    HStack(spacing: 6) {
+                        Image(systemName: "timer").foregroundStyle(.orange)
+                        Text(timerInterval: Date()...restEnds, countsDown: true)
+                            .font(.system(size: 16, weight: .semibold).monospacedDigit())
+                            .foregroundStyle(.orange)
                     }
                 }
-            } else {
-                Text("Tap to open the active workout")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
             }
 
-            Spacer()
-
-            if let restEnds = context.state.restEndsAt, restEnds > Date() {
-                HStack(spacing: 6) {
-                    Image(systemName: "timer").foregroundStyle(.orange)
-                    Text(timerInterval: Date()...restEnds, countsDown: true)
-                        .font(.system(size: 16, weight: .semibold).monospacedDigit())
-                        .foregroundStyle(.orange)
-                }
+            if #available(iOS 17.0, *) {
+                ActionButtonRow(
+                    restActive: (context.state.restEndsAt ?? .distantPast) > Date()
+                )
             }
         }
     }
@@ -230,3 +319,5 @@ private struct GlassDisc: ViewModifier {
         }
     }
 }
+
+#endif

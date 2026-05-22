@@ -36,6 +36,10 @@ import {
 import { computeReadiness } from "@/lib/readiness";
 import { todayStr } from "@/lib/date";
 import { LiveActivity } from "@/lib/native/live-activity";
+import {
+  subscribeWorkoutCommands,
+  type WorkoutCommand,
+} from "@/lib/native/workout-commands";
 
 import { Button } from "@/components/ui/button";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
@@ -156,6 +160,64 @@ export function ActiveWorkoutPage({ open, onClose }: Props) {
           : null,
     });
   }, [active, completedSets]);
+
+  // Live Activity → app command bridge. The widget-side App Intents
+  // (Complete Set / +30s / Skip rest) append commands to an App Group
+  // queue; we drain them here and dispatch to Zustand. The Live Activity
+  // updates itself optimistically, then the LiveActivity.update() effect
+  // above reconciles with canonical state on the next render.
+  React.useEffect(() => {
+    if (!active) return;
+    const unsub = subscribeWorkoutCommands({
+      onCommands: (cmds: WorkoutCommand[]) => {
+        const state = useStore.getState();
+        const aw = state.activeWorkout;
+        if (!aw) return;
+        for (const cmd of cmds) {
+          switch (cmd.op) {
+            case "complete_set": {
+              // Find the next un-completed set in the most recently used
+              // exercise. Falls back to first exercise with any sets.
+              const lastEx = [...aw.exercises]
+                .reverse()
+                .find((e) => e.sets.length > 0);
+              const target = lastEx ?? aw.exercises[0];
+              if (!target) break;
+              const pending = target.sets.find((s) => s.completed === false);
+              if (!pending) break;
+              state.toggleActiveWorkoutSetComplete(target.id, pending.order);
+              const restSecs =
+                aw.restTargetSeconds && aw.restTargetSeconds > 0
+                  ? aw.restTargetSeconds
+                  : DEFAULT_REST_SECONDS;
+              if (!aw.restTargetSeconds) {
+                state.setActiveWorkoutRestTarget(restSecs);
+              }
+              haptic("success");
+              break;
+            }
+            case "add_rest": {
+              const current = aw.restTargetSeconds ?? DEFAULT_REST_SECONDS;
+              state.setActiveWorkoutRestTarget(current + cmd.args.seconds);
+              haptic("tap");
+              break;
+            }
+            case "skip_rest": {
+              state.dismissActiveWorkoutRest();
+              haptic("soft");
+              break;
+            }
+            case "finish": {
+              // Punt — finishing has too much follow-up UI (the summary
+              // sheet, save-or-discard) to be a fire-and-forget intent.
+              break;
+            }
+          }
+        }
+      },
+    });
+    return unsub;
+  }, [active]);
   const totalVolume = active
     ? active.exercises.reduce(
         (a, e) =>
