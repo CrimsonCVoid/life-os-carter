@@ -16,8 +16,7 @@
 
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { users } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { signNativeToken } from "@/lib/native-jwt";
 import { externalIdToUuid } from "@/lib/user-id";
 
@@ -40,22 +39,21 @@ export async function POST(req: Request) {
     const externalId = `device:${deviceId.toLowerCase()}`;
     const dbId = externalIdToUuid(externalId);
 
-    // The live Neon `users.id` is uuid-typed even though schema.ts
-    // says text. Hash the prefixed external ID into a deterministic
-    // UUID for storage; the JWT subject still carries the prefixed
-    // form so iOS can derive the provider from
-    // AuthStore.identityProvider. Column-explicit because the live
-    // table may be missing optional columns declared in schema.ts.
-    const existing = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(eq(users.id, dbId))
-      .limit(1);
+    // The live Neon `users` table is materially out of sync with
+    // schema.ts — it's missing some columns (e.g. `name`) that the
+    // schema declares. Drizzle's query builder references all schema
+    // columns when generating SQL even though we only supply `id`,
+    // which produces 42703 "column does not exist". Bypass by writing
+    // raw SQL that touches only the id column. Idempotent via
+    // ON CONFLICT — re-running for the same device returns the
+    // existing row without a duplicate-key error.
+    await db.execute(
+      sql`INSERT INTO users (id) VALUES (${dbId}::uuid) ON CONFLICT (id) DO NOTHING`
+    );
 
-    if (!existing[0]) {
-      await db.insert(users).values({ id: dbId });
-    }
-
+    // JWT subject carries the prefixed external ID so iOS retains
+    // provider tagging via AuthStore.identityProvider; getCurrentUser
+    // re-hashes at the SQL boundary for child-table lookups.
     const token = await signNativeToken(externalId);
     return NextResponse.json({ token, userId: externalId });
   } catch (e) {
