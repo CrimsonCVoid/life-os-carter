@@ -40,15 +40,15 @@ export async function POST(req: Request) {
     const dbId = externalIdToUuid(externalId);
 
     // The live Neon `users` table is materially out of sync with
-    // schema.ts — it's missing some columns (e.g. `name`) that the
-    // schema declares. Drizzle's query builder references all schema
-    // columns when generating SQL even though we only supply `id`,
-    // which produces 42703 "column does not exist". Bypass by writing
-    // raw SQL that touches only the id column. Idempotent via
-    // ON CONFLICT — re-running for the same device returns the
-    // existing row without a duplicate-key error.
+    // schema.ts — schema declares `email` nullable but the live
+    // column has a NOT NULL constraint with no default. Generate a
+    // unique synthetic email tied to the dbId so the constraint is
+    // satisfied without colliding with real user emails. Same
+    // pattern works for any provider — link-identity overwrites
+    // with the real Apple/Google email when known.
+    const syntheticEmail = `${dbId}@native.lifeos.local`;
     await db.execute(
-      sql`INSERT INTO users (id) VALUES (${dbId}::uuid) ON CONFLICT (id) DO NOTHING`
+      sql`INSERT INTO users (id, email) VALUES (${dbId}::uuid, ${syntheticEmail}) ON CONFLICT (id) DO NOTHING`
     );
 
     // JWT subject carries the prefixed external ID so iOS retains
