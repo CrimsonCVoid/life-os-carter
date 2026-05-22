@@ -127,13 +127,21 @@ async function scanWithZxing(
     };
     signal.addEventListener("abort", onAbort, { once: true });
 
-    // Continuous callback pattern — fires every decoded frame. Reliable
-    // when the parent has already attached a MediaStream to the video
-    // element (which we do — see ScanningScreen useEffect). The promise
-    // version (decodeFromVideoElement) is flaky with pre-attached
-    // streams in 0.23.
+    // Use decodeContinuously directly instead of
+    // decodeFromVideoElementContinuously. The latter calls
+    // playVideoOnLoad internally, which waits for the 'playing' event
+    // — but our parent already started playback before handing the
+    // element off, so that event already fired and the listener
+    // attaches too late. The loop never starts and the user sees a
+    // live feed that never detects anything.
+    //
+    // decodeContinuously bypasses the gate: it just calls
+    // reader.decode(video) on a 250ms timer (per the constructor arg
+    // above), fires the callback with either a Result or a
+    // NotFoundException per frame. As long as the video has current
+    // frame data, decoding runs.
     try {
-      reader.decodeFromVideoElementContinuously(video, (result, err) => {
+      reader.decodeContinuously(video, (result, err) => {
         if (settled) return;
         if (result) {
           settled = true;
@@ -146,9 +154,8 @@ async function scanWithZxing(
           return;
         }
         // err is NotFoundException on every frame without a barcode —
-        // expected, just keep scanning. Only surface "checksum" / "format"
-        // exceptions if they persist (caller's AbortController will
-        // eventually fire when the user closes the modal).
+        // expected, the loop just calls back and tries again. We don't
+        // surface it.
         void err;
       });
     } catch (e) {
