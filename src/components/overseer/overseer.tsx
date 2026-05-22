@@ -203,7 +203,7 @@ export function Overseer() {
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: "100%", opacity: 0 }}
               transition={{ type: "spring", stiffness: 320, damping: 32 }}
-              className="relative w-full sm:max-w-md h-[88dvh] sm:h-[640px] sm:mb-6 flex flex-col card rounded-b-none sm:rounded-b-[var(--radius-card)]"
+              className="relative w-full sm:max-w-md h-[88dvh] sm:h-[640px] sm:mb-6 flex flex-col glass-strong rounded-t-[var(--radius-card)] rounded-b-none sm:rounded-b-[var(--radius-card)]"
               style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
             >
               <header className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-[var(--color-stroke)]">

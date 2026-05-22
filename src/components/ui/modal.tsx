@@ -81,7 +81,7 @@ export function Modal({
               }
             }}
             className={cn(
-              "relative w-full card rounded-b-none sm:rounded-b-[var(--radius-card)] sm:mb-0 flex flex-col max-h-[90dvh] touch-pan-y",
+              "relative w-full glass-strong rounded-t-[var(--radius-card)] rounded-b-none sm:rounded-b-[var(--radius-card)] sm:mb-0 flex flex-col max-h-[90dvh] touch-pan-y",
               sizeClasses[size],
               className
             )}

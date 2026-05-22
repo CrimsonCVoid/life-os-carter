@@ -130,6 +130,19 @@
   --shadow-glow: 0 0 0 1px rgba(167, 139, 250, 0.3),
                  0 0 24px -4px rgba(167, 139, 250, 0.4);
 
+  /* ── Liquid Glass surfaces ──
+   * Web-tier mimic of iOS 26 .glassEffect(). Pair with backdrop-filter
+   * in the .glass-* utilities below. The translucent fill + saturate
+   * + faint top-edge inner highlight is what reads as "glass" instead
+   * of plain blur. */
+  --glass-bg:        rgba(15, 15, 18, 0.55);
+  --glass-bg-strong: rgba(15, 15, 18, 0.78);
+  --glass-bg-nav:    rgba(5, 5, 7, 0.72);
+  --glass-border:    rgba(255, 255, 255, 0.07);
+  --glass-highlight: inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+  --glass-blur:      saturate(170%) blur(28px);
+  --glass-blur-strong: saturate(180%) blur(40px);
+
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system,
                "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
 
@@ -264,6 +277,44 @@
     border: 1px solid var(--color-stroke);
     border-radius: var(--radius-card);
     box-shadow: var(--shadow-card);
+  }
+
+  /* Glass surface utilities. .glass is the standard translucent fill
+   * used for floating surfaces (Modal, Overseer panel). .glass-strong
+   * lifts the opacity for surfaces that sit over busy content. .glass-nav
+   * is tuned darker for bottom navigation. All three use a heavy
+   * backdrop-filter blur + saturate that mimics iOS 26's Liquid Glass.
+   * Safari/iOS supports backdrop-filter natively; on browsers without
+   * it the fallback is a slightly more opaque solid via @supports. */
+  .glass {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    box-shadow: var(--glass-highlight), var(--shadow-float);
+  }
+  .glass-strong {
+    background: var(--glass-bg-strong);
+    border: 1px solid var(--glass-border);
+    -webkit-backdrop-filter: var(--glass-blur-strong);
+    backdrop-filter: var(--glass-blur-strong);
+    box-shadow: var(--glass-highlight), var(--shadow-float);
+  }
+  .glass-nav {
+    background: var(--glass-bg-nav);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    box-shadow: var(--glass-highlight);
+  }
+  @supports not ((backdrop-filter: blur(8px)) or
+                 (-webkit-backdrop-filter: blur(8px))) {
+    .glass,
+    .glass-strong {
+      background: var(--color-card);
+    }
+    .glass-nav {
+      background: color-mix(in srgb, var(--color-base) 92%, transparent);
+    }
   }
 
   .card-hover {
