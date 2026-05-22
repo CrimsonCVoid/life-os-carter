@@ -49,7 +49,12 @@ targets:
           UIColorName: LaunchBackground
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
-        UIRequiresFullScreen: false
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIRequiresFullScreen: true
         UIStatusBarStyle: UIStatusBarStyleLightContent
         UIViewControllerBasedStatusBarAppearance: false
         UIBackgroundModes:
