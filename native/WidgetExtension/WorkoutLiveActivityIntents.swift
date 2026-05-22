@@ -1,17 +1,25 @@
 import ActivityKit
 import AppIntents
 import Foundation
+import UIKit
 import WidgetKit
 
-/// iOS 17+ LiveActivityIntents — the buttons inside the Lock Screen
-/// banner and Dynamic Island. Each intent does two things:
-///   1. Mutates the activity content state immediately (optimistic UI)
-///   2. Appends a JSON command to the App Group queue so the main app
-///      can reconcile authoritative state on next foreground
+/// iOS 17+ LiveActivityIntents — the buttons inside the Controls Live
+/// Activity. Each intent does three things, in order:
 ///
-/// In the native build, the app picks up the queue via
-/// `WorkoutCommandConsumer` — same pattern as the Capacitor build,
-/// minus the JS bridge in the middle.
+///   1. Fires a UIImpactFeedbackGenerator haptic. LiveActivityIntents
+///      run in the MAIN APP process (per Apple's docs), so the haptic
+///      engine is available even though the app isn't visibly in the
+///      foreground. The user feels the tap confirmed.
+///   2. Tags the action via lastAction + lastActionAt on the activity
+///      content state so both Live Activity widgets render a brief
+///      "just pressed" pulse on the matching control.
+///   3. Appends a JSON command to the App Group queue so the main
+///      app's `WorkoutCommandConsumer` can reconcile authoritative
+///      state on the next foreground tick.
+///
+/// Plus the existing optimistic content-state mutation so the LA shows
+/// the result of the tap immediately, not after the app catches up.
 
 private let kRestBumpSeconds: TimeInterval = 30
 private let kDefaultRestSeconds: TimeInterval = 90
@@ -41,19 +49,38 @@ private func appendCommand(op: String, args: [String: Double]? = nil) {
     }
 }
 
+/// Fire a haptic from inside a LiveActivityIntent. Safe because these
+/// intents run in the main app's foreground process.
 @available(iOS 17.0, *)
-private func currentActivity() -> Activity<WorkoutActivityAttributes>? {
-    Activity<WorkoutActivityAttributes>.activities.first
+@MainActor
+private func fireHaptic(_ style: UIImpactFeedbackGenerator.FeedbackStyle) {
+    let gen = UIImpactFeedbackGenerator(style: style)
+    gen.prepare()
+    gen.impactOccurred()
 }
 
 @available(iOS 17.0, *)
-private func optimisticallyUpdate(
-    _ activity: Activity<WorkoutActivityAttributes>,
-    transform: (inout WorkoutActivityAttributes.ContentState) -> Void
-) async {
-    var next = activity.content.state
-    transform(&next)
-    await activity.update(ActivityContent(state: next, staleDate: nil))
+@MainActor
+private func fireNotification(_ kind: UINotificationFeedbackGenerator.FeedbackType) {
+    let gen = UINotificationFeedbackGenerator()
+    gen.prepare()
+    gen.notificationOccurred(kind)
+}
+
+/// Updates both the info and controls activities in lockstep so the
+/// pulse animation and counters stay in sync between cards.
+@available(iOS 17.0, *)
+private func updateBothActivities(_ transform: (inout WorkoutContentState) -> Void) async {
+    if let info = Activity<WorkoutActivityAttributes>.activities.first {
+        var next = info.content.state
+        transform(&next)
+        await info.update(ActivityContent(state: next, staleDate: nil))
+    }
+    if let controls = Activity<WorkoutControlsAttributes>.activities.first {
+        var next = controls.content.state
+        transform(&next)
+        await controls.update(ActivityContent(state: next, staleDate: nil))
+    }
 }
 
 @available(iOS 17.0, *)
@@ -64,15 +91,16 @@ public struct CompleteCurrentSetIntent: LiveActivityIntent {
     public init() {}
 
     public func perform() async throws -> some IntentResult {
+        await fireNotification(.success)
         appendCommand(op: "complete_set")
-        if let activity = currentActivity() {
-            await optimisticallyUpdate(activity) { state in
-                state.setsCompleted += 1
-                let now = Date()
-                if state.restEndsAt == nil || state.restEndsAt! < now {
-                    state.restEndsAt = now.addingTimeInterval(kDefaultRestSeconds)
-                }
+        await updateBothActivities { state in
+            state.setsCompleted += 1
+            let now = Date()
+            if state.restEndsAt == nil || state.restEndsAt! < now {
+                state.restEndsAt = now.addingTimeInterval(kDefaultRestSeconds)
             }
+            state.lastAction = WorkoutAction.completeSet
+            state.lastActionAt = now
         }
         return .result()
     }
@@ -86,14 +114,15 @@ public struct AddRestIntent: LiveActivityIntent {
     public init() {}
 
     public func perform() async throws -> some IntentResult {
+        await fireHaptic(.medium)
         appendCommand(op: "add_rest", args: ["seconds": kRestBumpSeconds])
-        if let activity = currentActivity() {
-            await optimisticallyUpdate(activity) { state in
-                let now = Date()
-                let base = (state.restEndsAt ?? now).timeIntervalSinceReferenceDate
-                let bumped = max(base, now.timeIntervalSinceReferenceDate) + kRestBumpSeconds
-                state.restEndsAt = Date(timeIntervalSinceReferenceDate: bumped)
-            }
+        await updateBothActivities { state in
+            let now = Date()
+            let base = (state.restEndsAt ?? now).timeIntervalSinceReferenceDate
+            let bumped = max(base, now.timeIntervalSinceReferenceDate) + kRestBumpSeconds
+            state.restEndsAt = Date(timeIntervalSinceReferenceDate: bumped)
+            state.lastAction = WorkoutAction.addRest
+            state.lastActionAt = now
         }
         return .result()
     }
@@ -107,11 +136,12 @@ public struct SkipRestIntent: LiveActivityIntent {
     public init() {}
 
     public func perform() async throws -> some IntentResult {
+        await fireHaptic(.light)
         appendCommand(op: "skip_rest")
-        if let activity = currentActivity() {
-            await optimisticallyUpdate(activity) { state in
-                state.restEndsAt = nil
-            }
+        await updateBothActivities { state in
+            state.restEndsAt = nil
+            state.lastAction = WorkoutAction.skipRest
+            state.lastActionAt = Date()
         }
         return .result()
     }

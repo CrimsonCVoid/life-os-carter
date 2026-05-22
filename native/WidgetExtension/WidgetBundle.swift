@@ -7,6 +7,7 @@ struct LifeOSWidgetBundle: WidgetBundle {
         TodaySnapshotWidget()
         if #available(iOS 16.2, *) {
             WorkoutActivityWidget()
+            WorkoutControlsWidget()
         }
     }
 }

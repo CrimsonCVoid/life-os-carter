@@ -65,25 +65,21 @@ private struct LockScreenLargeView: View {
     let context: ActivityViewContext<WorkoutActivityAttributes>
 
     var body: some View {
-        // Live Activity height is system-capped (~220pt on iPhone Lock
-        // Screen with interactive buttons). The previous v2 layout
-        // stacked header + stats + progress + last-set + next/rest +
-        // buttons — adding to ~290pt and getting clipped. Cut to the
-        // three things that matter mid-workout: at-a-glance identity
-        // (header), the dominant HERO element (rest timer or last set
-        // or next exercise), and the action buttons. Stats fold into
-        // the header. Progress bar removed — exercise count is in the
-        // header chip.
+        // INFO-only Live Activity card. The action buttons used to live
+        // here, but they now have their own dedicated WorkoutControls
+        // widget so each card can be tighter and the system can stack
+        // them as two distinct entries on the Lock Screen.
+        //
+        // We still have iOS's ~220pt height cap to respect, but without
+        // the button row we have ~50pt back to spend on the hero
+        // element. Stats are folded into the header.
         let isResting = (context.state.restEndsAt ?? .distantPast) > Date()
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             topHeader
             heroSection(isResting: isResting)
-            if #available(iOS 17.0, *) {
-                ActionButtonRow(restActive: isResting)
-            }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .padding(.vertical, 14)
     }
 
     /// One of three: rest countdown (biggest), last-set summary, or
