@@ -3,6 +3,9 @@ import SwiftData
 
 @main
 struct LifeOSApp: App {
+    @State private var workoutStore = ActiveWorkoutStore()
+    private let commandConsumer = WorkoutCommandConsumer()
+
     // SwiftData container — local-first persistence for everything the
     // user logs offline. Mirrors the Zustand store shape from the Next.js
     // version. Backend sync via APIClient happens opportunistically when
@@ -39,11 +42,15 @@ struct LifeOSApp: App {
             RootView()
                 .preferredColorScheme(.dark)
                 .tint(LifeOSColor.accent)
+                .environment(workoutStore)
                 .onAppear {
-                    // Best-effort HealthKit auth request on first launch.
-                    // Each HealthKit type is gated independently — no harm
-                    // in requesting upfront.
                     Task { await HealthKitManager.shared.requestAuthorization() }
+                    Haptics.prepareAll()
+                    // Drain Live Activity intent commands from the widget
+                    // process into the workout store.
+                    commandConsumer.start { cmd in
+                        workoutStore.apply(cmd)
+                    }
                 }
         }
         .modelContainer(sharedModelContainer)
