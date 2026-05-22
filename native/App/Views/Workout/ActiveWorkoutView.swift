@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 /// Full-screen in-progress workout. Mirrors the web's active-workout
 /// page: header timer, exercise stack with sets, superset chrome, rest
@@ -6,6 +7,7 @@ import SwiftUI
 struct ActiveWorkoutView: View {
     @Bindable var store: ActiveWorkoutStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
 
     @State private var pickerOpen = false
     @State private var rpeTarget: (UUID, UUID)?
@@ -292,8 +294,8 @@ struct ActiveWorkoutView: View {
                 .buttonStyle(.plain)
 
                 Button {
-                    if let _ = store.finish() {
-                        // TODO: persist WorkoutSummary to SwiftData
+                    if let summary = store.finish() {
+                        persistAndIngest(summary)
                     }
                     dismiss()
                 } label: {
@@ -352,6 +354,28 @@ struct ActiveWorkoutView: View {
         .padding(.vertical, 10)
         .background(LifeOSColor.warning.opacity(0.12))
         .overlay(alignment: .top) { Divider().overlay(LifeOSColor.warning.opacity(0.3)) }
+    }
+
+    /// Persist the just-finished workout to SwiftData and update PRs.
+    private func persistAndIngest(_ summary: WorkoutSummary) {
+        let json = (try? String(data: JSONEncoder().encode(summary.exercises), encoding: .utf8)) ?? "[]"
+        let date = ISO8601DateFormatter.dateOnly.string(from: summary.startedAt)
+        let entry = LiftSessionEntry(
+            date: date,
+            workoutType: summary.workoutType,
+            startedAt: summary.startedAt,
+            endedAt: summary.endedAt,
+            totalVolumeLb: summary.totalVolume,
+            setCount: summary.setCount,
+            detailsJSON: json
+        )
+        modelContext.insert(entry)
+        PersonalRecordsService.ingest(
+            session: entry,
+            exercises: summary.exercises,
+            modelContext: modelContext
+        )
+        try? modelContext.save()
     }
 
     // MARK: - Derived

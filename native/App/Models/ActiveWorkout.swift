@@ -214,16 +214,68 @@ final class ActiveWorkoutStore {
 
     // MARK: - Live Activity push
 
+    /// Pull the most recently completed set's 1RM estimate + PR flag
+    /// from in-memory state — when the consumer wants to flag a PR
+    /// in the Live Activity, this is the surface.
+    private var lastSetMeta: (oneRM: Double?, isPR: Bool) {
+        for ex in exercises.reversed() {
+            if let last = ex.sets.last(where: \.completed) {
+                let oneRM = estimate1RM(weight: last.weight, reps: last.reps)
+                return (oneRM > 0 ? oneRM : nil, false)
+            }
+        }
+        return (nil, false)
+    }
+
+    /// Find the first not-fully-completed exercise after the most-recent
+    /// one — used as the "Next" hint in the Live Activity.
+    private var nextExercise: WorkoutExercise? {
+        // If no sets have been completed yet, "next" is the first exercise.
+        guard let lastCompletedExIdx = exercises.lastIndex(where: { $0.sets.contains(where: \.completed) }) else {
+            return exercises.first
+        }
+        // Look forward; if everything ahead is done, fall back to the
+        // first incomplete exercise from the top.
+        if let forward = exercises[(lastCompletedExIdx + 1)...].first(where: { ex in
+            ex.sets.isEmpty || ex.sets.contains(where: { !$0.completed })
+        }) {
+            return forward
+        }
+        return exercises.first(where: { ex in
+            ex.sets.isEmpty || ex.sets.contains(where: { !$0.completed })
+        })
+    }
+
+    private var completedExerciseCount: Int {
+        exercises.filter { ex in
+            !ex.sets.isEmpty && ex.sets.allSatisfy(\.completed)
+        }.count
+    }
+
     func pushLiveActivity() {
         guard isActive else { return }
         let last = lastCompletedSetSummary
-        LiveActivityManager.shared.update(
+        let meta = lastSetMeta
+        // Rough strength kcal — 0.05 kcal per lb of volume. Better than
+        // showing zero, conservative enough to not over-promise.
+        let kcal = totalVolume * 0.05
+        let next = nextExercise
+        let state = WorkoutActivityAttributes.ContentState(
             setsCompleted: completedSetCount,
             totalVolume: totalVolume,
+            exerciseCount: exercises.count,
+            completedExerciseCount: completedExerciseCount,
             lastExerciseName: last?.exercise,
             lastSetSummary: last?.summary,
-            restEndsAt: restEndsAt
+            lastSetEstOneRM: meta.oneRM,
+            lastSetIsPR: meta.isPR,
+            restEndsAt: restEndsAt,
+            restTargetSeconds: restTargetSeconds,
+            nextExerciseName: next?.name,
+            nextExerciseSetCount: next?.sets.count,
+            estimatedKcal: kcal > 0 ? kcal : nil
         )
+        LiveActivityManager.shared.update(state)
     }
 
     // MARK: - Command consumer hookup
