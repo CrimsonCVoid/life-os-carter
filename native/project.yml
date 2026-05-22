@@ -1,0 +1,103 @@
+# XcodeGen project spec — run `xcodegen` (brew install xcodegen) in this
+# directory to regenerate LifeOS.xcodeproj from this file. Doing it this
+# way means the project lives as readable YAML in git instead of a
+# 5000-line binary pbxproj nobody can diff.
+
+name: LifeOS
+options:
+  bundleIdPrefix: com.hbrady
+  deploymentTarget:
+    iOS: "17.0"
+  developmentLanguage: en
+  groupSortPosition: top
+  generateEmptyDirectories: true
+  xcodeVersion: "16.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    SWIFT_STRICT_CONCURRENCY: minimal
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: ""
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+
+targets:
+  LifeOS:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: App
+      - path: Shared
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Life OS
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIRequiresFullScreen: false
+        UIStatusBarStyle: UIStatusBarStyleLightContent
+        UIViewControllerBasedStatusBarAppearance: false
+        UIBackgroundModes:
+          - remote-notification
+        NSHealthShareUsageDescription: Life OS reads your activity, heart rate, sleep, and body data from Apple Health to assemble your daily readiness picture.
+        NSHealthUpdateUsageDescription: Life OS writes weight, water, and mindful sessions you log here back to Apple Health so the rest of your apps stay in sync.
+        NSSupportsLiveActivities: true
+        NSSupportsLiveActivitiesFrequentUpdates: true
+        ITSAppUsesNonExemptEncryption: false
+        CFBundleURLTypes:
+          - CFBundleTypeRole: Editor
+            CFBundleURLName: com.hbrady.lifeos
+            CFBundleURLSchemes:
+              - lifeos
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.hbrady.lifeos
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SUPPORTS_MACCATALYST: NO
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: NO
+    entitlements:
+      path: App/LifeOS.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.hbrady.lifeos
+        com.apple.developer.healthkit: true
+        com.apple.developer.healthkit.access: []
+        aps-environment: development
+    dependencies:
+      - target: WidgetExtension
+
+  WidgetExtension:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: WidgetExtension
+      - path: Shared
+    info:
+      path: WidgetExtension/Info.plist
+      properties:
+        CFBundleDisplayName: Life OS
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.hbrady.lifeos.WidgetExtension
+        INFOPLIST_KEY_CFBundleDisplayName: Life OS
+        SKIP_INSTALL: YES
+    entitlements:
+      path: WidgetExtension/WidgetExtension.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.hbrady.lifeos

@@ -1,0 +1,8 @@
+# XcodeGen regenerates these on demand from project.yml — don't commit.
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+DerivedData/
+*.xcuserstate
+.build/
+.swiftpm/
