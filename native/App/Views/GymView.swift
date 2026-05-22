@@ -15,23 +15,25 @@ struct GymView: View {
     @State private var editingTemplate: WorkoutTemplate?
     @State private var activeOpen = false
     @State private var csvShareURL: URL?
+    @State private var revealed = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 16) {
                     if workoutStore.isActive {
-                        activeCard
+                        activeCard.cascadeReveal(index: 0, visible: revealed)
                     }
-                    splitSection
-                    prSection
-                    historySection
+                    splitSection.cascadeReveal(index: 1, visible: revealed)
+                    prSection.cascadeReveal(index: 2, visible: revealed)
+                    historySection.cascadeReveal(index: 3, visible: revealed)
                     Spacer(minLength: 80)
                 }
                 .padding(.horizontal, 14)
                 .padding(.top, 8)
             }
             .background(LifeOSColor.base.ignoresSafeArea())
+            .onAppear { if !revealed { revealed = true } }
             .navigationTitle("Gym")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -130,7 +132,7 @@ struct GymView: View {
     }
 
     private func dayCard(_ day: WorkoutTemplate) -> some View {
-        Card {
+        Card(tint: LifeOSColor.accent) {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(day.name)
@@ -231,7 +233,7 @@ struct GymView: View {
     }
 
     private func prRow(_ pr: PersonalRecord) -> some View {
-        Card {
+        Card(tint: LifeOSColor.Metric.peak) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(pr.exerciseDisplayName)

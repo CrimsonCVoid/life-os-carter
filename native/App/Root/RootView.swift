@@ -1,14 +1,14 @@
 import SwiftUI
 
-/// Top-level tab navigation. Five tabs match the Next.js BottomNav:
-/// Today, Nutrition, Habits, Gym, Stats. Settings lives behind a gear
-/// icon in the top bar rather than its own tab (iOS HIG: tabs are for
-/// primary destinations).
+/// Top-level tab navigation. Five tabs match the existing nav:
+/// Today, Nutrition, Habits, Gym, Analysis. Settings lives behind a
+/// gear icon in the top bar of Today rather than its own tab (iOS HIG:
+/// tabs are for primary destinations).
 struct RootView: View {
     @State private var selection: Tab = .today
 
     enum Tab: String, Hashable {
-        case today, nutrition, habits, gym, stats
+        case today, nutrition, habits, gym, analysis
     }
 
     var body: some View {
@@ -29,12 +29,15 @@ struct RootView: View {
                 .tabItem { Label("Gym", systemImage: "dumbbell.fill") }
                 .tag(Tab.gym)
 
-            StatsView()
-                .tabItem { Label("Stats", systemImage: "chart.bar.fill") }
-                .tag(Tab.stats)
+            AnalysisView()
+                .tabItem { Label("Analysis", systemImage: "waveform.path.ecg") }
+                .tag(Tab.analysis)
         }
         .tint(LifeOSColor.accent)
         .background(LifeOSColor.base.ignoresSafeArea())
+        .onChange(of: selection) { _, _ in
+            Haptics.tick()
+        }
     }
 }
 

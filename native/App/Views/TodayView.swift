@@ -7,17 +7,18 @@ import SwiftData
 /// results or HealthKit reads as those land.
 struct TodayView: View {
     @Environment(\.modelContext) private var modelContext
+    @State private var revealed = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 16) {
-                    greeting
-                    peakStateHero
-                    activityRingsCard
-                    vitalsGrid
-                    caloriesCard
-                    workoutsSummary
+                    greeting.cascadeReveal(index: 0, visible: revealed)
+                    peakStateHero.cascadeReveal(index: 1, visible: revealed)
+                    activityRingsCard.cascadeReveal(index: 2, visible: revealed)
+                    vitalsGrid.cascadeReveal(index: 3, visible: revealed)
+                    caloriesCard.cascadeReveal(index: 4, visible: revealed)
+                    workoutsSummary.cascadeReveal(index: 5, visible: revealed)
                     SleepCard(
                         totalHours: 7.5,
                         bedtime: Sample.bedtime,
@@ -25,12 +26,14 @@ struct TodayView: View {
                         stages: Sample.sleepStages,
                         weekAverageHours: 7.3
                     )
+                    .cascadeReveal(index: 6, visible: revealed)
                     HydrationCard(
                         currentOz: 48,
                         goalOz: 96,
                         onLog: { _ in /* TODO: write to HealthKit + SwiftData */ }
                     )
-                    habitsRoll
+                    .cascadeReveal(index: 7, visible: revealed)
+                    habitsRoll.cascadeReveal(index: 8, visible: revealed)
                     MoodEnergyCard(
                         mood: 7,
                         energy: 6,
@@ -39,7 +42,9 @@ struct TodayView: View {
                         onLogMood: { _ in },
                         onLogEnergy: { _ in }
                     )
+                    .cascadeReveal(index: 9, visible: revealed)
                     InsightsCard(insights: Sample.insights)
+                        .cascadeReveal(index: 10, visible: revealed)
                     Spacer(minLength: 80)
                 }
                 .padding(.horizontal, 14)
@@ -56,6 +61,11 @@ struct TodayView: View {
                         Image(systemName: "gearshape.fill")
                             .foregroundStyle(LifeOSColor.fg2)
                     }
+                }
+            }
+            .onAppear {
+                if !revealed {
+                    revealed = true
                 }
             }
         }
@@ -88,15 +98,21 @@ struct TodayView: View {
     // MARK: - Peak State hero
 
     private var peakStateHero: some View {
-        Card {
+        Card(tint: LifeOSColor.Metric.peak) {
             HStack(spacing: 18) {
-                ScoreRing(
-                    progress: 0.84,
-                    value: "84",
-                    label: "Peak State",
-                    tint: LifeOSColor.Metric.peak,
-                    size: 140
-                )
+                ZStack {
+                    Circle()
+                        .fill(LifeOSColor.Metric.peak.opacity(0.5))
+                        .blur(radius: 24)
+                        .scaleEffect(0.7)
+                    ScoreRing(
+                        progress: 0.84,
+                        value: "84",
+                        label: "Peak State",
+                        tint: LifeOSColor.Metric.peak,
+                        size: 140
+                    )
+                }
                 VStack(alignment: .leading, spacing: 10) {
                     pillar(label: "Recovery",  value: "72%",  tint: LifeOSColor.Metric.sleep)
                     pillar(label: "Strain",    value: "12.4", tint: LifeOSColor.Metric.strain)
@@ -105,6 +121,7 @@ struct TodayView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+        .pressable()
     }
 
     private func pillar(label: String, value: String, tint: Color) -> some View {
