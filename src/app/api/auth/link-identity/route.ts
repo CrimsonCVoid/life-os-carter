@@ -22,6 +22,7 @@ import { signNativeToken } from "@/lib/native-jwt";
 import { verifyAppleIdentityToken } from "@/lib/apple-token-verify";
 import { verifyGoogleIdToken } from "@/lib/google-token-verify";
 import { migrateUserIdAndCollapse } from "@/lib/migrate-user-id";
+import { externalIdToUuid } from "@/lib/user-id";
 
 export const runtime = "nodejs";
 
@@ -42,7 +43,7 @@ export async function POST(req: Request) {
   }
 
   // 1. Verify the identity token, derive the target users.id.
-  let targetUserId: string;
+  let targetExternalId: string;
   let email: string | undefined;
   if (body.provider === "apple") {
     if (!body.bundleId) {
@@ -58,7 +59,7 @@ export async function POST(req: Request) {
         { status: 401 },
       );
     }
-    targetUserId = `apple:${apple.sub}`;
+    targetExternalId = `apple:${apple.sub}`;
     email = apple.email;
   } else if (body.provider === "google") {
     const google = await verifyGoogleIdToken(body.idToken);
@@ -68,7 +69,7 @@ export async function POST(req: Request) {
         { status: 401 },
       );
     }
-    targetUserId = `google:${google.sub}`;
+    targetExternalId = `google:${google.sub}`;
     email = google.email;
   } else {
     return NextResponse.json(
@@ -77,32 +78,36 @@ export async function POST(req: Request) {
     );
   }
 
+  const targetDbId = externalIdToUuid(targetExternalId);
+
   // 2. Already linked to this identity — nothing to do, just hand back a fresh JWT.
-  if (current.id === targetUserId) {
-    const token = await signNativeToken(targetUserId);
-    return NextResponse.json({ token, userId: targetUserId, merged: false });
+  if (current.id === targetDbId) {
+    const token = await signNativeToken(targetExternalId);
+    return NextResponse.json({ token, userId: targetExternalId, merged: false });
   }
 
   // 3. Ensure target row exists (insert if not).
   const existing = await db
     .select({ id: users.id })
     .from(users)
-    .where(eq(users.id, targetUserId))
+    .where(eq(users.id, targetDbId))
     .limit(1);
   if (!existing[0]) {
-    await db.insert(users).values({ id: targetUserId, email });
+    await db.insert(users).values({ id: targetDbId, email });
   }
 
-  // 4. Move every user-scoped row from current.id → targetUserId, then
-  //    drop the old users row. Transactional — either it all moves or
-  //    nothing does.
-  const moved = await migrateUserIdAndCollapse(current.id, targetUserId);
+  // 4. Move every user-scoped row from current.id (db UUID) →
+  //    targetDbId. Both sides are UUIDs so the SQL works against the
+  //    uuid-typed user_id columns. Transactional.
+  const moved = await migrateUserIdAndCollapse(current.id, targetDbId);
 
-  // 5. Mint a new bearer for the target id.
-  const token = await signNativeToken(targetUserId);
+  // 5. Mint a new bearer carrying the prefixed external ID. iOS uses
+  //    it for provider tagging; the next request will hash back to
+  //    the same UUID at the auth boundary.
+  const token = await signNativeToken(targetExternalId);
   return NextResponse.json({
     token,
-    userId: targetUserId,
+    userId: targetExternalId,
     merged: true,
     rowsMoved: moved.rowsMoved,
   });

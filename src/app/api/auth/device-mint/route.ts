@@ -19,6 +19,7 @@ import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { signNativeToken } from "@/lib/native-jwt";
+import { externalIdToUuid } from "@/lib/user-id";
 
 export const runtime = "nodejs";
 
@@ -35,21 +36,25 @@ export async function POST(req: Request) {
     );
   }
 
-  const userId = `device:${deviceId.toLowerCase()}`;
+  const externalId = `device:${deviceId.toLowerCase()}`;
+  const dbId = externalIdToUuid(externalId);
 
-  // Column-explicit to avoid breaking if the live Neon table is missing
-  // any of the optional columns declared in schema.ts (name/image/etc).
-  // SELECT * would 42703 with "column does not exist" on schema drift.
+  // The live Neon `users.id` is uuid-typed even though schema.ts says
+  // text. Hash the prefixed external ID into a deterministic UUID for
+  // storage; the JWT subject still carries the prefixed form so iOS
+  // can derive the provider from AuthStore.identityProvider.
+  // Also column-explicit because the live table may be missing
+  // optional columns (name/image/etc) declared in schema.ts.
   const existing = await db
     .select({ id: users.id })
     .from(users)
-    .where(eq(users.id, userId))
+    .where(eq(users.id, dbId))
     .limit(1);
 
   if (!existing[0]) {
-    await db.insert(users).values({ id: userId });
+    await db.insert(users).values({ id: dbId });
   }
 
-  const token = await signNativeToken(userId);
-  return NextResponse.json({ token, userId });
+  const token = await signNativeToken(externalId);
+  return NextResponse.json({ token, userId: externalId });
 }

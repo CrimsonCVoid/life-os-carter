@@ -17,6 +17,10 @@ struct MealReviewSheet: View {
     @State private var protein: String
     @State private var carbs: String
     @State private var fat: String
+    // Used by the servings-centric (barcode) flow only. Defaults to
+    // 1.0 and steps by 0.5 since fractional servings are common
+    // ("had half a sleeve of Pringles").
+    @State private var servings: Double
 
     init(source: MealCaptureSource, initial: PrefilledMeal) {
         self.source = source
@@ -26,7 +30,22 @@ struct MealReviewSheet: View {
         _protein  = State(initialValue: initial.proteinG  > 0 ? String(Int(initial.proteinG.rounded())) : "")
         _carbs    = State(initialValue: initial.carbsG    > 0 ? String(Int(initial.carbsG.rounded()))   : "")
         _fat      = State(initialValue: initial.fatG      > 0 ? String(Int(initial.fatG.rounded()))     : "")
+        _servings = State(initialValue: initial.defaultServings)
     }
+
+    // Per-serving macros — for barcode this is the OpenFoodFacts panel.
+    // For other sources, equals the total estimate (so multiplying by
+    // servings=1 keeps the displayed values identical to the estimate).
+    private var perServing: (kcal: Double, p: Double, c: Double, f: Double) {
+        (initial.calories, initial.proteinG, initial.carbsG, initial.fatG)
+    }
+
+    // What ends up saved. Barcode-sourced: per-serving × servings.
+    // Other sources: whatever the user typed in the editable fields.
+    private var computedKcal: Double    { perServing.kcal * servings }
+    private var computedProtein: Double { perServing.p    * servings }
+    private var computedCarbs: Double   { perServing.c    * servings }
+    private var computedFat: Double     { perServing.f    * servings }
 
     var body: some View {
         NavigationStack {
@@ -53,42 +72,15 @@ struct MealReviewSheet: View {
                 }
                 .listRowBackground(LifeOSColor.card)
 
-                Section("Meal") {
-                    TextField("Meal name", text: $name)
-                    HStack {
-                        Text("Calories").foregroundStyle(LifeOSColor.fg2)
-                        Spacer()
-                        TextField("0", text: $calories)
-                            .keyboardType(.numberPad)
-                            .multilineTextAlignment(.trailing)
-                            .monospacedDigit()
-                    }
-                    HStack {
-                        Text("Protein (g)").foregroundStyle(LifeOSColor.fg2)
-                        Spacer()
-                        TextField("0", text: $protein)
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.trailing)
-                            .monospacedDigit()
-                    }
-                    HStack {
-                        Text("Carbs (g)").foregroundStyle(LifeOSColor.fg2)
-                        Spacer()
-                        TextField("0", text: $carbs)
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.trailing)
-                            .monospacedDigit()
-                    }
-                    HStack {
-                        Text("Fat (g)").foregroundStyle(LifeOSColor.fg2)
-                        Spacer()
-                        TextField("0", text: $fat)
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.trailing)
-                            .monospacedDigit()
-                    }
+                if initial.isServingsCentric {
+                    servingsSection
+                        .listRowBackground(LifeOSColor.card)
+                    computedMacrosSection
+                        .listRowBackground(LifeOSColor.card)
+                } else {
+                    editableMealSection
+                        .listRowBackground(LifeOSColor.card)
                 }
-                .listRowBackground(LifeOSColor.card)
 
                 if !initial.itemBreakdown.isEmpty {
                     Section("Breakdown (AI estimate)") {

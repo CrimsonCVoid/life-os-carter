@@ -16,6 +16,7 @@ import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { verifyAppleIdentityToken } from "@/lib/apple-token-verify";
 import { signNativeToken } from "@/lib/native-jwt";
+import { externalIdToUuid } from "@/lib/user-id";
 
 export const runtime = "nodejs";
 
@@ -39,39 +40,40 @@ export async function POST(req: Request) {
   // Upsert user — match on the Apple sub stored in users.id (we use
   // a synthetic "apple:<sub>" id when no existing row matches by email).
   // Same DrizzleAdapter table the web flow writes to.
-  const appleId = `apple:${apple.sub}`;
-  let userId: string;
+  const externalId = `apple:${apple.sub}`;
+  const dbId = externalIdToUuid(externalId);
 
   const byApple = await db
     .select({ id: users.id })
     .from(users)
-    .where(eq(users.id, appleId))
+    .where(eq(users.id, dbId))
     .limit(1);
 
-  if (byApple[0]) {
-    userId = byApple[0].id;
-  } else if (apple.email) {
-    const byEmail = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(eq(users.email, apple.email))
-      .limit(1);
-    if (byEmail[0]) {
-      userId = byEmail[0].id;
+  if (!byApple[0]) {
+    if (apple.email) {
+      const byEmail = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.email, apple.email))
+        .limit(1);
+      if (!byEmail[0]) {
+        await db.insert(users).values({ id: dbId, email: apple.email });
+      }
+      // If a row already exists by email (web account), we LEAVE it
+      // alone and create the apple-bound row separately — link-identity
+      // can collapse them later via migrateUserIdAndCollapse if the
+      // user explicitly links.
+      else {
+        await db.insert(users).values({ id: dbId });
+      }
     } else {
-      const [row] = await db
-        .insert(users)
-        .values({ id: appleId, email: apple.email })
-        .returning();
-      userId = row.id;
+      await db.insert(users).values({ id: dbId });
     }
-  } else {
-    // No email (user opted to hide it) and no prior row — create a
-    // bare row keyed by appleId only.
-    const [row] = await db.insert(users).values({ id: appleId }).returning();
-    userId = row.id;
   }
 
-  const token = await signNativeToken(userId);
-  return NextResponse.json({ token, userId });
+  // JWT subject carries the prefixed external ID so iOS retains
+  // provider-tagging via AuthStore.identityProvider, while DB queries
+  // use the hashed UUID at the SQL boundary.
+  const token = await signNativeToken(externalId);
+  return NextResponse.json({ token, userId: externalId });
 }

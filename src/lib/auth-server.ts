@@ -18,6 +18,7 @@ import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { verifyNativeToken } from "@/lib/native-jwt";
+import { externalIdToUuid } from "@/lib/user-id";
 
 export type CurrentUser = {
   id: string;
@@ -32,20 +33,25 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     const hdrs = await headers();
     const bearer = hdrs.get("authorization")?.match(/^Bearer (.+)$/i)?.[1];
     if (bearer) {
-      const userId = await verifyNativeToken(bearer);
-      if (userId) {
-        // Column-explicit so the query doesn't 42703 if the live Neon
-        // table is missing any optional columns declared in schema.ts.
-        // We only need id to authenticate; email/name/image are nice-
-        // to-haves we'll start returning again once the schema is in
-        // sync (npm run db:push).
+      const externalId = await verifyNativeToken(bearer);
+      if (externalId) {
+        // JWT subject carries the prefixed external ID
+        // ("device:<uuid>" / "apple:<sub>" / "google:<sub>"). The live
+        // Neon users.id column is uuid-typed, so we hash to a
+        // deterministic UUID for storage + FK references. The returned
+        // `id` is the UUID — every /api/data/* route filters its child
+        // tables (meals.user_id, habits.user_id, etc.) by this value
+        // and those columns are uuid-typed too, so a UUID compares
+        // cleanly. iOS keeps the prefixed external ID locally in the
+        // Keychain for AuthStore.identityProvider's prefix sniffing.
+        const dbId = externalIdToUuid(externalId);
         const row = await db
           .select({ id: users.id })
           .from(users)
-          .where(eq(users.id, userId))
+          .where(eq(users.id, dbId))
           .limit(1);
         if (row[0]) {
-          return { id: row[0].id, email: null, name: null, image: null };
+          return { id: dbId, email: null, name: null, image: null };
         }
       }
     }
