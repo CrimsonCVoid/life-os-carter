@@ -1196,15 +1196,36 @@ export const useStore = create<State & Actions>()(
           set(() => ({ activeWorkout: null }));
           return null;
         }
-        // liftSessions live in Zustand in v2 (no cloud-sync route yet).
-        // Push the finished session into the local array; deviceId tagging
-        // and durable sync are a separate later concern.
+        // Dual-write during the Zustand → Neon transition: keep pushing
+        // into the local array (so existing UI surfaces that still read
+        // useStore(s.liftSessions) don't go blank), AND fire-and-forget
+        // POST to /api/data/lift-sessions so the session also lives in
+        // the user's account and survives a device wipe.
         const session: LiftSession = {
           id: uid(),
           date: todayStr(),
           exercises,
           createdAt: new Date().toISOString(),
         };
+        // POST is async but we don't block the UI on it — if the
+        // network roundtrip fails the Zustand copy is still authoritative.
+        // The user gets the migration banner next time they open Settings.
+        void (async () => {
+          try {
+            await fetch("/api/data/lift-sessions", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              credentials: "same-origin",
+              body: JSON.stringify({
+                date: session.date,
+                exercises: session.exercises,
+                raw: session.raw ?? null,
+              }),
+            });
+          } catch {
+            // swallow — local copy is fine; user can resync later
+          }
+        })();
         set((s) => ({
           activeWorkout: null,
           liftSessions: [...s.liftSessions, session],

@@ -16,6 +16,7 @@ import { AccountCard } from "@/components/settings/account-card";
 import { PeakStateCard } from "@/components/settings/peak-state-card";
 import { RemindersCard } from "@/components/settings/reminders-card";
 import { MemoryCard } from "@/components/settings/memory-card";
+import { LiftSessionsSyncCard } from "@/components/settings/lift-sessions-sync-card";
 import { DangerZoneCard } from "@/components/settings/danger-zone-card";
 import { useStore } from "@/store";
 import { AccentColor } from "@/lib/types";
@@ -91,6 +92,8 @@ export default function SettingsPage() {
       <AccountCard />
 
       <PeakStateCard />
+
+      <LiftSessionsSyncCard />
 
       <HeartRateZonesCard />
 
