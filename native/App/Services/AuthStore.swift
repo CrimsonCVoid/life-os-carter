@@ -54,6 +54,41 @@ final class AuthStore {
         userID = nil
     }
 
+    /// Replace the cached bearer + userId — used by IdentityLinker
+    /// after a successful Apple/Google upgrade. The device UUID stays
+    /// put in case the user later "unlinks" (not implemented yet) and
+    /// wants to keep working under the original device-bound identity.
+    func adopt(token: String, userId: String) {
+        Keychain.set(token,  forKey: tokenKey)
+        Keychain.set(userId, forKey: userIDKey)
+        self.token  = token
+        self.userID = userId
+    }
+
+    /// What kind of identity currently owns this session — surfaced in
+    /// Settings so the user can see "Linked with Apple" / "Linked with
+    /// Google" / "Device-only" without doing string parsing in the UI.
+    var identityProvider: IdentityProvider {
+        guard let id = userID else { return .none }
+        if id.hasPrefix("apple:")  { return .apple  }
+        if id.hasPrefix("google:") { return .google }
+        if id.hasPrefix("device:") { return .device }
+        return .other
+    }
+
+    enum IdentityProvider {
+        case apple, google, device, other, none
+        var label: String {
+            switch self {
+            case .apple:  return "Linked with Apple"
+            case .google: return "Linked with Google"
+            case .device: return "Device-only (not linked)"
+            case .other:  return "Linked"
+            case .none:   return "Not signed in"
+            }
+        }
+    }
+
     // MARK: - Private
 
     private var inflightTask: Task<Void, Never>?

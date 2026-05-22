@@ -64,6 +64,11 @@ targets:
         NSCameraUsageDescription: Life OS uses the camera to scan barcodes on packaged food and to take meal photos for AI macro estimation.
         NSPhotoLibraryUsageDescription: Life OS can analyze a meal photo from your library to estimate calories and macros.
         NSMicrophoneUsageDescription: Life OS records a short voice clip describing a meal so Gemini can estimate calories and macros.
+        # Google OAuth iOS client ID. Created in Google Cloud Console
+        # → APIs & Services → Credentials → iOS application. Read at
+        # runtime by IdentityLinker. Empty string == "Link Google"
+        # button shows a config-missing error instead of opening OAuth.
+        GOOGLE_IOS_CLIENT_ID: ""
         NSSupportsLiveActivities: true
         NSSupportsLiveActivitiesFrequentUpdates: true
         ITSAppUsesNonExemptEncryption: false
@@ -90,6 +95,13 @@ targets:
           - group.com.hbrady.lifeos
         com.apple.developer.healthkit: true
         com.apple.developer.healthkit.access: []
+        # Re-enabled because Settings now exposes an optional "Link
+        # Apple ID" upgrade. The app DOES NOT gate on SIWA — device
+        # auto-mint still runs at launch. If the user's dev provisioning
+        # doesn't include the SIWA capability, the link button surfaces
+        # the error locally and the device-bound session keeps working.
+        com.apple.developer.applesignin:
+          - Default
         aps-environment: development
     dependencies:
       - target: WidgetExtension
