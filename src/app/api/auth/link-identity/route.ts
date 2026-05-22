@@ -85,7 +85,7 @@ export async function POST(req: Request) {
 
   // 3. Ensure target row exists (insert if not).
   const existing = await db
-    .select()
+    .select({ id: users.id })
     .from(users)
     .where(eq(users.id, targetUserId))
     .limit(1);

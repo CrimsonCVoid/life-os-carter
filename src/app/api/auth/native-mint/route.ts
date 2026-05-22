@@ -43,7 +43,7 @@ export async function POST(req: Request) {
   let userId: string;
 
   const byApple = await db
-    .select()
+    .select({ id: users.id })
     .from(users)
     .where(eq(users.id, appleId))
     .limit(1);
@@ -52,7 +52,7 @@ export async function POST(req: Request) {
     userId = byApple[0].id;
   } else if (apple.email) {
     const byEmail = await db
-      .select()
+      .select({ id: users.id })
       .from(users)
       .where(eq(users.email, apple.email))
       .limit(1);

@@ -67,20 +67,17 @@ private func fireNotification(_ kind: UINotificationFeedbackGenerator.FeedbackTy
     gen.notificationOccurred(kind)
 }
 
-/// Updates both the info and controls activities in lockstep so the
-/// pulse animation and counters stay in sync between cards.
+/// Push an optimistic state update to the single Live Activity. The
+/// caller mutates state in the closure; we await the push so iOS
+/// re-renders the Lock Screen before the intent returns. Without the
+/// await, the user sees a perceptible delay between tap and counter
+/// updating.
 @available(iOS 17.0, *)
-private func updateBothActivities(_ transform: (inout WorkoutContentState) -> Void) async {
-    if let info = Activity<WorkoutActivityAttributes>.activities.first {
-        var next = info.content.state
-        transform(&next)
-        await info.update(ActivityContent(state: next, staleDate: nil))
-    }
-    if let controls = Activity<WorkoutControlsAttributes>.activities.first {
-        var next = controls.content.state
-        transform(&next)
-        await controls.update(ActivityContent(state: next, staleDate: nil))
-    }
+private func updateLiveActivity(_ transform: (inout WorkoutContentState) -> Void) async {
+    guard let activity = Activity<WorkoutActivityAttributes>.activities.first else { return }
+    var next = activity.content.state
+    transform(&next)
+    await activity.update(ActivityContent(state: next, staleDate: nil))
 }
 
 @available(iOS 17.0, *)
@@ -93,7 +90,7 @@ public struct CompleteCurrentSetIntent: LiveActivityIntent {
     public func perform() async throws -> some IntentResult {
         await fireNotification(.success)
         appendCommand(op: "complete_set")
-        await updateBothActivities { state in
+        await updateLiveActivity { state in
             state.setsCompleted += 1
             let now = Date()
             if state.restEndsAt == nil || state.restEndsAt! < now {
@@ -116,7 +113,7 @@ public struct AddRestIntent: LiveActivityIntent {
     public func perform() async throws -> some IntentResult {
         await fireHaptic(.medium)
         appendCommand(op: "add_rest", args: ["seconds": kRestBumpSeconds])
-        await updateBothActivities { state in
+        await updateLiveActivity { state in
             let now = Date()
             let base = (state.restEndsAt ?? now).timeIntervalSinceReferenceDate
             let bumped = max(base, now.timeIntervalSinceReferenceDate) + kRestBumpSeconds
@@ -138,7 +135,7 @@ public struct SkipRestIntent: LiveActivityIntent {
     public func perform() async throws -> some IntentResult {
         await fireHaptic(.light)
         appendCommand(op: "skip_rest")
-        await updateBothActivities { state in
+        await updateLiveActivity { state in
             state.restEndsAt = nil
             state.lastAction = WorkoutAction.skipRest
             state.lastActionAt = Date()

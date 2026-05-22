@@ -65,21 +65,21 @@ private struct LockScreenLargeView: View {
     let context: ActivityViewContext<WorkoutActivityAttributes>
 
     var body: some View {
-        // INFO-only Live Activity card. The action buttons used to live
-        // here, but they now have their own dedicated WorkoutControls
-        // widget so each card can be tighter and the system can stack
-        // them as two distinct entries on the Lock Screen.
-        //
-        // We still have iOS's ~220pt height cap to respect, but without
-        // the button row we have ~50pt back to spend on the hero
-        // element. Stats are folded into the header.
+        // Single Lock Screen card: header + hero element + action
+        // buttons. iOS only allows one Live Activity per attributes
+        // type to render distinctly — splitting into two cards looked
+        // good in code but stacked invisibly in practice. Buttons are
+        // back inline so the user can see the press feedback.
         let isResting = (context.state.restEndsAt ?? .distantPast) > Date()
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             topHeader
             heroSection(isResting: isResting)
+            if #available(iOS 17.0, *) {
+                PulseActionRow(state: context.state, restActive: isResting)
+            }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 14)
+        .padding(.vertical, 12)
     }
 
     /// One of three: rest countdown (biggest), last-set summary, or
@@ -263,42 +263,89 @@ private struct LockScreenLargeView: View {
     }
 }
 
-// MARK: - Interactive buttons
+// MARK: - Interactive buttons (with tap-feedback pulse)
 
+/// Three-button row used on Lock Screen + Dynamic Island. Each button
+/// watches `state.lastAction` + `state.lastActionAt`; if its op matches
+/// AND the timestamp is within the pulse window, it flashes filled
+/// tint + scales up briefly to confirm the tap. The pulse window is
+/// short (700ms) and expires automatically via TimelineView ticks so
+/// we don't need a follow-up state push to clear it.
 @available(iOS 17.0, *)
-private struct ActionButtonRow: View {
+struct PulseActionRow: View {
+    let state: WorkoutContentState
     let restActive: Bool
+
+    private let pulseWindow: TimeInterval = 0.7
+
     var body: some View {
-        HStack(spacing: 8) {
-            Button(intent: CompleteCurrentSetIntent()) {
-                ActionLabel(icon: "checkmark.circle.fill", text: "Set", tint: .cyan)
-            }.buttonStyle(.plain).tint(.cyan)
-
-            Button(intent: AddRestIntent()) {
-                ActionLabel(icon: "plus", text: "30s", tint: .orange)
-            }.buttonStyle(.plain).tint(.orange)
-
-            Button(intent: SkipRestIntent()) {
-                ActionLabel(icon: "forward.fill", text: "Skip rest",
-                            tint: restActive ? .white : .white.opacity(0.4))
-            }.buttonStyle(.plain).disabled(!restActive)
+        TimelineView(.periodic(from: .now, by: 0.15)) { ctx in
+            HStack(spacing: 8) {
+                pulseButton(
+                    intent: CompleteCurrentSetIntent(),
+                    op: WorkoutAction.completeSet,
+                    icon: "checkmark.circle.fill",
+                    text: "Set",
+                    tint: .cyan,
+                    now: ctx.date
+                )
+                pulseButton(
+                    intent: AddRestIntent(),
+                    op: WorkoutAction.addRest,
+                    icon: "plus",
+                    text: "30s",
+                    tint: .orange,
+                    now: ctx.date
+                )
+                pulseButton(
+                    intent: SkipRestIntent(),
+                    op: WorkoutAction.skipRest,
+                    icon: "forward.fill",
+                    text: "Skip rest",
+                    tint: restActive ? .white : .white.opacity(0.4),
+                    now: ctx.date,
+                    disabled: !restActive
+                )
+            }
         }
     }
-}
 
-@available(iOS 17.0, *)
-private struct ActionLabel: View {
-    let icon: String; let text: String; let tint: Color
-    var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: icon).font(.system(size: 15, weight: .semibold))
-            Text(text).font(.system(size: 14, weight: .semibold))
+    @ViewBuilder
+    private func pulseButton<I: AppIntent>(
+        intent: I,
+        op: String,
+        icon: String,
+        text: String,
+        tint: Color,
+        now: Date,
+        disabled: Bool = false
+    ) -> some View {
+        let isPulsing: Bool = {
+            guard let lastOp = state.lastAction, lastOp == op,
+                  let at = state.lastActionAt else { return false }
+            return now.timeIntervalSince(at) < pulseWindow
+        }()
+        Button(intent: intent) {
+            HStack(spacing: 6) {
+                Image(systemName: icon).font(.system(size: 15, weight: .semibold))
+                Text(text).font(.system(size: 14, weight: .semibold))
+            }
+            .foregroundStyle(isPulsing ? .black : tint)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 13)
+            .background(
+                Capsule().fill(isPulsing ? tint : Color.white.opacity(0.09))
+            )
+            .overlay(
+                Capsule().stroke(isPulsing ? tint : Color.white.opacity(0.14), lineWidth: 0.5)
+            )
+            .scaleEffect(isPulsing ? 1.05 : 1)
+            .shadow(color: isPulsing ? tint.opacity(0.6) : .clear, radius: isPulsing ? 10 : 0)
+            .animation(.spring(response: 0.2, dampingFraction: 0.55), value: isPulsing)
         }
-        .foregroundStyle(tint)
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 13)
-        .background(Capsule().fill(.white.opacity(0.09)))
-        .overlay(Capsule().stroke(.white.opacity(0.14), lineWidth: 0.5))
+        .buttonStyle(.plain)
+        .tint(tint)
+        .disabled(disabled)
     }
 }
 
@@ -368,7 +415,10 @@ private struct ExpandedBottom: View {
                 }
             }
             if #available(iOS 17.0, *) {
-                ActionButtonRow(restActive: (context.state.restEndsAt ?? .distantPast) > Date())
+                PulseActionRow(
+                    state: context.state,
+                    restActive: (context.state.restEndsAt ?? .distantPast) > Date()
+                )
             }
         }
     }

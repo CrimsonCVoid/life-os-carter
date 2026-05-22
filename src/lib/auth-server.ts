@@ -34,14 +34,18 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     if (bearer) {
       const userId = await verifyNativeToken(bearer);
       if (userId) {
-        const row = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+        // Column-explicit so the query doesn't 42703 if the live Neon
+        // table is missing any optional columns declared in schema.ts.
+        // We only need id to authenticate; email/name/image are nice-
+        // to-haves we'll start returning again once the schema is in
+        // sync (npm run db:push).
+        const row = await db
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.id, userId))
+          .limit(1);
         if (row[0]) {
-          return {
-            id: row[0].id,
-            email: row[0].email,
-            name: row[0].name,
-            image: row[0].image,
-          };
+          return { id: row[0].id, email: null, name: null, image: null };
         }
       }
     }

@@ -37,8 +37,11 @@ export async function POST(req: Request) {
 
   const userId = `device:${deviceId.toLowerCase()}`;
 
+  // Column-explicit to avoid breaking if the live Neon table is missing
+  // any of the optional columns declared in schema.ts (name/image/etc).
+  // SELECT * would 42703 with "column does not exist" on schema drift.
   const existing = await db
-    .select()
+    .select({ id: users.id })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1);

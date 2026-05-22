@@ -4,16 +4,12 @@ import Foundation
 /// Shared Live Activity payloads — included in BOTH the App target and
 /// the WidgetExtension target.
 ///
-/// The lock screen now hosts TWO concurrent Live Activities for one
-/// workout: an INFO card (sets, volume, rest timer, last set) and a
-/// CONTROLS card (Set / +30s / Skip buttons). They're separate
-/// ActivityAttributes types because iOS only renders one
-/// ActivityConfiguration per type — registering two configurations
-/// with the same attributes type produces the same single card.
-/// Splitting into two types lets the system show both stacked.
-///
-/// Both share the same ContentState shape via a typealias so the main
-/// app pushes one state object and both widgets re-render in sync.
+/// One Live Activity per in-flight workout. The card stacks header +
+/// hero element (rest countdown / last-set / next-up) + the three
+/// action buttons. We tried splitting into two activities (one for
+/// info, one for controls) but iOS stacks them so aggressively on the
+/// Lock Screen that the back card is invisible — single card is the
+/// only design that actually reads.
 
 // MARK: - Shared content state
 
@@ -104,16 +100,3 @@ public struct WorkoutActivityAttributes: ActivityAttributes {
     }
 }
 
-// MARK: - Controls activity
-
-public struct WorkoutControlsAttributes: ActivityAttributes {
-    public typealias ContentState = WorkoutContentState
-
-    public var workoutType: String
-    public var startedAt: Date
-
-    public init(workoutType: String, startedAt: Date) {
-        self.workoutType = workoutType
-        self.startedAt = startedAt
-    }
-}

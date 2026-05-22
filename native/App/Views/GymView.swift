@@ -169,6 +169,17 @@ struct GymView: View {
                         prRow(pr)
                     }
                     .buttonStyle(.plain)
+                    // Long-press to delete a stale or wrong PR. Deletes
+                    // every PR row for this exercise (all PR kinds) so
+                    // the row doesn't reappear from another kind that
+                    // happens to share the same exercise display name.
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            deletePRs(for: pr.exerciseDisplayName)
+                        } label: {
+                            Label("Delete PR for \(pr.exerciseDisplayName)", systemImage: "trash")
+                        }
+                    }
                 }
             }
         }
@@ -198,6 +209,20 @@ struct GymView: View {
                     .foregroundStyle(LifeOSColor.fg3)
             }
         }
+    }
+
+    /// Drop every PR row whose exerciseKey matches. PRs are recomputed
+    /// from the lift_sessions log on each new workout, so a deleted PR
+    /// only stays gone until you next lift heavier — at which point the
+    /// PR service inserts a fresh row from that session.
+    private func deletePRs(for displayName: String) {
+        let key = displayName.trimmingCharacters(in: .whitespaces).lowercased()
+        let toDelete = allPRs.filter { $0.exerciseKey == key }
+        for pr in toDelete {
+            modelContext.delete(pr)
+        }
+        try? modelContext.save()
+        Haptics.warning()
     }
 
     private func topExerciseBests() -> [PersonalRecord] {
