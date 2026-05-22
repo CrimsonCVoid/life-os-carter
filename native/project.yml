@@ -12,6 +12,14 @@ options:
   groupSortPosition: top
   generateEmptyDirectories: true
   xcodeVersion: "16.0"
+  # Don't auto-generate a scheme per target — that's what was creating
+  # the WidgetExtension scheme that Xcode kept switching to. We define
+  # exactly one scheme (LifeOS, below) so the active scheme stays put
+  # across regenerations.
+  schemePathPrefix: ""
+  # XcodeGen still auto-creates a WidgetExtension.xcscheme that we
+  # don't want — wipe it post-gen. Single source of truth = LifeOS.
+  postGenCommand: rm -f LifeOS.xcodeproj/xcshareddata/xcschemes/WidgetExtension.xcscheme
 
 settings:
   base:
@@ -101,3 +109,26 @@ targets:
       properties:
         com.apple.security.application-groups:
           - group.com.hbrady.lifeos
+    # No auto-scheme for this target — extensions can't run standalone
+    # and the auto-scheme was causing "Unable to launch (null)" errors
+    # when Xcode reset to it.
+    scheme: {}
+
+# Exactly one shared scheme, pointing at the LifeOS app. Xcode opens
+# this by default; the WidgetExtension builds as part of it.
+schemes:
+  LifeOS:
+    build:
+      targets:
+        LifeOS: all
+        WidgetExtension: [archive]
+    run:
+      config: Debug
+    test:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
