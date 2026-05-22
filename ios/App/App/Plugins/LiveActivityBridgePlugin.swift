@@ -49,8 +49,9 @@ public class LiveActivityBridgePlugin: CAPPlugin, CAPBridgedPlugin {
 
         // End any previous activity first — only one active workout at a time.
         if let existing = activeActivity {
+            let finalContent = ActivityContent(state: existing.content.state, staleDate: nil)
             Task {
-                await existing.end(dismissalPolicy: .immediate)
+                await existing.end(finalContent, dismissalPolicy: .immediate)
             }
             activeActivity = nil
         }
@@ -112,8 +113,9 @@ public class LiveActivityBridgePlugin: CAPPlugin, CAPBridgedPlugin {
             call.resolve(["ok": true, "reason": "no_active_activity"])
             return
         }
+        let finalContent = ActivityContent(state: activity.content.state, staleDate: nil)
         Task {
-            await activity.end(dismissalPolicy: .immediate)
+            await activity.end(finalContent, dismissalPolicy: .immediate)
             self.activeActivity = nil
             call.resolve(["ok": true])
         }
