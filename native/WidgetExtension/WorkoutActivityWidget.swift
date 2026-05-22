@@ -65,22 +65,18 @@ private struct LockScreenLargeView: View {
     let context: ActivityViewContext<WorkoutActivityAttributes>
 
     var body: some View {
-        // Single Lock Screen card: header + hero element + action
-        // buttons. iOS caps Lock Screen LA height around 220pt on
-        // pre-26 devices; iPhone 17 + iOS 26 give us roughly 260pt
-        // before clip. This layout aims for ~240pt — every element
-        // sized as large as fits, with the rest-timer countdown the
-        // dominant readable-from-arm's-length number.
+        // INFO card — owns header + hero element. The action buttons
+        // live in WorkoutControlsWidget (a separate ActivityAttributes
+        // type with a higher relevanceScore so it floats on top of the
+        // Lock Screen stack). With buttons gone we have room to make
+        // the hero genuinely dominant.
         let isResting = (context.state.restEndsAt ?? .distantPast) > Date()
         VStack(alignment: .leading, spacing: 12) {
             topHeader
             heroSection(isResting: isResting)
-            if #available(iOS 17.0, *) {
-                PulseActionRow(state: context.state, restActive: isResting)
-            }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 14)
+        .padding(.vertical, 16)
     }
 
     /// One of three: rest countdown (biggest), last-set summary, or

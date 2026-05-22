@@ -67,17 +67,23 @@ private func fireNotification(_ kind: UINotificationFeedbackGenerator.FeedbackTy
     gen.notificationOccurred(kind)
 }
 
-/// Push an optimistic state update to the single Live Activity. The
-/// caller mutates state in the closure; we await the push so iOS
-/// re-renders the Lock Screen before the intent returns. Without the
-/// await, the user sees a perceptible delay between tap and counter
-/// updating.
+/// Push optimistic state updates to BOTH activities (Info + Controls).
+/// The caller mutates state in the closure; we await both pushes so
+/// iOS re-renders the Lock Screen before the intent returns. Without
+/// the awaits, the user sees a perceptible delay between tap and
+/// counter updating.
 @available(iOS 17.0, *)
 private func updateLiveActivity(_ transform: (inout WorkoutContentState) -> Void) async {
-    guard let activity = Activity<WorkoutActivityAttributes>.activities.first else { return }
-    var next = activity.content.state
-    transform(&next)
-    await activity.update(ActivityContent(state: next, staleDate: nil))
+    if let info = Activity<WorkoutActivityAttributes>.activities.first {
+        var next = info.content.state
+        transform(&next)
+        await info.update(ActivityContent(state: next, staleDate: nil, relevanceScore: 50))
+    }
+    if let controls = Activity<WorkoutControlsAttributes>.activities.first {
+        var next = controls.content.state
+        transform(&next)
+        await controls.update(ActivityContent(state: next, staleDate: nil, relevanceScore: 100))
+    }
 }
 
 @available(iOS 17.0, *)

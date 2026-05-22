@@ -4,12 +4,17 @@ import Foundation
 /// Shared Live Activity payloads — included in BOTH the App target and
 /// the WidgetExtension target.
 ///
-/// One Live Activity per in-flight workout. The card stacks header +
-/// hero element (rest countdown / last-set / next-up) + the three
-/// action buttons. We tried splitting into two activities (one for
-/// info, one for controls) but iOS stacks them so aggressively on the
-/// Lock Screen that the back card is invisible — single card is the
-/// only design that actually reads.
+/// Two concurrent Live Activities per workout: an INFO card (sets +
+/// hero element) and a CONTROLS card (the Set / +30s / Skip buttons).
+/// They share a ContentState via typealias so the main app pushes one
+/// state object and both cards re-render in sync.
+///
+/// iOS stacks Lock Screen Live Activities for the same app; we can't
+/// prevent stacking, but relevanceScore controls which floats on top.
+/// LiveActivityManager sets Controls to a higher score than Info so
+/// the buttons stay reachable and Info peeks behind it. Each card is
+/// designed so its TOP edge surfaces a one-line summary, so even the
+/// stacked-behind card delivers something useful at a glance.
 
 // MARK: - Shared content state
 
@@ -89,6 +94,20 @@ public enum WorkoutAction {
 // MARK: - Info activity
 
 public struct WorkoutActivityAttributes: ActivityAttributes {
+    public typealias ContentState = WorkoutContentState
+
+    public var workoutType: String
+    public var startedAt: Date
+
+    public init(workoutType: String, startedAt: Date) {
+        self.workoutType = workoutType
+        self.startedAt = startedAt
+    }
+}
+
+// MARK: - Controls activity
+
+public struct WorkoutControlsAttributes: ActivityAttributes {
     public typealias ContentState = WorkoutContentState
 
     public var workoutType: String

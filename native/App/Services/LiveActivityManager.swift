@@ -1,17 +1,23 @@
 import Foundation
 import ActivityKit
 
-/// Single owner of the in-flight workout's Live Activity. ONE activity
-/// per workout — splitting into two cards looked clean in code but iOS
-/// stacks Live Activities so aggressively on the Lock Screen that the
-/// back card is invisible. The single card contains header + hero +
-/// action buttons.
+/// Owns the in-flight workout's TWO concurrent Live Activities:
+///   - Info     (WorkoutActivityAttributes)     — header + hero element
+///   - Controls (WorkoutControlsAttributes)     — three action buttons
+///
+/// Both share `WorkoutContentState`. We push identical state to both
+/// so counters and pulse animation stay in lockstep. The Controls card
+/// is requested with a higher relevanceScore than Info, so the system
+/// places it on TOP of the Lock Screen stack — buttons stay reachable,
+/// info card peeks behind. Can't prevent stacking (iOS limitation), but
+/// can control which surface is in front.
 @MainActor
 final class LiveActivityManager {
     static let shared = LiveActivityManager()
     private init() {}
 
-    private var current: Activity<WorkoutActivityAttributes>?
+    private var infoActivity: Activity<WorkoutActivityAttributes>?
+    private var controlsActivity: Activity<WorkoutControlsAttributes>?
 
     var isSupported: Bool {
         ActivityAuthorizationInfo().areActivitiesEnabled
@@ -24,50 +30,106 @@ final class LiveActivityManager {
         }
         endExistingIfAny()
 
-        let attributes = WorkoutActivityAttributes(
-            workoutType: workoutType,
-            startedAt: startedAt
-        )
         let initialState = WorkoutContentState()
+
+        // Info card — relevanceScore 50 puts it under Controls in the
+        // stack. Stale date 60s out keeps it from being culled.
         do {
-            current = try Activity.request(
-                attributes: attributes,
-                content: ActivityContent(state: initialState, staleDate: nil),
+            infoActivity = try Activity.request(
+                attributes: WorkoutActivityAttributes(
+                    workoutType: workoutType,
+                    startedAt: startedAt
+                ),
+                content: ActivityContent(
+                    state: initialState,
+                    staleDate: nil,
+                    relevanceScore: 50
+                ),
                 pushType: nil
             )
         } catch {
-            print("[LA] start failed: \(error)")
+            print("[LA] info-activity start failed: \(error)")
+        }
+
+        // Controls card — relevanceScore 100 so iOS shows it on top.
+        do {
+            controlsActivity = try Activity.request(
+                attributes: WorkoutControlsAttributes(
+                    workoutType: workoutType,
+                    startedAt: startedAt
+                ),
+                content: ActivityContent(
+                    state: initialState,
+                    staleDate: nil,
+                    relevanceScore: 100
+                ),
+                pushType: nil
+            )
+        } catch {
+            print("[LA] controls-activity start failed: \(error)")
         }
     }
 
     func update(_ state: WorkoutContentState) {
-        guard let activity = current else { return }
-        Task {
-            await activity.update(ActivityContent(state: state, staleDate: nil))
+        if let info = infoActivity {
+            Task {
+                await info.update(ActivityContent(
+                    state: state, staleDate: nil, relevanceScore: 50
+                ))
+            }
+        }
+        if let controls = controlsActivity {
+            Task {
+                await controls.update(ActivityContent(
+                    state: state, staleDate: nil, relevanceScore: 100
+                ))
+            }
         }
     }
 
     func end() {
-        guard let activity = current else { return }
-        let finalState = activity.content.state
-        Task {
-            await activity.end(
-                ActivityContent(state: finalState, staleDate: nil),
-                dismissalPolicy: .immediate
-            )
-            current = nil
+        if let info = infoActivity {
+            let finalState = info.content.state
+            Task {
+                await info.end(
+                    ActivityContent(state: finalState, staleDate: nil),
+                    dismissalPolicy: .immediate
+                )
+            }
+            infoActivity = nil
+        }
+        if let controls = controlsActivity {
+            let finalState = controls.content.state
+            Task {
+                await controls.end(
+                    ActivityContent(state: finalState, staleDate: nil),
+                    dismissalPolicy: .immediate
+                )
+            }
+            controlsActivity = nil
         }
     }
 
     private func endExistingIfAny() {
-        guard let prev = current else { return }
-        let finalState = prev.content.state
-        Task {
-            await prev.end(
-                ActivityContent(state: finalState, staleDate: nil),
-                dismissalPolicy: .immediate
-            )
+        if let prev = infoActivity {
+            let finalState = prev.content.state
+            Task {
+                await prev.end(
+                    ActivityContent(state: finalState, staleDate: nil),
+                    dismissalPolicy: .immediate
+                )
+            }
+            infoActivity = nil
         }
-        current = nil
+        if let prev = controlsActivity {
+            let finalState = prev.content.state
+            Task {
+                await prev.end(
+                    ActivityContent(state: finalState, staleDate: nil),
+                    dismissalPolicy: .immediate
+                )
+            }
+            controlsActivity = nil
+        }
     }
 }
