@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { habits, habitLogs } from "@/lib/db/schema";
 
@@ -7,28 +7,32 @@ export type HabitInsert = typeof habits.$inferInsert;
 export type HabitLogRow = typeof habitLogs.$inferSelect;
 
 export async function listHabits(userId: string): Promise<HabitRow[]> {
-  return db
-    .select()
-    .from(habits)
-    .where(and(eq(habits.userId, userId), isNull(habits.archivedAt)))
-    .orderBy(asc(habits.order), asc(habits.createdAt));
+  // Column-explicit select — schema.ts declares an archived_at column
+  // the live Neon table is missing. Returning a minimal projection
+  // shields the route from that drift; the iOS side doesn't read it.
+  const rows = await db.execute(
+    sql`SELECT id, user_id AS "userId", name, icon, "order"
+        FROM habits
+        WHERE user_id = ${userId}
+        ORDER BY "order" ASC`
+  );
+  return (rows as unknown as { rows: HabitRow[] }).rows;
 }
 
 export async function createHabit(
   userId: string,
   input: { name: string; icon: string; target?: number | null; order?: number }
-): Promise<HabitRow> {
-  const [row] = await db
-    .insert(habits)
-    .values({
-      userId,
-      name: input.name,
-      icon: input.icon,
-      target: input.target ?? null,
-      order: input.order ?? 0,
-    })
-    .returning();
-  return row;
+): Promise<{ id: string }> {
+  // Raw SQL — Drizzle's .returning() pulls every schema column
+  // including ones the live Neon table is missing (archived_at).
+  // Explicit column list keeps the insert robust to drift.
+  const result = await db.execute(
+    sql`INSERT INTO habits (user_id, name, icon, "order")
+        VALUES (${userId}, ${input.name}, ${input.icon}, ${input.order ?? 0})
+        RETURNING id`
+  );
+  const rows = result as unknown as { rows: Array<{ id: string }> };
+  return { id: rows.rows[0]?.id ?? "" };
 }
 
 export async function updateHabit(

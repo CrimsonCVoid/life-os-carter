@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { exercises, liftSessions, workouts } from "@/lib/db/schema";
 
@@ -110,16 +110,18 @@ export async function createLiftSession(
   userId: string,
   input: { date: string; raw?: string; exercises: unknown[] }
 ) {
-  const [row] = await db
-    .insert(liftSessions)
-    .values({
-      userId,
-      date: input.date,
-      raw: input.raw ?? null,
-      exercises: input.exercises,
-    })
-    .returning();
-  return row;
+  // Raw SQL — Drizzle's .insert(...).returning() with no args
+  // generates RETURNING * which references columns the live Neon
+  // table may be missing (schema drift). Explicit column lists keep
+  // us robust to that.
+  const exercisesJson = JSON.stringify(input.exercises);
+  const result = await db.execute(
+    sql`INSERT INTO lift_sessions (user_id, date, raw, exercises)
+        VALUES (${userId}, ${input.date}::date, ${input.raw ?? null}, ${exercisesJson}::jsonb)
+        RETURNING id`
+  );
+  const rows = result as unknown as { rows: Array<{ id: string }> };
+  return { id: rows.rows[0]?.id };
 }
 
 export async function updateLiftSession(
