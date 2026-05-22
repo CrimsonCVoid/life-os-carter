@@ -198,6 +198,6 @@ export async function POST(req: Request) {
     return Response.json(payload);
   } catch (e) {
     clearTimeout(t);
-    return geminiErrorJsonResponse(e);
+    return geminiErrorJsonResponse(e, "voice_meal");
   }
 }
