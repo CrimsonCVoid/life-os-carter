@@ -35,6 +35,7 @@ import {
 } from "@/lib/workout-history";
 import { computeReadiness } from "@/lib/readiness";
 import { todayStr } from "@/lib/date";
+import { LiveActivity } from "@/lib/native/live-activity";
 
 import { Button } from "@/components/ui/button";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
@@ -113,6 +114,48 @@ export function ActiveWorkoutPage({ open, onClose }: Props) {
         0
       )
     : 0;
+
+  // Live Activity lifecycle — start when a session appears, update on
+  // every set / rest-target change, end when the session clears.
+  const liveStartedRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!active) {
+      if (liveStartedRef.current) {
+        void LiveActivity.end();
+        liveStartedRef.current = null;
+      }
+      return;
+    }
+    if (liveStartedRef.current !== active.id) {
+      void LiveActivity.start({
+        workoutType: active.workoutType ?? "Workout",
+        startedAt: new Date(active.startedAt).getTime(),
+      });
+      liveStartedRef.current = active.id;
+    }
+    const lastEx = [...active.exercises].reverse().find((e) => e.sets.length > 0);
+    const lastSet = lastEx?.sets[lastEx.sets.length - 1];
+    const totalVolume = active.exercises.reduce(
+      (a, e) =>
+        a +
+        e.sets
+          .filter((s) => s.completed !== false)
+          .reduce((v, s) => v + s.weight * s.reps, 0),
+      0
+    );
+    void LiveActivity.update({
+      setsCompleted: completedSets,
+      totalVolume,
+      lastExerciseName: lastEx?.name ?? null,
+      lastSetSummary: lastSet
+        ? `${lastSet.weight > 0 ? lastSet.weight : "BW"} × ${lastSet.reps}`
+        : null,
+      restEndsAt:
+        active.lastSetAt && active.restTargetSeconds && !active.restDismissedAt
+          ? new Date(active.lastSetAt).getTime() + active.restTargetSeconds * 1000
+          : null,
+    });
+  }, [active, completedSets]);
   const totalVolume = active
     ? active.exercises.reduce(
         (a, e) =>

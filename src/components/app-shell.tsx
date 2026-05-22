@@ -11,6 +11,7 @@ import { ImportModal } from "@/components/import-modal";
 import { OfflineBanner } from "@/components/offline-banner";
 import { ActiveWorkoutBanner } from "@/components/workout/active-workout-banner";
 import { CapacitorBootstrap } from "@/components/capacitor-bootstrap";
+import { SnapshotWriter } from "@/lib/native/snapshot-writer";
 
 /**
  * Conditional chrome wrapper. The sign-in route lives at /signin and
@@ -37,6 +38,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <ImportModal />
       <ActiveWorkoutBanner />
       <CapacitorBootstrap />
+      <SnapshotWriter />
     </HydrateGate>
   );
 }

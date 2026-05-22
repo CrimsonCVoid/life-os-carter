@@ -66,5 +66,24 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Life OS reads your steps, heart rate, HRV, sleep, calories burned, and weight so the dashboard reflects what your Apple Watch and iPhone already track.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Life OS does not write to Apple Health.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
+	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.hbrady.lifeos</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>lifeos</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

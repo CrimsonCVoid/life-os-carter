@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Shared container so the Widget Extension + Live Activity + main
+         app + HealthKit plugin can all read/write the same UserDefaults
+         + filesystem area. Bump the suffix if you ever ship a paid tier
+         with a different group. -->
+    <key>com.apple.security.application-groups</key>
+    <array>
+        <string>group.com.hbrady.lifeos</string>
+    </array>
+
+    <!-- Push notifications via APNs. Required for the
+         @capacitor/push-notifications plugin. Production by default;
+         development tokens still work for TestFlight builds. -->
+    <key>aps-environment</key>
+    <string>production</string>
+
+    <!-- HealthKit read access — paired with NSHealthShareUsageDescription
+         in Info.plist. The HealthKit plugin enables this. -->
+    <key>com.apple.developer.healthkit</key>
+    <true/>
+    <key>com.apple.developer.healthkit.access</key>
+    <array/>
+</dict>
+</plist>
