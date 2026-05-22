@@ -61,6 +61,7 @@ struct HabitsView: View {
             modelContext.insert(h)
         }
         try? modelContext.save()
+        Task { await SyncService.shared.drainPending() }
     }
 
     private func habitRow(_ habit: HabitEntry) -> some View {
@@ -101,7 +102,9 @@ struct HabitsView: View {
         } else {
             habit.completedDates.append(todayStr)
         }
+        habit.needsSync = true
         try? modelContext.save()
+        Task { await SyncService.shared.drainPending() }
     }
 }
 

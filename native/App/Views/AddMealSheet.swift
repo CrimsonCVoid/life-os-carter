@@ -121,6 +121,7 @@ struct AddMealSheet: View {
         )
         modelContext.insert(meal)
         try? modelContext.save()
+        Task { await SyncService.shared.drainPending() }
         Haptics.success()
         dismiss()
     }

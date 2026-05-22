@@ -381,6 +381,7 @@ struct ActiveWorkoutView: View {
             modelContext: modelContext
         )
         try? modelContext.save()
+        Task { await SyncService.shared.drainPending() }
     }
 
     // MARK: - Derived

@@ -5,6 +5,8 @@ import SwiftData
 struct LifeOSApp: App {
     @State private var workoutStore = ActiveWorkoutStore()
     @State private var auth = AuthStore.shared
+    @State private var syncService = SyncService.shared
+    @Environment(\.scenePhase) private var scenePhase
     private let commandConsumer = WorkoutCommandConsumer()
 
     var sharedModelContainer: ModelContainer = {
@@ -34,27 +36,32 @@ struct LifeOSApp: App {
 
     var body: some Scene {
         WindowGroup {
-            Group {
-                if auth.isSignedIn {
-                    RootView()
-                        .transition(.opacity)
-                } else {
-                    SignInView()
-                        .transition(.opacity)
+            RootView()
+                .preferredColorScheme(.dark)
+                .tint(LifeOSColor.accent)
+                .environment(workoutStore)
+                .environment(auth)
+                .environment(syncService)
+                .onAppear {
+                    Haptics.prepareAll()
+                    Task { await HealthKitManager.shared.requestAuthorization() }
+                    Task {
+                        await auth.ensureSignedIn()
+                        syncService.attach(modelContainer: sharedModelContainer)
+                        await syncService.drainPending()
+                    }
+                    commandConsumer.start { cmd in
+                        workoutStore.apply(cmd)
+                    }
                 }
-            }
-            .preferredColorScheme(.dark)
-            .tint(LifeOSColor.accent)
-            .environment(workoutStore)
-            .environment(auth)
-            .animation(.easeInOut(duration: 0.35), value: auth.isSignedIn)
-            .onAppear {
-                Task { await HealthKitManager.shared.requestAuthorization() }
-                Haptics.prepareAll()
-                commandConsumer.start { cmd in
-                    workoutStore.apply(cmd)
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active {
+                        Task {
+                            await auth.ensureSignedIn()
+                            await syncService.drainPending()
+                        }
+                    }
                 }
-            }
         }
         .modelContainer(sharedModelContainer)
     }

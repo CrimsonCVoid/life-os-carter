@@ -22,6 +22,7 @@ final class DailyEntry {
     var hrvMs: Double?
     var restingHr: Double?
     var notes: String?
+    var needsSync: Bool = true
 
     init(
         date: String,
@@ -59,6 +60,12 @@ final class HabitEntry {
     var completedDates: [String]
     var createdAt: Date
     var order: Int
+    /// True when this row has local changes the SyncService hasn't yet
+    /// POSTed to Neon. Flipped false on a successful upload.
+    var needsSync: Bool = true
+    /// Server-assigned UUID once the row has round-tripped at least
+    /// once. nil before first successful sync.
+    var serverID: String?
 
     init(name: String, icon: String, order: Int = 0) {
         self.id = UUID()
@@ -81,6 +88,8 @@ final class JournalEntry {
     /// HealthKit mindful-session sample identifier, set when the entry
     /// is written back to Health as a mindful minute.
     var mindfulSampleID: String?
+    var needsSync: Bool = true
+    var serverID: String?
 
     init(date: String, body: String, moodScore: Int? = nil) {
         self.id = UUID()
@@ -104,6 +113,8 @@ final class MealLog {
     /// Source — "manual", "barcode", "photo", "voice". Useful for
     /// nutrition coach summaries.
     var source: String
+    var needsSync: Bool = true
+    var serverID: String?
 
     init(
         date: String,
@@ -141,6 +152,8 @@ final class LiftSessionEntry {
     /// Lightweight JSON blob of exercises + sets — full schema isn't
     /// worth modeling as separate tables for an app at this scale.
     var detailsJSON: String
+    var needsSync: Bool = true
+    var serverID: String?
 
     init(
         date: String,
