@@ -81,12 +81,23 @@ struct SplitPickerView: View {
     private func choose(_ kind: SplitKind) {
         // Clear any existing split, then seed the new one.
         for old in existingSplits { modelContext.delete(old) }
+        // Save the deletion first so the next insert doesn't fight a
+        // pending pre-existing relationship.
+        try? modelContext.save()
+
         let split = WorkoutSplit(kind: kind)
         modelContext.insert(split)
-        for template in kind.makeTemplates() {
-            template.split = split
-            modelContext.insert(template)
-        }
+
+        // Build templates, insert them, THEN wire up the relationship
+        // both directions. SwiftData's auto-inverse can drop the
+        // child-to-parent link if you set it before insertion — the
+        // explicit `split.days = templates` makes the relationship
+        // load reliably from the parent side too.
+        let templates = kind.makeTemplates()
+        for tpl in templates { modelContext.insert(tpl) }
+        split.days = templates
+        for tpl in templates { tpl.split = split }
+
         try? modelContext.save()
         Haptics.success()
         dismiss()

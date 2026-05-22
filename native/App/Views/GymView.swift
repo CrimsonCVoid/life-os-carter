@@ -91,13 +91,66 @@ struct GymView: View {
                 }
                 .padding(.horizontal, 4)
 
-                ForEach(split.days.sorted(by: { $0.order < $1.order })) { day in
-                    dayCard(day)
+                if split.days.isEmpty {
+                    emptySplitRecovery(for: split)
+                } else {
+                    ForEach(split.days.sorted(by: { $0.order < $1.order })) { day in
+                        dayCard(day)
+                    }
                 }
             }
         } else {
             chooseSplitCTA
         }
+    }
+
+    /// Fallback for the broken-relationship state — re-seeds default
+    /// days from the split's kind. Single tap to self-heal.
+    private func emptySplitRecovery(for split: WorkoutSplit) -> some View {
+        Card(tint: LifeOSColor.warning) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(LifeOSColor.warning)
+                    Text("No days saved")
+                        .font(.system(size: 14, weight: .semibold))
+                }
+                Text("Re-seed default days for \(split.displayName), or pick a different split.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(LifeOSColor.fg2)
+                HStack(spacing: 8) {
+                    Button {
+                        reseedDays(for: split)
+                    } label: {
+                        Text("Restore default days")
+                            .font(.system(size: 13, weight: .semibold))
+                            .padding(.horizontal, 14).padding(.vertical, 9)
+                            .background(Capsule().fill(LifeOSColor.accentStrong))
+                            .foregroundStyle(.white)
+                    }
+                    .buttonStyle(.plain)
+                    Button {
+                        splitPickerOpen = true
+                    } label: {
+                        Text("Switch split")
+                            .font(.system(size: 13, weight: .semibold))
+                            .padding(.horizontal, 14).padding(.vertical, 9)
+                            .background(Capsule().stroke(LifeOSColor.stroke))
+                            .foregroundStyle(LifeOSColor.fg2)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private func reseedDays(for split: WorkoutSplit) {
+        let templates = split.splitKind.makeTemplates()
+        for tpl in templates { modelContext.insert(tpl) }
+        split.days = templates
+        for tpl in templates { tpl.split = split }
+        try? modelContext.save()
+        Haptics.success()
     }
 
     private var chooseSplitCTA: some View {
@@ -133,46 +186,68 @@ struct GymView: View {
 
     private func dayCard(_ day: WorkoutTemplate) -> some View {
         Card(tint: LifeOSColor.accent) {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(day.name)
-                        .font(.system(size: 17, weight: .bold))
-                    Text(day.exerciseNames.prefix(3).joined(separator: " · ")
-                         + (day.exerciseNames.count > 3 ? " · +\(day.exerciseNames.count - 3) more" : ""))
-                        .font(.system(size: 11))
-                        .foregroundStyle(LifeOSColor.fg3)
-                        .lineLimit(1)
-                    HStack(spacing: 10) {
-                        Label("\(day.exerciseNames.count) exercises", systemImage: "list.bullet")
-                        Label("Rest \(day.defaultRestSeconds / 60)m", systemImage: "timer")
-                    }
-                    .font(.system(size: 10))
-                    .foregroundStyle(LifeOSColor.fg2)
-                }
-                Spacer()
-                VStack(spacing: 6) {
-                    Button {
-                        startFromTemplate(day)
-                    } label: {
-                        Text("Start")
-                            .font(.system(size: 12, weight: .bold))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
-                            .background(
-                                Capsule().fill(LifeOSColor.accentStrong)
-                            )
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(day.name)
+                            .font(.system(size: 19, weight: .bold))
                             .foregroundStyle(.white)
+                        HStack(spacing: 12) {
+                            Label("\(day.exerciseNames.count) exercises", systemImage: "list.bullet")
+                            Label("Rest \(day.defaultRestSeconds / 60)m", systemImage: "timer")
+                        }
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(LifeOSColor.fg2)
                     }
-                    .buttonStyle(.plain)
+                    Spacer()
                     Button {
                         editingTemplate = day
+                        Haptics.tap()
                     } label: {
-                        Text("Edit")
-                            .font(.system(size: 11, weight: .semibold))
+                        Image(systemName: "pencil")
+                            .font(.system(size: 13))
+                            .frame(width: 32, height: 32)
                             .foregroundStyle(LifeOSColor.fg2)
+                            .background(Circle().fill(LifeOSColor.elevated))
                     }
                     .buttonStyle(.plain)
                 }
+
+                if !day.exerciseNames.isEmpty {
+                    Text(day.exerciseNames.prefix(4).joined(separator: " · ")
+                         + (day.exerciseNames.count > 4 ? " · +\(day.exerciseNames.count - 4) more" : ""))
+                        .font(.system(size: 12))
+                        .foregroundStyle(LifeOSColor.fg2)
+                        .lineLimit(2)
+                } else {
+                    Text("No exercises yet — tap the pencil to add some.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(LifeOSColor.warning)
+                }
+
+                Button {
+                    startFromTemplate(day)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "play.fill")
+                        Text("Start workout").fontWeight(.bold)
+                    }
+                    .font(.system(size: 14))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(LinearGradient(
+                                colors: [LifeOSColor.accent, LifeOSColor.accentStrong],
+                                startPoint: .topLeading, endPoint: .bottomTrailing
+                            ))
+                    )
+                    .foregroundStyle(.white)
+                    .shadow(color: LifeOSColor.accent.opacity(0.35), radius: 10, x: 0, y: 4)
+                }
+                .buttonStyle(.plain)
+                .disabled(day.exerciseNames.isEmpty)
+                .opacity(day.exerciseNames.isEmpty ? 0.45 : 1)
             }
         }
     }
