@@ -27,6 +27,21 @@ const PUBLIC_PATHS = [
 export default auth((req) => {
   const { pathname } = req.nextUrl;
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) return;
+
+  // Native iOS clients send `Authorization: Bearer <jwt>` instead of an
+  // Auth.js session cookie. For /api/* paths, let those through — the
+  // route handler's getCurrentUser() resolves and rejects bad bearers
+  // itself, so security is enforced inside the handler rather than at
+  // the middleware redirect. Without this whitelist every
+  // /api/data/*, /api/voice-meal, /api/food-photo, /api/overseer
+  // request from the native app gets 307'd to /signin (the followed
+  // GET then trips a "Failed to find Server Action" inside Next.js
+  // because the page route can't satisfy a multipart POST).
+  if (pathname.startsWith("/api/")) {
+    const authHeader = req.headers.get("authorization");
+    if (authHeader && /^bearer\s+\S+/i.test(authHeader)) return;
+  }
+
   if (req.auth) return;
   const url = new URL("/signin", req.nextUrl);
   url.searchParams.set("callbackUrl", pathname + req.nextUrl.search);
