@@ -46,7 +46,7 @@ struct ActiveWorkoutView: View {
         }
         .background(LifeOSColor.base.ignoresSafeArea())
         .sheet(isPresented: $pickerOpen) {
-            ExercisePickerView(recentNames: recentExerciseNames()) { name in
+            ExercisePickerView { name in
                 store.addExercise(named: name)
             }
         }
@@ -122,8 +122,8 @@ struct ActiveWorkoutView: View {
 
     private var addExerciseButton: some View {
         Button {
-            pickerOpen = true
             Haptics.tap()
+            pickerOpen = true
         } label: {
             HStack {
                 Image(systemName: "plus.circle.fill")
@@ -133,6 +133,11 @@ struct ActiveWorkoutView: View {
             .padding(.vertical, 14)
             .foregroundStyle(LifeOSColor.accent)
             .glassCard(cornerRadius: 14)
+            // Make the full glass surface tappable, not just the
+            // hit-tested text/icon — fixes the "first tap doesn't
+            // register" bug caused by SwiftUI not extending hit testing
+            // into transparent overlay regions of the glass card.
+            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -483,24 +488,6 @@ struct ActiveWorkoutView: View {
                 ?? match.sets.last
         }
         return nil
-    }
-
-    /// Last `limit` unique exercise names from session history (most
-    /// recent first). Surfaced in the picker's "Recent" section.
-    private func recentExerciseNames(limit: Int = 6) -> [String] {
-        var seen: Set<String> = []
-        var out: [String] = []
-        for session in sessions {
-            let decoded = CSVExporter.decodeExercises(session.detailsJSON)
-            for ex in decoded.reversed() {
-                let key = ex.name.trimmingCharacters(in: .whitespaces).lowercased()
-                if seen.insert(key).inserted {
-                    out.append(ex.name)
-                    if out.count >= limit { return out }
-                }
-            }
-        }
-        return out
     }
 
     // sheet-item helper for the RPE drawer (needs an Identifiable wrapper)

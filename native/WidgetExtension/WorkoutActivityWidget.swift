@@ -66,29 +66,60 @@ private struct LockScreenLargeView: View {
 
     var body: some View {
         // Live Activity height is system-capped (~220pt on iPhone Lock
-        // Screen). Skip the last-set card while resting so the timer
-        // can dominate the available space without getting clipped.
+        // Screen with interactive buttons). The previous v2 layout
+        // stacked header + stats + progress + last-set + next/rest +
+        // buttons — adding to ~290pt and getting clipped. Cut to the
+        // three things that matter mid-workout: at-a-glance identity
+        // (header), the dominant HERO element (rest timer or last set
+        // or next exercise), and the action buttons. Stats fold into
+        // the header. Progress bar removed — exercise count is in the
+        // header chip.
         let isResting = (context.state.restEndsAt ?? .distantPast) > Date()
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             topHeader
-            statsStrip
-            progressBar
-            if !isResting { lastSetCard }
-            if let restEnds = context.state.restEndsAt, restEnds > Date() {
-                restBar(endsAt: restEnds)
-            } else {
-                nextUpCard
-            }
+            heroSection(isResting: isResting)
             if #available(iOS 17.0, *) {
                 ActionButtonRow(restActive: isResting)
             }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 14)
+        .padding(.vertical, 12)
+    }
+
+    /// One of three: rest countdown (biggest), last-set summary, or
+    /// next-exercise hint. Picks based on workout state so we don't
+    /// stack multiple cards and blow past the height cap.
+    @ViewBuilder
+    private func heroSection(isResting: Bool) -> some View {
+        if isResting, let restEnds = context.state.restEndsAt {
+            restBar(endsAt: restEnds)
+        } else if let name = context.state.lastExerciseName,
+                  let summary = context.state.lastSetSummary {
+            lastSetCard(name: name, summary: summary)
+        } else if let next = context.state.nextExerciseName {
+            nextUpCard(name: next)
+        } else {
+            // First-set state — show "Get started" placeholder.
+            emptyHero
+        }
+    }
+
+    private var emptyHero: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "bolt.fill")
+                .font(.system(size: 22))
+                .foregroundStyle(.cyan)
+            Text("Add a set to get started")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.8))
+            Spacer()
+        }
+        .padding(.horizontal, 12).padding(.vertical, 16)
+        .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private var topHeader: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 12) {
             ZStack {
                 Circle()
                     .fill(LinearGradient(
@@ -96,185 +127,138 @@ private struct LockScreenLargeView: View {
                         startPoint: .topLeading, endPoint: .bottomTrailing
                     ))
                 Image(systemName: "dumbbell.fill")
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(.white)
             }
-            .frame(width: 52, height: 52)
+            .frame(width: 44, height: 44)
             .background(.ultraThinMaterial, in: Circle())
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(context.attributes.workoutType.uppercased())
-                    .font(.system(size: 11, weight: .heavy))
-                    .tracking(1.4)
+                    .font(.system(size: 10, weight: .heavy))
+                    .tracking(1.3)
                     .foregroundStyle(.cyan)
+                    .lineLimit(1)
                 Text(timerInterval: context.attributes.startedAt...Date.distantFuture, countsDown: false)
-                    .font(.system(size: 26, weight: .bold, design: .rounded).monospacedDigit())
+                    .font(.system(size: 20, weight: .bold, design: .rounded).monospacedDigit())
                     .foregroundStyle(.white)
             }
             Spacer()
+            // Compact sets + volume readout — what the stats strip used
+            // to occupy a whole row for. Two stacked numbers, 60pt wide.
+            VStack(alignment: .trailing, spacing: 1) {
+                HStack(spacing: 4) {
+                    Text("\(context.state.setsCompleted)")
+                        .font(.system(size: 18, weight: .bold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(.white)
+                    Text("sets")
+                        .font(.system(size: 9, weight: .heavy)).tracking(1)
+                        .foregroundStyle(.white.opacity(0.45))
+                }
+                HStack(spacing: 4) {
+                    Text(volumeShort)
+                        .font(.system(size: 13, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(.cyan)
+                    Text("vol")
+                        .font(.system(size: 9, weight: .heavy)).tracking(1)
+                        .foregroundStyle(.white.opacity(0.45))
+                }
+            }
             if context.state.lastSetIsPR {
-                Text("PR 🔥")
-                    .font(.system(size: 12, weight: .heavy)).tracking(1)
+                Text("PR")
+                    .font(.system(size: 10, weight: .heavy)).tracking(1)
                     .foregroundStyle(.black)
-                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .padding(.horizontal, 8).padding(.vertical, 4)
                     .background(Capsule().fill(.yellow))
             }
         }
     }
 
-    private var statsStrip: some View {
-        HStack(spacing: 8) {
-            statTile(label: "SETS", value: "\(context.state.setsCompleted)", tint: .white)
-            statTile(label: "VOLUME", value: volumeShort, tint: .cyan)
-            if let kcal = context.state.estimatedKcal, kcal > 0 {
-                statTile(label: "KCAL", value: "\(Int(kcal))", tint: .pink)
-            }
-        }
-    }
-
-    private func statTile(label: String, value: String, tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label)
-                .font(.system(size: 9, weight: .heavy)).tracking(1.2)
-                .foregroundStyle(.white.opacity(0.55))
-            Text(value)
-                .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
-                .foregroundStyle(tint)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12).padding(.vertical, 10)
-        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    private var progressBar: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack {
-                Text("\(context.state.completedExerciseCount) / \(context.state.exerciseCount) exercises")
-                    .font(.system(size: 11, weight: .semibold)).tracking(0.5)
-                    .foregroundStyle(.white.opacity(0.7))
-                Spacer()
-                Text(progressPercent)
-                    .font(.system(size: 11, weight: .bold).monospacedDigit())
-                    .foregroundStyle(.cyan)
-            }
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(.white.opacity(0.08))
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(LinearGradient(colors: [.cyan, .mint], startPoint: .leading, endPoint: .trailing))
-                        .frame(width: geo.size.width * progress)
-                }
-            }
-            .frame(height: 7)
-        }
-    }
-
-    private var lastSetCard: some View {
-        Group {
-            if let name = context.state.lastExerciseName, let summary = context.state.lastSetSummary {
-                HStack(alignment: .center, spacing: 12) {
-                    Image(systemName: "checkmark.seal.fill")
-                        .font(.system(size: 18))
-                        .foregroundStyle(.green)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("LAST SET · \(name.uppercased())")
-                            .font(.system(size: 9, weight: .heavy)).tracking(1)
-                            .foregroundStyle(.white.opacity(0.6))
-                            .lineLimit(1)
-                        Text(summary)
-                            .font(.system(size: 18, weight: .bold, design: .rounded).monospacedDigit())
-                            .foregroundStyle(.white)
-                    }
-                    Spacer()
-                    if let oneRM = context.state.lastSetEstOneRM, oneRM > 0 {
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text("EST 1RM")
-                                .font(.system(size: 9, weight: .heavy)).tracking(1)
-                                .foregroundStyle(.white.opacity(0.55))
-                            Text("\(Int(oneRM)) lb")
-                                .font(.system(size: 18, weight: .bold, design: .rounded).monospacedDigit())
-                                .foregroundStyle(.cyan)
-                        }
-                    }
-                }
-                .padding(.horizontal, 12).padding(.vertical, 11)
-                .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-        }
-    }
-
-    private var nextUpCard: some View {
-        Group {
-            if let next = context.state.nextExerciseName {
-                HStack(spacing: 10) {
-                    Image(systemName: "arrow.forward.circle.fill")
-                        .font(.system(size: 22))
-                        .foregroundStyle(.cyan)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("NEXT UP")
-                            .font(.system(size: 9, weight: .heavy)).tracking(1.2)
-                            .foregroundStyle(.white.opacity(0.55))
-                        Text(next)
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .lineLimit(1)
-                    }
-                    Spacer()
-                    if let count = context.state.nextExerciseSetCount, count > 0 {
-                        Text("\(count) sets done")
-                            .font(.system(size: 12).monospacedDigit())
-                            .foregroundStyle(.white.opacity(0.6))
-                    } else {
-                        Text("0 sets done")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.white.opacity(0.6))
-                    }
-                }
-                .padding(.horizontal, 12).padding(.vertical, 12)
-                .background(.cyan.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-        }
-    }
-
-    private func restBar(endsAt: Date) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: "timer")
-                .font(.system(size: 24, weight: .semibold))
-                .foregroundStyle(.orange)
+    private func lastSetCard(name: String, summary: String) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: "checkmark.seal.fill")
+                .font(.system(size: 22))
+                .foregroundStyle(.green)
             VStack(alignment: .leading, spacing: 2) {
-                Text("REST")
-                    .font(.system(size: 10, weight: .heavy)).tracking(1.4)
-                    .foregroundStyle(.white.opacity(0.55))
-                Text(timerInterval: Date()...endsAt, countsDown: true)
-                    .font(.system(size: 38, weight: .bold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(.orange)
+                Text("LAST · \(name.uppercased())")
+                    .font(.system(size: 9, weight: .heavy)).tracking(1)
+                    .foregroundStyle(.white.opacity(0.6))
+                    .lineLimit(1)
+                Text(summary)
+                    .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(.white)
             }
             Spacer()
-            VStack(alignment: .trailing, spacing: 2) {
-                Text("TARGET")
-                    .font(.system(size: 9, weight: .heavy)).tracking(1.2)
-                    .foregroundStyle(.white.opacity(0.45))
-                Text("\(context.state.restTargetSeconds / 60):\(String(format: "%02d", context.state.restTargetSeconds % 60))")
-                    .font(.system(size: 14, weight: .semibold).monospacedDigit())
-                    .foregroundStyle(.orange.opacity(0.8))
+            if let oneRM = context.state.lastSetEstOneRM, oneRM > 0 {
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("EST 1RM")
+                        .font(.system(size: 9, weight: .heavy)).tracking(1)
+                        .foregroundStyle(.white.opacity(0.55))
+                    Text("\(Int(oneRM)) lb")
+                        .font(.system(size: 18, weight: .bold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(.cyan)
+                }
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 14)
+        .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func nextUpCard(name: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "arrow.forward.circle.fill")
+                .font(.system(size: 24))
+                .foregroundStyle(.cyan)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("NEXT UP")
+                    .font(.system(size: 9, weight: .heavy)).tracking(1.2)
+                    .foregroundStyle(.white.opacity(0.55))
+                Text(name)
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            Spacer()
+            if let count = context.state.nextExerciseSetCount, count > 0 {
+                Text("\(count)")
+                    .font(.system(size: 22, weight: .bold).monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.7))
+                + Text(" done")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.5))
+            }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 14)
+        .background(.cyan.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func restBar(endsAt: Date) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: "timer")
+                .font(.system(size: 28, weight: .semibold))
+                .foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 0) {
+                Text("REST")
+                    .font(.system(size: 10, weight: .heavy)).tracking(1.4)
+                    .foregroundStyle(.white.opacity(0.55))
+                // This is THE big number — what the user stares at
+                // between sets. Made deliberately giant to read from
+                // arm's length without unlocking the phone.
+                Text(timerInterval: Date()...endsAt, countsDown: true)
+                    .font(.system(size: 44, weight: .bold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(.orange)
+            }
+            Spacer()
+            Text("\(context.state.restTargetSeconds / 60):\(String(format: "%02d", context.state.restTargetSeconds % 60))")
+                .font(.system(size: 13, weight: .semibold).monospacedDigit())
+                .foregroundStyle(.orange.opacity(0.7))
+        }
+        .padding(.horizontal, 14).padding(.vertical, 12)
         .background(.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     // MARK: - Derived
-
-    private var progress: Double {
-        guard context.state.exerciseCount > 0 else { return 0 }
-        return Double(context.state.completedExerciseCount) / Double(context.state.exerciseCount)
-    }
-
-    private var progressPercent: String {
-        let p = Int(progress * 100)
-        return "\(p)%"
-    }
 
     private var volumeShort: String {
         let v = context.state.totalVolume

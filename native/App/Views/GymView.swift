@@ -219,7 +219,12 @@ struct GymView: View {
             VStack(spacing: 10) {
                 SectionLabel("Recent sessions")
                 ForEach(sessions.prefix(8)) { s in
-                    sessionRow(s)
+                    NavigationLink {
+                        WorkoutDetailView(session: s)
+                    } label: {
+                        sessionRow(s)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -235,9 +240,14 @@ struct GymView: View {
                         .foregroundStyle(LifeOSColor.fg3)
                 }
                 Spacer()
-                Text(s.startedAt.formatted(date: .abbreviated, time: .omitted))
-                    .font(.system(size: 11))
-                    .foregroundStyle(LifeOSColor.fg3)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(s.startedAt.formatted(date: .abbreviated, time: .omitted))
+                        .font(.system(size: 11))
+                        .foregroundStyle(LifeOSColor.fg3)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10))
+                        .foregroundStyle(LifeOSColor.fg3)
+                }
             }
         }
     }
