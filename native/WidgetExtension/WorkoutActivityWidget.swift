@@ -65,25 +65,30 @@ private struct LockScreenLargeView: View {
     let context: ActivityViewContext<WorkoutActivityAttributes>
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        // Live Activity height is system-capped (~220pt on iPhone Lock
+        // Screen). Skip the last-set card while resting so the timer
+        // can dominate the available space without getting clipped.
+        let isResting = (context.state.restEndsAt ?? .distantPast) > Date()
+        VStack(alignment: .leading, spacing: 12) {
             topHeader
             statsStrip
             progressBar
-            lastSetCard
+            if !isResting { lastSetCard }
             if let restEnds = context.state.restEndsAt, restEnds > Date() {
                 restBar(endsAt: restEnds)
             } else {
                 nextUpCard
             }
             if #available(iOS 17.0, *) {
-                ActionButtonRow(restActive: (context.state.restEndsAt ?? .distantPast) > Date())
+                ActionButtonRow(restActive: isResting)
             }
         }
-        .padding(16)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
     }
 
     private var topHeader: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 14) {
             ZStack {
                 Circle()
                     .fill(LinearGradient(
@@ -91,27 +96,27 @@ private struct LockScreenLargeView: View {
                         startPoint: .topLeading, endPoint: .bottomTrailing
                     ))
                 Image(systemName: "dumbbell.fill")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: 22, weight: .semibold))
                     .foregroundStyle(.white)
             }
-            .frame(width: 44, height: 44)
+            .frame(width: 52, height: 52)
             .background(.ultraThinMaterial, in: Circle())
 
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(context.attributes.workoutType.uppercased())
-                    .font(.system(size: 10, weight: .heavy))
+                    .font(.system(size: 11, weight: .heavy))
                     .tracking(1.4)
                     .foregroundStyle(.cyan)
                 Text(timerInterval: context.attributes.startedAt...Date.distantFuture, countsDown: false)
-                    .font(.system(size: 18, weight: .semibold, design: .rounded).monospacedDigit())
+                    .font(.system(size: 26, weight: .bold, design: .rounded).monospacedDigit())
                     .foregroundStyle(.white)
             }
             Spacer()
             if context.state.lastSetIsPR {
                 Text("PR 🔥")
-                    .font(.system(size: 11, weight: .heavy)).tracking(1)
+                    .font(.system(size: 12, weight: .heavy)).tracking(1)
                     .foregroundStyle(.black)
-                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .padding(.horizontal, 12).padding(.vertical, 6)
                     .background(Capsule().fill(.yellow))
             }
         }
@@ -128,71 +133,73 @@ private struct LockScreenLargeView: View {
     }
 
     private func statTile(label: String, value: String, tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
+        VStack(alignment: .leading, spacing: 2) {
             Text(label)
-                .font(.system(size: 8, weight: .heavy)).tracking(1.2)
+                .font(.system(size: 9, weight: .heavy)).tracking(1.2)
                 .foregroundStyle(.white.opacity(0.55))
             Text(value)
-                .font(.system(size: 18, weight: .bold, design: .rounded).monospacedDigit())
+                .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
                 .foregroundStyle(tint)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 10).padding(.vertical, 7)
-        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private var progressBar: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 5) {
             HStack {
                 Text("\(context.state.completedExerciseCount) / \(context.state.exerciseCount) exercises")
-                    .font(.system(size: 10, weight: .semibold)).tracking(0.5)
+                    .font(.system(size: 11, weight: .semibold)).tracking(0.5)
                     .foregroundStyle(.white.opacity(0.7))
                 Spacer()
                 Text(progressPercent)
-                    .font(.system(size: 10, weight: .bold).monospacedDigit())
+                    .font(.system(size: 11, weight: .bold).monospacedDigit())
                     .foregroundStyle(.cyan)
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
                         .fill(.white.opacity(0.08))
-                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
                         .fill(LinearGradient(colors: [.cyan, .mint], startPoint: .leading, endPoint: .trailing))
                         .frame(width: geo.size.width * progress)
                 }
             }
-            .frame(height: 5)
+            .frame(height: 7)
         }
     }
 
     private var lastSetCard: some View {
         Group {
             if let name = context.state.lastExerciseName, let summary = context.state.lastSetSummary {
-                HStack(alignment: .center, spacing: 10) {
+                HStack(alignment: .center, spacing: 12) {
                     Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 18))
                         .foregroundStyle(.green)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Last set · \(name)")
-                            .font(.system(size: 10, weight: .semibold))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("LAST SET · \(name.uppercased())")
+                            .font(.system(size: 9, weight: .heavy)).tracking(1)
                             .foregroundStyle(.white.opacity(0.6))
+                            .lineLimit(1)
                         Text(summary)
-                            .font(.system(size: 14, weight: .semibold).monospacedDigit())
+                            .font(.system(size: 18, weight: .bold, design: .rounded).monospacedDigit())
                             .foregroundStyle(.white)
                     }
                     Spacer()
                     if let oneRM = context.state.lastSetEstOneRM, oneRM > 0 {
-                        VStack(alignment: .trailing, spacing: 1) {
+                        VStack(alignment: .trailing, spacing: 2) {
                             Text("EST 1RM")
-                                .font(.system(size: 8, weight: .heavy)).tracking(1)
+                                .font(.system(size: 9, weight: .heavy)).tracking(1)
                                 .foregroundStyle(.white.opacity(0.55))
                             Text("\(Int(oneRM)) lb")
-                                .font(.system(size: 14, weight: .bold).monospacedDigit())
+                                .font(.system(size: 18, weight: .bold, design: .rounded).monospacedDigit())
                                 .foregroundStyle(.cyan)
                         }
                     }
                 }
-                .padding(.horizontal, 10).padding(.vertical, 8)
-                .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .padding(.horizontal, 12).padding(.vertical, 11)
+                .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
         }
     }
@@ -200,53 +207,61 @@ private struct LockScreenLargeView: View {
     private var nextUpCard: some View {
         Group {
             if let next = context.state.nextExerciseName {
-                HStack(spacing: 8) {
+                HStack(spacing: 10) {
                     Image(systemName: "arrow.forward.circle.fill")
+                        .font(.system(size: 22))
                         .foregroundStyle(.cyan)
-                    VStack(alignment: .leading, spacing: 1) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text("NEXT UP")
-                            .font(.system(size: 8, weight: .heavy)).tracking(1.2)
+                            .font(.system(size: 9, weight: .heavy)).tracking(1.2)
                             .foregroundStyle(.white.opacity(0.55))
                         Text(next)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.system(size: 18, weight: .semibold))
                             .foregroundStyle(.white)
+                            .lineLimit(1)
                     }
                     Spacer()
                     if let count = context.state.nextExerciseSetCount, count > 0 {
                         Text("\(count) sets done")
-                            .font(.system(size: 11).monospacedDigit())
+                            .font(.system(size: 12).monospacedDigit())
                             .foregroundStyle(.white.opacity(0.6))
                     } else {
                         Text("0 sets done")
-                            .font(.system(size: 11))
+                            .font(.system(size: 12))
                             .foregroundStyle(.white.opacity(0.6))
                     }
                 }
-                .padding(.horizontal, 10).padding(.vertical, 8)
-                .background(.cyan.opacity(0.10), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .padding(.horizontal, 12).padding(.vertical, 12)
+                .background(.cyan.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
         }
     }
 
     private func restBar(endsAt: Date) -> some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             Image(systemName: "timer")
+                .font(.system(size: 24, weight: .semibold))
                 .foregroundStyle(.orange)
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text("REST")
-                    .font(.system(size: 8, weight: .heavy)).tracking(1.2)
+                    .font(.system(size: 10, weight: .heavy)).tracking(1.4)
                     .foregroundStyle(.white.opacity(0.55))
                 Text(timerInterval: Date()...endsAt, countsDown: true)
-                    .font(.system(size: 22, weight: .bold, design: .rounded).monospacedDigit())
+                    .font(.system(size: 38, weight: .bold, design: .rounded).monospacedDigit())
                     .foregroundStyle(.orange)
             }
             Spacer()
-            Text("Target \(context.state.restTargetSeconds / 60):\(String(format: "%02d", context.state.restTargetSeconds % 60))")
-                .font(.system(size: 11).monospacedDigit())
-                .foregroundStyle(.orange.opacity(0.7))
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("TARGET")
+                    .font(.system(size: 9, weight: .heavy)).tracking(1.2)
+                    .foregroundStyle(.white.opacity(0.45))
+                Text("\(context.state.restTargetSeconds / 60):\(String(format: "%02d", context.state.restTargetSeconds % 60))")
+                    .font(.system(size: 14, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(.orange.opacity(0.8))
+            }
         }
-        .padding(.horizontal, 10).padding(.vertical, 10)
-        .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(.horizontal, 14).padding(.vertical, 14)
+        .background(.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     // MARK: - Derived
@@ -295,13 +310,13 @@ private struct ActionButtonRow: View {
 private struct ActionLabel: View {
     let icon: String; let text: String; let tint: Color
     var body: some View {
-        HStack(spacing: 5) {
-            Image(systemName: icon).font(.system(size: 12, weight: .semibold))
-            Text(text).font(.system(size: 12, weight: .semibold))
+        HStack(spacing: 6) {
+            Image(systemName: icon).font(.system(size: 15, weight: .semibold))
+            Text(text).font(.system(size: 14, weight: .semibold))
         }
         .foregroundStyle(tint)
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 9)
+        .padding(.vertical, 13)
         .background(Capsule().fill(.white.opacity(0.09)))
         .overlay(Capsule().stroke(.white.opacity(0.14), lineWidth: 0.5))
     }

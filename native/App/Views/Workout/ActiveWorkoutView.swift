@@ -163,18 +163,13 @@ struct ActiveWorkoutView: View {
                     Button { addSet(to: ex, isDrop: true) } label: {
                         Label("Add drop set", systemImage: "arrow.down.right")
                     }
-                    if !inSuperset, ex.sets.contains(where: \.completed) {
-                        Button(role: .destructive) {
-                            store.removeExercise(ex.id)
-                        } label: {
-                            Label("Remove exercise", systemImage: "trash")
-                        }
-                    } else {
-                        Button(role: .destructive) {
-                            store.removeExercise(ex.id)
-                        } label: {
-                            Label("Remove exercise", systemImage: "trash")
-                        }
+                    Divider()
+                    supersetMenuItems(for: ex)
+                    Divider()
+                    Button(role: .destructive) {
+                        store.removeExercise(ex.id)
+                    } label: {
+                        Label("Remove exercise", systemImage: "trash")
                     }
                 } label: {
                     Image(systemName: "ellipsis")
@@ -423,6 +418,44 @@ struct ActiveWorkoutView: View {
         let id: UUID
         let isSuperset: Bool
         let exercises: [WorkoutExercise]
+    }
+
+    // MARK: - Superset menu
+
+    /// Menu items shown inside each exercise card's "..." menu for
+    /// linking with the exercise immediately above or below, or breaking
+    /// an existing superset. Mirrors the web app's "Link with above /
+    /// Link with below / Break superset" pattern.
+    @ViewBuilder
+    private func supersetMenuItems(for ex: WorkoutExercise) -> some View {
+        let exs = store.exercises
+        let idx = exs.firstIndex(where: { $0.id == ex.id })
+        let prev = idx.flatMap { $0 > 0 ? exs[$0 - 1] : nil }
+        let next = idx.flatMap { $0 < exs.count - 1 ? exs[$0 + 1] : nil }
+        let group = ex.supersetGroup
+        let inSuperset = group != nil
+
+        if let prev, prev.supersetGroup != group || !inSuperset {
+            Button {
+                store.toggleSuperset(ex.id, with: prev.id)
+            } label: {
+                Label("Superset with above", systemImage: "link")
+            }
+        }
+        if let next, next.supersetGroup != group || !inSuperset {
+            Button {
+                store.toggleSuperset(ex.id, with: next.id)
+            } label: {
+                Label("Superset with below", systemImage: "link")
+            }
+        }
+        if inSuperset, let partner = exs.first(where: { $0.id != ex.id && $0.supersetGroup == group }) {
+            Button {
+                store.toggleSuperset(ex.id, with: partner.id)
+            } label: {
+                Label("Break superset", systemImage: "link.badge.minus")
+            }
+        }
     }
 
     // MARK: - History-seeded add-set
