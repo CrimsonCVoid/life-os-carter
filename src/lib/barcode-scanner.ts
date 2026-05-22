@@ -95,33 +95,70 @@ async function scanWithZxing(
   signal: AbortSignal
 ): Promise<ScanResult> {
   // Lazy import keeps zxing out of the initial bundle.
-  const { BrowserMultiFormatReader } = await import("@zxing/library");
-  const reader = new BrowserMultiFormatReader();
+  const { BrowserMultiFormatReader, DecodeHintType, BarcodeFormat } =
+    await import("@zxing/library");
 
-  // `decodeFromVideoElement` resolves on the first detected barcode and
-  // rejects when reset() is called — that's how we hook the abort
-  // signal up to the otherwise-opaque scan loop.
-  const onAbort = () => reader.reset();
-  signal.addEventListener("abort", onAbort, { once: true });
+  // Limit the decoder to the formats food labels actually use. Without
+  // hints, BrowserMultiFormatReader walks every decoder per frame, which
+  // is what made the scan feel broken on lower-end iPhones — frames
+  // arrived but each one took 200+ms to process so a held-still barcode
+  // never landed in the active frame.
+  const hints = new Map();
+  hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+    BarcodeFormat.EAN_13,
+    BarcodeFormat.EAN_8,
+    BarcodeFormat.UPC_A,
+    BarcodeFormat.UPC_E,
+    BarcodeFormat.CODE_128,
+    BarcodeFormat.CODE_39,
+    BarcodeFormat.QR_CODE,
+  ]);
+  hints.set(DecodeHintType.TRY_HARDER, true);
 
-  try {
-    if (signal.aborted) {
-      throw new DOMException("aborted", "AbortError");
-    }
-    const result = await reader.decodeFromVideoElement(video);
-    return {
-      text: result.getText(),
-      format: result.getBarcodeFormat?.()?.toString() ?? "unknown",
+  const reader = new BrowserMultiFormatReader(hints, 250);
+
+  return new Promise<ScanResult>((resolve, reject) => {
+    let settled = false;
+    const onAbort = () => {
+      if (settled) return;
+      settled = true;
+      reader.reset();
+      reject(new DOMException("aborted", "AbortError"));
     };
-  } catch (e) {
-    if (signal.aborted) {
-      throw new DOMException("aborted", "AbortError");
+    signal.addEventListener("abort", onAbort, { once: true });
+
+    // Continuous callback pattern — fires every decoded frame. Reliable
+    // when the parent has already attached a MediaStream to the video
+    // element (which we do — see ScanningScreen useEffect). The promise
+    // version (decodeFromVideoElement) is flaky with pre-attached
+    // streams in 0.23.
+    try {
+      reader.decodeFromVideoElementContinuously(video, (result, err) => {
+        if (settled) return;
+        if (result) {
+          settled = true;
+          signal.removeEventListener("abort", onAbort);
+          reader.reset();
+          resolve({
+            text: result.getText(),
+            format: result.getBarcodeFormat?.()?.toString() ?? "unknown",
+          });
+          return;
+        }
+        // err is NotFoundException on every frame without a barcode —
+        // expected, just keep scanning. Only surface "checksum" / "format"
+        // exceptions if they persist (caller's AbortController will
+        // eventually fire when the user closes the modal).
+        void err;
+      });
+    } catch (e) {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener("abort", onAbort);
+      reader.reset();
+      reject(e);
     }
-    throw e;
-  } finally {
-    signal.removeEventListener("abort", onAbort);
-    reader.reset();
-  }
+  });
 }
 
 /**

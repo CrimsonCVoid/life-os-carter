@@ -260,6 +260,13 @@ function ScanningScreen({
           ref={videoRef}
           playsInline
           muted
+          autoPlay
+          // iOS Safari occasionally drops the play() promise silently when
+          // a video is mounted without explicit dimensions while the
+          // wrapping modal is still animating. Setting an explicit aspect
+          // anchor + relying on autoPlay alongside the explicit play()
+          // call in the effect makes the feed reliable across iOS, iOS
+          // PWA, Android Chrome, and desktop Safari.
           className="absolute inset-0 w-full h-full object-cover opacity-90"
         />
         {/* Viewfinder overlay */}
