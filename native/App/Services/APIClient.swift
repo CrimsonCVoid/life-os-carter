@@ -148,6 +148,41 @@ final class APIClient {
         return try JSONDecoder.lifeOS.decode(T.self, from: data)
     }
 
+    // MARK: - Multipart upload (Gemini voice-meal / voice-journal)
+
+    /// POSTs raw audio bytes under the `audio` field — used by the
+    /// /api/voice-meal and /api/voice-journal Gemini routes which both
+    /// accept multipart with that field name.
+    func uploadAudio<T: Decodable>(
+        _ path: String,
+        audioURL: URL,
+        mimeType: String = "audio/m4a",
+        fieldName: String = "audio",
+        as type: T.Type,
+        authenticated: Bool = true
+    ) async throws -> T {
+        let audioData: Data
+        do {
+            audioData = try Data(contentsOf: audioURL)
+        } catch {
+            throw APIError.transport(error)
+        }
+        let boundary = "Boundary-\(UUID().uuidString)"
+        var req = makeRequest(path: path, method: "POST", authenticated: authenticated)
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        var body = Data()
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"\(fieldName)\"; filename=\"clip.m4a\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
+        body.append(audioData)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+
+        let (data, resp) = try await URLSession.shared.upload(for: req, from: body)
+        try validate(response: resp, data: data, authenticated: authenticated)
+        return try JSONDecoder.lifeOS.decode(T.self, from: data)
+    }
+
     // MARK: - Shared
 
     private func validate(response: URLResponse, data: Data?, authenticated: Bool) throws {

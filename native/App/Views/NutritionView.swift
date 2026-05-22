@@ -1,6 +1,15 @@
 import SwiftUI
 import SwiftData
 
+/// Daily nutrition view. Quick-capture chips launch their respective
+/// flows DIRECTLY — barcode opens the camera scanner, photo opens the
+/// PhotosPicker, voice opens the press-and-hold recorder. The top-right
+/// "+" button is the only path to manual entry.
+///
+/// After a successful capture (Gemini estimate OR barcode lookup), the
+/// review sheet pre-fills with the estimate so the user can adjust
+/// before saving. Every flow ends with a MealLog written to SwiftData
+/// and a SyncService drain to Neon.
 struct NutritionView: View {
     @Query(
         filter: #Predicate<MealLog> { _ in true },
@@ -8,7 +17,29 @@ struct NutritionView: View {
         order: .reverse
     ) private var meals: [MealLog]
     @Environment(\.modelContext) private var modelContext
-    @State private var addOpen = false
+
+    // Capture sheet selection — only one open at a time. `nil` = none.
+    @State private var activeCapture: CaptureFlow?
+    // Result waiting to be reviewed. Identifiable so we can use sheet(item:).
+    @State private var pendingReview: PendingReview?
+    @State private var manualOpen = false
+    @State private var lookupError: String?
+
+    enum CaptureFlow: Identifiable {
+        case barcode, photo, voice
+        var id: Int {
+            switch self {
+            case .barcode: return 1
+            case .photo:   return 2
+            case .voice:   return 3
+            }
+        }
+    }
+    struct PendingReview: Identifiable {
+        let id = UUID()
+        let source: MealCaptureSource
+        let meal: PrefilledMeal
+    }
 
     var body: some View {
         NavigationStack {
@@ -16,15 +47,10 @@ struct NutritionView: View {
                 LazyVStack(spacing: 16) {
                     macroSummary
                     quickCaptureStrip
-                    SectionLabel("Today's meals") {
-                        Button {
-                            Haptics.tap()
-                            addOpen = true
-                        } label: {
-                            Image(systemName: "plus.circle.fill")
-                                .foregroundStyle(LifeOSColor.accent)
-                        }
+                    if let err = lookupError {
+                        lookupErrorCard(err)
                     }
+                    SectionLabel("Today's meals")
                     if todayMeals.isEmpty {
                         emptyState
                     } else {
@@ -43,41 +69,81 @@ struct NutritionView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         Haptics.tap()
-                        addOpen = true
+                        manualOpen = true
                     } label: {
                         Image(systemName: "plus")
                             .foregroundStyle(LifeOSColor.accent)
                     }
                 }
             }
-            .sheet(isPresented: $addOpen) {
+            .sheet(isPresented: $manualOpen) {
                 AddMealSheet()
+                    .presentationDetents([.large])
+            }
+            .sheet(item: $activeCapture) { flow in
+                switch flow {
+                case .barcode:
+                    BarcodeScannerSheet { code in
+                        handleBarcode(code)
+                    }
+                case .photo:
+                    PhotoMealSheet { payload in
+                        handleCapturePayload(payload, source: .photo)
+                    }
+                case .voice:
+                    VoiceRecorderSheet { payload in
+                        handleCapturePayload(payload, source: .voice)
+                    }
+                }
+            }
+            .sheet(item: $pendingReview) { review in
+                MealReviewSheet(source: review.source, initial: review.meal)
                     .presentationDetents([.large])
             }
         }
     }
+
+    // MARK: - Capture wiring
+
+    private func handleBarcode(_ code: String) {
+        Task {
+            if let product = await OpenFoodFactsClient.lookup(barcode: code) {
+                pendingReview = PendingReview(
+                    source: .barcode,
+                    meal: .fromBarcode(product)
+                )
+                Haptics.success()
+            } else {
+                lookupError = "Barcode \(code) wasn't found in OpenFoodFacts. Tap + to enter manually."
+                Haptics.warning()
+                // Auto-clear after 6s.
+                try? await Task.sleep(nanoseconds: 6_000_000_000)
+                lookupError = nil
+            }
+        }
+    }
+
+    private func handleCapturePayload(_ payload: MealCapturePayload, source: MealCaptureSource) {
+        pendingReview = PendingReview(
+            source: source,
+            meal: .fromCapture(payload)
+        )
+    }
+
+    // MARK: - Macros + meals
 
     private var todayMeals: [MealLog] {
         let today = ISO8601DateFormatter.dateOnly.string(from: Date())
         return meals.filter { $0.date == today }
     }
 
-    private var todayKcal: Double {
-        todayMeals.reduce(0) { $0 + $1.calories }
-    }
-    private var todayProtein: Double {
-        todayMeals.reduce(0) { $0 + $1.proteinG }
-    }
-    private var todayCarbs: Double {
-        todayMeals.reduce(0) { $0 + $1.carbsG }
-    }
-    private var todayFat: Double {
-        todayMeals.reduce(0) { $0 + $1.fatG }
-    }
+    private var todayKcal: Double    { todayMeals.reduce(0) { $0 + $1.calories } }
+    private var todayProtein: Double { todayMeals.reduce(0) { $0 + $1.proteinG } }
+    private var todayCarbs: Double   { todayMeals.reduce(0) { $0 + $1.carbsG   } }
+    private var todayFat: Double     { todayMeals.reduce(0) { $0 + $1.fatG     } }
 
     private var macroSummary: some View {
-        // TODO: pull these goals from a Settings @Model entity once we
-        // wire user-configurable targets.
+        // TODO: pull goals from a Settings @Model once user-configurable targets exist.
         MacroRingsCard(
             proteinG: todayProtein, proteinGoalG: 180,
             carbsG: todayCarbs, carbsGoalG: 240,
@@ -90,16 +156,22 @@ struct NutritionView: View {
 
     private var quickCaptureStrip: some View {
         HStack(spacing: 8) {
-            quickButton(icon: "barcode.viewfinder", label: "Barcode", tint: LifeOSColor.Metric.carbs)
-            quickButton(icon: "camera.fill", label: "Photo", tint: LifeOSColor.Metric.fat)
-            quickButton(icon: "mic.fill", label: "Voice", tint: LifeOSColor.Metric.protein)
+            quickButton(icon: "barcode.viewfinder", label: "Barcode", tint: LifeOSColor.Metric.carbs) {
+                activeCapture = .barcode
+            }
+            quickButton(icon: "camera.fill", label: "Photo", tint: LifeOSColor.Metric.fat) {
+                activeCapture = .photo
+            }
+            quickButton(icon: "mic.fill", label: "Voice", tint: LifeOSColor.Metric.protein) {
+                activeCapture = .voice
+            }
         }
     }
 
-    private func quickButton(icon: String, label: String, tint: Color) -> some View {
+    private func quickButton(icon: String, label: String, tint: Color, action: @escaping () -> Void) -> some View {
         Button {
             Haptics.tap()
-            addOpen = true
+            action()
         } label: {
             VStack(spacing: 6) {
                 Image(systemName: icon)
@@ -112,8 +184,30 @@ struct NutritionView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
             .glassCard(cornerRadius: 14)
+            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
+    }
+
+    private func lookupErrorCard(_ message: String) -> some View {
+        Card(tint: LifeOSColor.warning) {
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(LifeOSColor.warning)
+                Text(message)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.white.opacity(0.85))
+                Spacer()
+                Button {
+                    lookupError = nil
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11))
+                        .foregroundStyle(LifeOSColor.fg3)
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     private var emptyState: some View {
@@ -125,7 +219,7 @@ struct NutritionView: View {
                 Text("No meals logged yet today")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(LifeOSColor.fg2)
-                Text("Tap + or use a quick capture above.")
+                Text("Tap a capture chip above, or + for manual entry.")
                     .font(.system(size: 12))
                     .foregroundStyle(LifeOSColor.fg3)
             }
@@ -140,9 +234,12 @@ struct NutritionView: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(meal.name).font(.system(size: 15, weight: .semibold))
-                        Text(meal.loggedAt.formatted(date: .omitted, time: .shortened))
-                            .font(.system(size: 11))
-                            .foregroundStyle(LifeOSColor.fg3)
+                        HStack(spacing: 6) {
+                            Text(meal.loggedAt.formatted(date: .omitted, time: .shortened))
+                                .font(.system(size: 11))
+                                .foregroundStyle(LifeOSColor.fg3)
+                            sourceBadge(meal.source)
+                        }
                     }
                     Spacer()
                     Text("\(Int(meal.calories)) kcal")
@@ -165,6 +262,23 @@ struct NutritionView: View {
             } label: {
                 Label("Delete", systemImage: "trash")
             }
+        }
+    }
+
+    @ViewBuilder
+    private func sourceBadge(_ source: String) -> some View {
+        if source != "manual" {
+            let icon: String = {
+                switch source {
+                case "barcode": return "barcode.viewfinder"
+                case "photo":   return "camera.fill"
+                case "voice":   return "mic.fill"
+                default:        return "square.and.pencil"
+                }
+            }()
+            Image(systemName: icon)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(LifeOSColor.accent)
         }
     }
 

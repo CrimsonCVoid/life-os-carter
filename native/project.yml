@@ -61,6 +61,9 @@ targets:
           - remote-notification
         NSHealthShareUsageDescription: Life OS reads your activity, heart rate, sleep, and body data from Apple Health to assemble your daily readiness picture.
         NSHealthUpdateUsageDescription: Life OS writes weight, water, and mindful sessions you log here back to Apple Health so the rest of your apps stay in sync.
+        NSCameraUsageDescription: Life OS uses the camera to scan barcodes on packaged food and to take meal photos for AI macro estimation.
+        NSPhotoLibraryUsageDescription: Life OS can analyze a meal photo from your library to estimate calories and macros.
+        NSMicrophoneUsageDescription: Life OS records a short voice clip describing a meal so Gemini can estimate calories and macros.
         NSSupportsLiveActivities: true
         NSSupportsLiveActivitiesFrequentUpdates: true
         ITSAppUsesNonExemptEncryption: false
