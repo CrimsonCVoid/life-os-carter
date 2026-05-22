@@ -14,9 +14,8 @@
  */
 
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { users } from "@/lib/db/schema";
 import { getCurrentUser } from "@/lib/auth-server";
 import { signNativeToken } from "@/lib/native-jwt";
 import { verifyAppleIdentityToken } from "@/lib/apple-token-verify";
@@ -27,6 +26,7 @@ import { externalIdToUuid } from "@/lib/user-id";
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
+  try {
   const current = await getCurrentUser();
   if (!current) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
@@ -86,15 +86,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ token, userId: targetExternalId, merged: false });
   }
 
-  // 3. Ensure target row exists (insert if not).
-  const existing = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.id, targetDbId))
-    .limit(1);
-  if (!existing[0]) {
-    await db.insert(users).values({ id: targetDbId, email });
-  }
+  // 3. Ensure target row exists. Raw SQL to bypass Drizzle's
+  //    schema-driven query builder, which references columns like
+  //    `name` that the live Neon table is missing (42703). Supply a
+  //    synthetic email if Apple/Google didn't share theirs, since the
+  //    live `email` column has an unconditional NOT NULL constraint.
+  const emailForInsert = email && email.trim().length > 0
+    ? email
+    : `${targetDbId}@native.lifeos.local`;
+  await db.execute(
+    sql`INSERT INTO users (id, email) VALUES (${targetDbId}::uuid, ${emailForInsert}) ON CONFLICT (id) DO NOTHING`
+  );
 
   // 4. Move every user-scoped row from current.id (db UUID) →
   //    targetDbId. Both sides are UUIDs so the SQL works against the
@@ -111,4 +113,15 @@ export async function POST(req: Request) {
     merged: true,
     rowsMoved: moved.rowsMoved,
   });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const code = typeof (e as { code?: unknown }).code === "string"
+      ? (e as { code: string }).code
+      : undefined;
+    console.error("[link-identity] failed:", msg, "code:", code);
+    return NextResponse.json(
+      { error: "internal", message: msg, code },
+      { status: 500 },
+    );
+  }
 }
