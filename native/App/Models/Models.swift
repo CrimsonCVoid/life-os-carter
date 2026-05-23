@@ -57,9 +57,37 @@ final class HabitEntry {
     /// custom icon enum to SF Symbols since we're now native.
     var icon: String
     /// Array of "YYYY-MM-DD" strings the habit was checked off on.
+    /// Always the source-of-truth for streak/heatmap rendering; for
+    /// count-based habits it's auto-populated by `setCount` once the
+    /// day's count crosses `dailyTarget`.
     var completedDates: [String]
     var createdAt: Date
     var order: Int
+
+    /// HabitColor raw value — "accent" | "emerald" | "rose" | "amber" |
+    /// "sky" | "indigo" | "cyan" | "lime". Resolved to a real Color at
+    /// render time via HabitColor.color so theme changes propagate.
+    var colorToken: String = "accent"
+    /// HabitCadence serialized form: "daily" | "weekdays" | "weekends" |
+    /// "days:1,3,5" | "weekly:3". Parsed via HabitCadence.parse.
+    var cadenceRaw: String = "daily"
+    /// 1 = boolean checkmark habit; >1 = count-based (e.g. 8 glasses
+    /// water). Boolean habits ignore `countsJSON`; count habits store
+    /// per-day counts there and mirror to completedDates on hitting
+    /// the target.
+    var dailyTarget: Int = 1
+    /// `{"YYYY-MM-DD": Int}` — count-based progress per day. Empty
+    /// JSON object for boolean habits.
+    var countsJSON: String = "{}"
+    /// HabitCategory raw value — "body" | "mind" | "productivity" |
+    /// "discipline" | "sleep" | "general".
+    var category: String = "general"
+    /// Soft-delete state. Archived habits don't appear in the main
+    /// list but their history is preserved for stats and unarchive.
+    var archived: Bool = false
+    /// Optional free-form description, surfaced on the detail screen.
+    var notes: String = ""
+
     /// True when this row has local changes the SyncService hasn't yet
     /// POSTed to Neon. Flipped false on a successful upload.
     var needsSync: Bool = true
@@ -67,13 +95,29 @@ final class HabitEntry {
     /// once. nil before first successful sync.
     var serverID: String?
 
-    init(name: String, icon: String, order: Int = 0) {
+    init(
+        name: String,
+        icon: String,
+        order: Int = 0,
+        colorToken: String = "accent",
+        cadenceRaw: String = "daily",
+        dailyTarget: Int = 1,
+        category: String = "general",
+        notes: String = ""
+    ) {
         self.id = UUID()
         self.name = name
         self.icon = icon
         self.completedDates = []
         self.createdAt = Date()
         self.order = order
+        self.colorToken = colorToken
+        self.cadenceRaw = cadenceRaw
+        self.dailyTarget = dailyTarget
+        self.countsJSON = "{}"
+        self.category = category
+        self.archived = false
+        self.notes = notes
     }
 }
 
