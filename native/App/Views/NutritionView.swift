@@ -48,6 +48,16 @@ struct NutritionView: View {
                 LazyVStack(spacing: 16) {
                     macroSummary
                     quickCaptureStrip
+                    NutritionInsightsCard(
+                        todayMeals: todayMeals,
+                        last7Meals: last7Meals,
+                        targets: NutritionTargetsIn(
+                            calories: 2200,
+                            protein: 180,
+                            carbs: 240,
+                            fat: 75
+                        )
+                    )
                     if let err = lookupError {
                         lookupErrorCard(err)
                     }
@@ -140,6 +150,18 @@ struct NutritionView: View {
     private var todayMeals: [MealLog] {
         let today = ISO8601DateFormatter.dateOnly.string(from: Date())
         return meals.filter { $0.date == today }
+    }
+
+    /// Meals from the last 7 calendar days (inclusive of today). Used by
+    /// the insights card so the AI snapshot can call out trends without
+    /// needing its own SwiftData query.
+    private var last7Meals: [MealLog] {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let earliest = cal.date(byAdding: .day, value: -6, to: today) ?? today
+        let fmt = ISO8601DateFormatter.dateOnly
+        let earliestStr = fmt.string(from: earliest)
+        return meals.filter { $0.date >= earliestStr }
     }
 
     private var todayKcal: Double    { todayMeals.reduce(0) { $0 + $1.calories } }
