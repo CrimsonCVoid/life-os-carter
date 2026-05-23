@@ -82,10 +82,13 @@ private func updateLiveActivity(_ transform: (inout WorkoutContentState) -> Void
     // Compute the next state once from whichever activity we have a
     // current state for. Both surfaces are kept in lockstep by the
     // main app, so reading either one gives the same starting point.
-    var next = infoActivity?.content.state
+    var working = infoActivity?.content.state
         ?? controlsActivity?.content.state
         ?? WorkoutContentState()
-    transform(&next)
+    transform(&working)
+    // Freeze before the parallel `async let`s — Swift 6 rejects
+    // capturing a mutable var in concurrently-executing closures.
+    let next = working
 
     async let infoTask: Void = {
         if let info = infoActivity {
