@@ -14,6 +14,7 @@ struct GymView: View {
     @State private var activeOpen = false
     @State private var csvShareURL: URL?
     @State private var revealed = false
+    @State private var detailSession: LiftSessionEntry?
 
     var body: some View {
         NavigationStack {
@@ -33,6 +34,9 @@ struct GymView: View {
             }
             .background(LifeOSColor.base.ignoresSafeArea())
             .onAppear { if !revealed { revealed = true } }
+            .navigationDestination(item: $detailSession) { s in
+                WorkoutDetailView(session: s)
+            }
             .navigationTitle("Gym")
             .toolbar {
                 if !sessions.isEmpty {
@@ -241,40 +245,24 @@ struct GymView: View {
     @ViewBuilder
     private var historySection: some View {
         if !sessions.isEmpty {
-            VStack(spacing: 10) {
-                SectionLabel("Recent sessions")
-                ForEach(sessions.prefix(8)) { s in
-                    NavigationLink {
-                        WorkoutDetailView(session: s)
-                    } label: {
-                        sessionRow(s)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
+            WorkoutCalendarSection(
+                sessions: Array(sessions),
+                onOpen: { detailSession = $0 },
+                onDelete: deleteSession
+            )
         }
     }
 
-    private func sessionRow(_ s: LiftSessionEntry) -> some View {
-        Card {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(s.workoutType).font(.system(size: 14, weight: .semibold))
-                    Text("\(s.setCount) sets · \(Int(s.totalVolumeLb)) lb volume")
-                        .font(.system(size: 11))
-                        .foregroundStyle(LifeOSColor.fg3)
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(s.startedAt.formatted(date: .abbreviated, time: .omitted))
-                        .font(.system(size: 11))
-                        .foregroundStyle(LifeOSColor.fg3)
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 10))
-                        .foregroundStyle(LifeOSColor.fg3)
-                }
-            }
-        }
+    /// Drop a finished session from the local SwiftData store. PRs that
+    /// were derived from this session stay — they're recomputed from
+    /// every lift_sessions row on each new workout, so a stale PR will
+    /// either remain valid (it was the best across other sessions too)
+    /// or get superseded by the next workout that beats it. Long-press
+    /// the PR row to drop the row directly.
+    private func deleteSession(_ s: LiftSessionEntry) {
+        modelContext.delete(s)
+        try? modelContext.save()
+        Haptics.warning()
     }
 
     // MARK: - Actions
