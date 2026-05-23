@@ -3,9 +3,12 @@ import SwiftData
 
 /// Embedded coach chat for the Analysis tab. Streams responses from
 /// `/api/overseer` token-by-token so the user sees text appear as it's
-/// generated. Sends an empty context object — the server-side prompt
-/// builder pulls user facts on its own.
+/// generated. Pulls a real OverseerContext payload off the local
+/// SwiftData stores (DailyEntry, HabitEntry, MealLog, LiftSessionEntry,
+/// JournalEntry) so Gemini can actually answer questions like "how's
+/// my volume trending" — see `CoachContextBuilder`.
 struct CoachChatView: View {
+    @Environment(\.modelContext) private var modelContext
     @State private var messages: [ChatMessage] = []
     @State private var input: String = ""
     @State private var streaming: Bool = false
@@ -157,18 +160,10 @@ struct CoachChatView: View {
 
         struct Body: Encodable {
             let messages: [Msg]
-            let context: Ctx
+            let context: CoachContextPayload
             struct Msg: Encodable {
                 let role: String
                 let content: String
-            }
-            struct Ctx: Encodable {
-                // Minimal stub context — the server fills user-facts
-                // from its own DB lookup. Empty arrays satisfy the
-                // OverseerContext shape.
-                let recentDays: [String] = []
-                let recentMeals: [String] = []
-                let recentWorkouts: [String] = []
             }
         }
         let body = Body(
@@ -178,7 +173,7 @@ struct CoachChatView: View {
                     content: $0.content
                 )
             },
-            context: Body.Ctx()
+            context: CoachContextBuilder.build(from: modelContext)
         )
 
         let stream = APIClient.shared.stream("/api/overseer", body: body)

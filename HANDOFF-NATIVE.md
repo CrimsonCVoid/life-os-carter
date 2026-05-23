@@ -264,9 +264,11 @@ xcodebuild -project native/LifeOS.xcodeproj -scheme LifeOS \
 # Web build (TypeScript check)
 npm run build
 
-# Push to all four refs (carter:main is what triggers Vercel)
+# Push to three refs. carter:main is the production deploy.
+# Do NOT also push to carter:native — both branches resolve to the
+# same Vercel project and you end up with a Production build PLUS a
+# queued Preview build for the same SHA, doubling deploy time.
 git push origin native && \
-  git push carter native && \
   git push life-os-dev native && \
   git push carter native:main
 
@@ -283,7 +285,7 @@ vercel env pull .env.local --environment=production
 
 - Match existing patterns before inventing new ones
 - Commit after every major change; never amend unless asked
-- Push to all four refs (origin/native, carter/native, life-os-dev/native, carter/native:main)
+- Push to three refs (origin/native, life-os-dev/native, carter/native:main) — skip carter/native to avoid duplicate Vercel build
 - Run `xcodebuild` sanity-build before committing big changes
 - No inline hex — use `LifeOSColor.*` tokens
 - Use existing primitives (`Card`, `SectionLabel`, `PillarTile`, `.cascadeReveal`, `.pressable`)
