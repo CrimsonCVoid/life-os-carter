@@ -174,7 +174,7 @@ export async function POST(req: Request) {
   const t = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const resp = await ai.models.generateContent({
+    const resp = (await ai.models.generateContent({
       model: MODEL,
       contents: [
         {
@@ -185,9 +185,22 @@ export async function POST(req: Request) {
           ],
         },
       ],
-    });
+      config: {
+        temperature: 0.3,
+        maxOutputTokens: 2048,
+        responseMimeType: "application/json",
+        abortSignal: controller.signal,
+      },
+    })) as unknown as {
+      text?: string;
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    };
     clearTimeout(t);
-    const text = resp.text ?? "";
+    let text = resp.text ?? "";
+    if (!text) {
+      const parts = resp.candidates?.[0]?.content?.parts;
+      text = parts?.map((p) => p.text ?? "").join("") ?? "";
+    }
     const payload = parsePayload(text);
     if (!payload) {
       return Response.json(

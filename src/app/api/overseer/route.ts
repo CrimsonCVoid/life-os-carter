@@ -38,35 +38,35 @@ function extractText(chunk: StreamChunk): string {
   return parts.map((p) => p.text ?? "").join("");
 }
 
-// Empty-but-shaped OverseerContext. Returned when the caller (the
+// Shape-complete empty OverseerContext. Returned when the caller (the
 // native iOS Coach right now) doesn't have a populated context to
-// send. buildContextBlock dereferences every field, so missing ones
-// crash the route — normalizing here keeps the prompt building
-// permissive without forcing the iOS client to mirror the web app's
-// full selector graph.
+// send. buildContextBlock dereferences fields by their real selector
+// names — recentJournal, last7DaysSummary, plansTomorrow, etc. — so the
+// stub must mirror that shape exactly. Missing fields crash the route
+// on .length / .map access in prompts.ts.
 function emptyContext(): OverseerContext {
   return {
     today: "",
-    weekday: "",
+    dayType: "",
     goalsToday: [],
     habits: [],
-    morningRoutine: undefined,
     eveningRoutine: undefined,
+    morningRoutine: undefined,
     workoutsToday: [],
-    schedule: [],
-    mood: undefined,
-    sleep: undefined,
-    water: undefined,
-    weight: undefined,
-    energyCurve: undefined,
-    steps: undefined,
-    nutrition: undefined,
-    body: undefined,
-    journalToday: [],
-    voiceJournalRecent: [],
-    recurringGoals: [],
-    pattern: undefined,
+    health: undefined,
+    plansTomorrow: [],
+    winsToday: [],
+    strugglesToday: [],
+    last7DaysSummary: [],
+    recentJournal: [],
+    recentVoiceSummaries: [],
+    scheduleToday: [],
+    energyToday: null,
+    nutritionToday: null,
+    bodyLatest: null,
+    currentPattern: null,
     recentWeeklyReviews: [],
+    recurringGoals: [],
   } as unknown as OverseerContext;
 }
 

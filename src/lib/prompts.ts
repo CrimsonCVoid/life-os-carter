@@ -69,7 +69,7 @@ export function buildContextBlock(ctx: OverseerContext): string {
         .join("\n")
     : "  (none configured)";
 
-  const renderMorning = ctx.morningRoutine.total
+  const renderMorning = ctx.morningRoutine?.total
     ? [
         `  done today: ${ctx.morningRoutine.doneToday}/${ctx.morningRoutine.total}` +
           (ctx.morningRoutine.completedAtToday
