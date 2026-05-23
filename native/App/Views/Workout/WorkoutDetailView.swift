@@ -1,12 +1,10 @@
 import SwiftUI
 import SwiftData
-import Charts
 
 /// Detail view for a single finished workout. Shown when the user taps
 /// a row in the Gym tab's "Recent sessions" list. Breaks the session
-/// down by exercise, with per-exercise volume + 1RM charts derived from
-/// the set log, and lets the user navigate to the all-time history for
-/// any exercise.
+/// down by exercise with the set log, and lets the user navigate to the
+/// all-time history for any exercise.
 ///
 /// Read-only — finished sessions are immutable. To "return" to a session
 /// in the sense of resuming, the user starts a new workout (the active
@@ -106,13 +104,7 @@ struct WorkoutDetailView: View {
             .padding(.horizontal, 4)
 
             Card {
-                VStack(alignment: .leading, spacing: 12) {
-                    setListRows(ex)
-                    if completedSets(ex).count >= 2 {
-                        Divider().overlay(LifeOSColor.stroke)
-                        perSetChart(ex)
-                    }
-                }
+                setListRows(ex)
             }
         }
     }
@@ -166,76 +158,7 @@ struct WorkoutDetailView: View {
         }
     }
 
-    /// Chart of weight × reps per set + estimated 1RM line — a visual
-    /// summary of how the exercise progressed within the session.
-    /// Skipped when there's only one completed set since you can't
-    /// chart a single point usefully.
-    private func perSetChart(_ ex: WorkoutExercise) -> some View {
-        let completed = completedSets(ex)
-        let series = completed.enumerated().map { idx, set in
-            ChartPoint(
-                setNumber: idx + 1,
-                volume: set.weight * Double(set.reps),
-                oneRM: estimate1RM(weight: set.weight, reps: set.reps)
-            )
-        }
-        return VStack(alignment: .leading, spacing: 8) {
-            Text("PER-SET VOLUME + EST 1RM")
-                .font(.system(size: 9, weight: .heavy)).tracking(1.2)
-                .foregroundStyle(LifeOSColor.fg3)
-            Chart {
-                ForEach(series, id: \.setNumber) { p in
-                    BarMark(
-                        x: .value("Set", p.setNumber),
-                        y: .value("Volume", p.volume)
-                    )
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [LifeOSColor.Metric.peak, LifeOSColor.Metric.peak.opacity(0.35)],
-                            startPoint: .top, endPoint: .bottom
-                        )
-                    )
-                    .cornerRadius(3)
-                }
-                ForEach(series, id: \.setNumber) { p in
-                    LineMark(
-                        x: .value("Set", p.setNumber),
-                        y: .value("1RM", p.oneRM),
-                        series: .value("Series", "1rm")
-                    )
-                    .foregroundStyle(LifeOSColor.Metric.strain)
-                    .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round))
-                    .interpolationMethod(.catmullRom)
-                    PointMark(
-                        x: .value("Set", p.setNumber),
-                        y: .value("1RM", p.oneRM)
-                    )
-                    .foregroundStyle(LifeOSColor.Metric.strain)
-                    .symbolSize(24)
-                }
-            }
-            .frame(height: 130)
-            .chartXAxis {
-                AxisMarks(values: .stride(by: 1)) { _ in
-                    AxisValueLabel().foregroundStyle(LifeOSColor.fg3)
-                }
-            }
-            .chartYAxis {
-                AxisMarks { _ in
-                    AxisValueLabel().foregroundStyle(LifeOSColor.fg3)
-                    AxisGridLine().foregroundStyle(LifeOSColor.stroke)
-                }
-            }
-        }
-    }
-
     // MARK: - Derived
-
-    private struct ChartPoint {
-        let setNumber: Int
-        let volume: Double
-        let oneRM: Double
-    }
 
     private func completedSets(_ ex: WorkoutExercise) -> [WorkoutSet] {
         ex.sets.filter(\.completed)

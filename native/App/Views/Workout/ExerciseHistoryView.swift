@@ -2,8 +2,8 @@ import SwiftUI
 import SwiftData
 import Charts
 
-/// All-time history + PRs for a single exercise. Volume chart, 1RM
-/// trend chart, list of every set ever performed.
+/// All-time history + PRs for a single exercise. Top-set-weight trend
+/// line over every session, plus a list of every set ever performed.
 struct ExerciseHistoryView: View {
     let exerciseName: String
     @Query private var sessions: [LiftSessionEntry]
@@ -12,8 +12,7 @@ struct ExerciseHistoryView: View {
         ScrollView {
             VStack(spacing: 16) {
                 prGrid
-                volumeChart
-                oneRMChart
+                weightChart
                 SectionLabel("History")
                 ForEach(historyRows, id: \.id) { row in
                     historyCard(row)
@@ -61,53 +60,25 @@ struct ExerciseHistoryView: View {
         .glassCard(cornerRadius: 14)
     }
 
-    // MARK: - Charts
+    // MARK: - Chart
 
-    private var volumeChart: some View {
+    private var weightChart: some View {
         Card {
             VStack(alignment: .leading, spacing: 10) {
-                Text("VOLUME PER SESSION")
+                Text("TOP WEIGHT PER WORKOUT")
                     .font(.system(size: 10, weight: .semibold)).tracking(1.2)
                     .foregroundStyle(LifeOSColor.fg3)
-                Chart(volumeSeries, id: \.date) { item in
-                    BarMark(
-                        x: .value("Date", item.date, unit: .day),
-                        y: .value("Volume", item.value)
-                    )
-                    .foregroundStyle(
-                        LinearGradient(colors: [LifeOSColor.Metric.peak, LifeOSColor.Metric.peak.opacity(0.4)],
-                                       startPoint: .top, endPoint: .bottom)
-                    )
-                    .cornerRadius(3)
-                }
-                .frame(height: 140)
-                .chartYAxis {
-                    AxisMarks { _ in
-                        AxisValueLabel().foregroundStyle(LifeOSColor.fg3)
-                        AxisGridLine().foregroundStyle(LifeOSColor.stroke)
-                    }
-                }
-            }
-        }
-    }
-
-    private var oneRMChart: some View {
-        Card {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("ESTIMATED 1RM TREND")
-                    .font(.system(size: 10, weight: .semibold)).tracking(1.2)
-                    .foregroundStyle(LifeOSColor.fg3)
-                Chart(oneRMSeries, id: \.date) { item in
+                Chart(topWeightSeries, id: \.date) { item in
                     LineMark(
                         x: .value("Date", item.date, unit: .day),
-                        y: .value("1RM", item.value)
+                        y: .value("Weight", item.value)
                     )
                     .interpolationMethod(.catmullRom)
                     .foregroundStyle(LifeOSColor.Metric.strain)
                     .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round))
                     PointMark(
                         x: .value("Date", item.date, unit: .day),
-                        y: .value("1RM", item.value)
+                        y: .value("Weight", item.value)
                     )
                     .foregroundStyle(LifeOSColor.Metric.strain)
                     .symbolSize(20)
@@ -206,30 +177,17 @@ struct ExerciseHistoryView: View {
         let value: Double
     }
 
-    private var volumeSeries: [DataPoint] {
+    private var topWeightSeries: [DataPoint] {
         sessions
             .sorted { $0.startedAt < $1.startedAt }
             .compactMap { s in
                 let decoded = CSVExporter.decodeExercises(s.detailsJSON)
-                let vol = decoded.first(where: { $0.name.lowercased() == exerciseName.lowercased() })?
+                let top = decoded.first(where: { $0.name.lowercased() == exerciseName.lowercased() })?
                     .sets
                     .filter(\.completed)
-                    .reduce(0) { $0 + $1.weight * Double($1.reps) } ?? 0
-                return vol > 0 ? DataPoint(date: s.startedAt, value: vol) : nil
-            }
-    }
-
-    private var oneRMSeries: [DataPoint] {
-        sessions
-            .sorted { $0.startedAt < $1.startedAt }
-            .compactMap { s in
-                let decoded = CSVExporter.decodeExercises(s.detailsJSON)
-                let best = decoded.first(where: { $0.name.lowercased() == exerciseName.lowercased() })?
-                    .sets
-                    .filter(\.completed)
-                    .map { estimate1RM(weight: $0.weight, reps: $0.reps) }
+                    .map(\.weight)
                     .max() ?? 0
-                return best > 0 ? DataPoint(date: s.startedAt, value: best) : nil
+                return top > 0 ? DataPoint(date: s.startedAt, value: top) : nil
             }
     }
 
