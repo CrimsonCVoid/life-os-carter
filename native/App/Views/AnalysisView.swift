@@ -14,14 +14,13 @@ struct AnalysisView: View {
     @State private var range: TimeRange = .month
     @State private var cardsVisible = false
 
-    /// Real-data backing for every chart. Recomputed on range change.
-    private var data: AnalysisData {
-        AnalysisData.compute(
-            dailies: dailies,
-            sessions: sessions,
-            daysBack: range.dayCount
-        )
-    }
+    /// Cached snapshot. Recomputing AnalysisData.compute on every
+    /// body evaluation pegged CPU — the chart cards all read off it,
+    /// so every @Query emission (every HealthKit sync, every meal
+    /// log, every workout finish anywhere in the app) was triggering
+    /// a full 30-day walk per chart per redraw. Cache here, refresh
+    /// via .task on appear + .onChange of range / counts.
+    @State private var data: AnalysisData = .empty
 
     enum TimeRange: String, CaseIterable, Identifiable {
         case week    = "7d"
@@ -75,8 +74,25 @@ struct AnalysisView: View {
                         cardsVisible = true
                     }
                 }
+                refreshData()
             }
+            .onChange(of: range) { _, _ in refreshData() }
+            .onChange(of: dailies.count) { _, _ in refreshData() }
+            .onChange(of: sessions.count) { _, _ in refreshData() }
         }
+    }
+
+    /// Recompute the chart snapshot in a low-cost main-actor batch.
+    /// Triggered on appear, range change, or when a new daily / session
+    /// row arrives. Internal field updates within an existing row don't
+    /// retrigger (that's intentional — body text reading off `data`
+    /// stays consistent through a chart frame).
+    private func refreshData() {
+        data = AnalysisData.compute(
+            dailies: dailies,
+            sessions: sessions,
+            daysBack: range.dayCount
+        )
     }
 
     /// Wrap any card view in a staggered reveal — the same spring +

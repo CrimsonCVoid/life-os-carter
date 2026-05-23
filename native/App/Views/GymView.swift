@@ -16,6 +16,14 @@ struct GymView: View {
     @State private var revealed = false
     @State private var detailSession: LiftSessionEntry?
     @State private var templatePickerOpen = false
+    /// Cached 7-day per-muscle rollup. The compute decodes the JSON
+    /// blob of every session in the window — recomputing it on every
+    /// body evaluation pegged CPU on tab switches. Refresh only when
+    /// the session count changes (a new workout was finished or
+    /// deleted) or on first appear.
+    @State private var muscleRollup: MuscleVolumeRollup = MuscleVolumeRollup(
+        entries: [], totalVolume: 0, totalSets: 0, windowDays: 7
+    )
 
     var body: some View {
         NavigationStack {
@@ -26,10 +34,8 @@ struct GymView: View {
                     } else {
                         startCard.cascadeReveal(index: 0, visible: revealed)
                     }
-                    MuscleVolumeCard(
-                        rollup: MuscleVolumeRollup.compute(sessions: Array(sessions))
-                    )
-                    .cascadeReveal(index: 1, visible: revealed)
+                    MuscleVolumeCard(rollup: muscleRollup)
+                        .cascadeReveal(index: 1, visible: revealed)
                     prSection.cascadeReveal(index: 2, visible: revealed)
                     historySection.cascadeReveal(index: 3, visible: revealed)
                     Spacer(minLength: 80)
@@ -38,7 +44,11 @@ struct GymView: View {
                 .padding(.top, 8)
             }
             .background(LifeOSColor.base.ignoresSafeArea())
-            .onAppear { if !revealed { revealed = true } }
+            .onAppear {
+                if !revealed { revealed = true }
+                refreshRollup()
+            }
+            .onChange(of: sessions.count) { _, _ in refreshRollup() }
             .navigationDestination(item: $detailSession) { s in
                 WorkoutDetailView(session: s)
             }
@@ -260,6 +270,10 @@ struct GymView: View {
                 onOpen: { detailSession = $0 }
             )
         }
+    }
+
+    private func refreshRollup() {
+        muscleRollup = MuscleVolumeRollup.compute(sessions: Array(sessions))
     }
 
     // MARK: - Actions

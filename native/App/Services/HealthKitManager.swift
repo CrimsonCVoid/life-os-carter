@@ -11,6 +11,16 @@ final class HealthKitManager {
 
     let store = HKHealthStore()
 
+    /// Timestamp of the last successful syncToday. The Today screen
+    /// + the app `onAppear` both call sync; without throttling that
+    /// rewrites every DailyEntry field on every tab switch, which
+    /// triggers every @Query<DailyEntry> on every other screen to
+    /// re-emit, which re-evaluates their bodies, which re-runs every
+    /// heavy computed in those screens. ~120% CPU on tab switches in
+    /// the wild. Throttle to once per 60s unless the caller forces.
+    private var lastSyncAt: Date?
+    private let syncMinInterval: TimeInterval = 60
+
     private init() {}
 
     var isAvailable: Bool { HKHealthStore.isHealthDataAvailable() }
@@ -310,8 +320,15 @@ final class HealthKitManager {
     /// DailyEntry (mood, energy, water — user-entered) we don't
     /// overwrite it. HealthKit reads (sleep, HRV, RHR, steps, weight)
     /// always trust HealthKit since that's the authoritative source.
-    func syncToday(in ctx: ModelContext) async {
+    ///
+    /// Throttled: skips the network/IO + SwiftData rewrite if a sync
+    /// completed within the last 60s. Pass `force: true` from a pull-
+    /// to-refresh to bypass.
+    func syncToday(in ctx: ModelContext, force: Bool = false) async {
         guard isAvailable else { return }
+        if !force, let last = lastSyncAt, Date().timeIntervalSince(last) < syncMinInterval {
+            return
+        }
         let cal = Calendar.current
         let now = Date()
         let todayKey = HealthKitDateFmt.ymd(now)
@@ -359,6 +376,7 @@ final class HealthKitManager {
             settings.rhrBaseline = rhrBaseV ?? settings.rhrBaseline
 
             try? ctx.save()
+            self.lastSyncAt = Date()
         }
     }
 }

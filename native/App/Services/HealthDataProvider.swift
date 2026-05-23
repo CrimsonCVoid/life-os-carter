@@ -48,13 +48,26 @@ enum HealthDataSource: String, CaseIterable, Identifiable {
 /// connection).
 @MainActor
 enum HealthSync {
-    static func syncToday(in ctx: ModelContext) async {
+    /// Per-source throttle timestamps so we don't hammer either
+    /// HealthKit or the Google Health API every time a screen
+    /// re-renders. The Apple Health path also has its own internal
+    /// throttle (HealthKitManager.lastSyncAt); we belt-and-suspenders
+    /// here so the Google path is treated the same way.
+    private static var lastGoogleSyncAt: Date?
+    private static let minInterval: TimeInterval = 60
+
+    static func syncToday(in ctx: ModelContext, force: Bool = false) async {
         let settings = UserSettings.loadOrCreate(in: ctx)
         switch HealthDataSource.from(settings.healthDataSource) {
         case .appleHealth:
-            await HealthKitManager.shared.syncToday(in: ctx)
+            await HealthKitManager.shared.syncToday(in: ctx, force: force)
         case .googleHealth:
+            if !force, let last = lastGoogleSyncAt,
+               Date().timeIntervalSince(last) < minInterval {
+                return
+            }
             await GoogleHealthClient.shared.syncToday(in: ctx)
+            lastGoogleSyncAt = Date()
         case .manual:
             break
         }

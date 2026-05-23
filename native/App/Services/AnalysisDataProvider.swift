@@ -75,6 +75,38 @@ struct AnalysisData {
     let weightTrend: [WeightPoint]
     let weightChange: Double?
 
+    /// Cheap zero-value snapshot used as the initial @State seed in
+    /// AnalysisView before `refreshData()` populates real values.
+    /// Empty arrays render as empty charts (no spinner, no crash).
+    static let empty: AnalysisData = AnalysisData(
+        performanceTrend: [],
+        performanceAvg: 0,
+        performanceLatest: 0,
+        performanceDelta: 0,
+        rhrTrend: [],
+        hrvTrend: [],
+        rhrLatest: nil,
+        hrvLatest: nil,
+        rhrDelta: 0,
+        hrvDelta: 0,
+        sleepStageSeries: [],
+        avgSleepTotalMin: 0,
+        avgSleepDeepMin: 0,
+        avgSleepREMMin: 0,
+        hrvVsSleep: [],
+        hrvSleepSlope: 0,
+        workoutDays: [:],
+        workoutSessionCount: 0,
+        workoutStreakDays: 0,
+        workoutRestDays: 0,
+        workoutTotalVolume: 0,
+        stepsByDOW: [],
+        mostActiveDOW: nil,
+        leastActiveDOW: nil,
+        weightTrend: [],
+        weightChange: nil
+    )
+
     /// Compute the analysis snapshot off the user's logs. `daysBack`
     /// is typically 7/30/90/365 from the AnalysisView range selector.
     static func compute(

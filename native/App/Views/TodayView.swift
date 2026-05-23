@@ -76,7 +76,7 @@ struct TodayView: View {
             }
             .background(LifeOSColor.base.ignoresSafeArea())
             .refreshable {
-                await sync()
+                await forceSync()
             }
             .navigationTitle("Today")
             .navigationBarTitleDisplayMode(.large)
@@ -550,9 +550,22 @@ struct TodayView: View {
         Task { await SyncService.shared.drainPending() }
     }
 
+    /// Default on-appear sync — throttled by HealthSync to once per
+    /// 60s. Idle tab switches no longer trigger a HealthKit pull +
+    /// SwiftData rewrite, which was the root cause of the cascading
+    /// @Query re-emit storm that pegged CPU.
     private func sync() async {
         syncing = true
         await HealthSync.syncToday(in: modelContext)
+        syncing = false
+    }
+
+    /// Pull-to-refresh path — bypasses the throttle. The user has
+    /// explicitly asked for fresh data so respect that even within
+    /// the 60s window.
+    private func forceSync() async {
+        syncing = true
+        await HealthSync.syncToday(in: modelContext, force: true)
         syncing = false
     }
 }
