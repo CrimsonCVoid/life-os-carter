@@ -69,6 +69,14 @@ struct LifeOSApp: App {
                         Task {
                             await auth.ensureSignedIn()
                             await syncService.drainPending()
+                            // Re-check Google Health connection after a
+                            // background → foreground cycle so returning
+                            // from the Safari OAuth handoff flips the
+                            // connected flag without needing a Settings
+                            // visit.
+                            await GoogleHealthClient.shared.refreshConnectionStatus(
+                                in: sharedModelContainer.mainContext
+                            )
                         }
                     }
                 }

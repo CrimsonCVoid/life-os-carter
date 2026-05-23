@@ -62,6 +62,12 @@ enum HealthSync {
         case .appleHealth:
             await HealthKitManager.shared.syncToday(in: ctx, force: force)
         case .googleHealth:
+            // Short-circuit if the user hasn't completed OAuth yet —
+            // no point hitting /sync just to take a 401, and that 401
+            // would spam the console + wake the radio on every tab
+            // switch (User saw "[GoogleHealth] sync failed: unauthenticated"
+            // looping in the Xcode console).
+            guard settings.googleHealthConnected else { return }
             if !force, let last = lastGoogleSyncAt,
                Date().timeIntervalSince(last) < minInterval {
                 return

@@ -52,6 +52,13 @@ final class UserSettings {
     /// trip last completed. Apple Health syncs are local and don't
     /// need a timestamp.
     var lastGoogleHealthSyncAt: Double?
+    /// True once we've seen a successful Google Health status check
+    /// or sync. Gates the background sync loop — without this, every
+    /// idle tab switch fires /api/google-health/sync and gets 401's
+    /// in the console (and burns battery). Flipped true only after
+    /// the server confirms an authenticated session; flipped false
+    /// on explicit disconnect.
+    var googleHealthConnected: Bool = false
 
     init() {
         self.id = UUID()

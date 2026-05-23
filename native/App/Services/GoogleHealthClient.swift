@@ -58,8 +58,33 @@ final class GoogleHealthClient {
         )
     }
 
-    func disconnect() async {
+    /// Round-trip the status endpoint and flip the local connected
+    /// flag accordingly. Called from the Settings card's onAppear so
+    /// returning from the Safari OAuth handoff immediately reflects
+    /// the new state, and from RootView's scenePhase active so a
+    /// background → foreground cycle re-checks.
+    @discardableResult
+    func refreshConnectionStatus(in ctx: ModelContext) async -> Bool {
+        guard AuthStore.shared.token != nil else { return false }
+        let status = await fetchStatus()
+        let settings = UserSettings.loadOrCreate(in: ctx)
+        let connected = status?.connected ?? false
+        if settings.googleHealthConnected != connected {
+            settings.googleHealthConnected = connected
+            if let ms = status?.lastSyncAt {
+                settings.lastGoogleHealthSyncAt = ms
+            }
+            try? ctx.save()
+        }
+        return connected
+    }
+
+    func disconnect(in ctx: ModelContext) async {
         _ = try? await APIClient.shared.delete("/api/google-health/disconnect")
+        let settings = UserSettings.loadOrCreate(in: ctx)
+        settings.googleHealthConnected = false
+        settings.lastGoogleHealthSyncAt = nil
+        try? ctx.save()
     }
 
     // MARK: - Sync
@@ -84,8 +109,15 @@ final class GoogleHealthClient {
     /// Mirrors HealthKitManager.syncToday(in:) so the Today screen
     /// can be source-agnostic: regardless of which side ran, today's
     /// row has fresh values when this returns.
+    ///
+    /// Short-circuits when the user hasn't completed OAuth yet
+    /// (UserSettings.googleHealthConnected == false). Without this
+    /// gate every idle tab switch was firing /sync and getting 401's,
+    /// spamming the console and waking the radio.
     func syncToday(in ctx: ModelContext) async {
         guard AuthStore.shared.token != nil else { return }
+        let settings = UserSettings.loadOrCreate(in: ctx)
+        guard settings.googleHealthConnected else { return }
         let body = SyncRequest(days: 7)
         let response: SyncResponse
         do {
@@ -94,6 +126,13 @@ final class GoogleHealthClient {
                 body: body,
                 as: SyncResponse.self
             )
+        } catch APIClient.APIError.unauthenticated {
+            // Server says the session expired. Mark disconnected so
+            // the next tab switch doesn't retry until the user
+            // explicitly reconnects from Settings.
+            settings.googleHealthConnected = false
+            try? ctx.save()
+            return
         } catch {
             print("[GoogleHealth] sync failed: \(error)")
             return

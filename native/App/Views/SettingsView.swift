@@ -149,13 +149,11 @@ struct SettingsView: View {
                 .padding(.vertical, 8)
             }
             .buttonStyle(.plain)
-            if settings.lastGoogleHealthSyncAt != nil {
+            if settings.googleHealthConnected {
                 Button(role: .destructive) {
                     Haptics.warning()
                     Task {
-                        await GoogleHealthClient.shared.disconnect()
-                        settings.lastGoogleHealthSyncAt = nil
-                        try? modelContext.save()
+                        await GoogleHealthClient.shared.disconnect(in: modelContext)
                     }
                 } label: {
                     Text("Disconnect")
@@ -165,6 +163,13 @@ struct SettingsView: View {
                 }
                 .buttonStyle(.plain)
             }
+        }
+        .task {
+            // Re-check connection state every time the Settings view
+            // appears — covers the case where the user just came back
+            // from the Safari OAuth handoff and we need to flip
+            // googleHealthConnected from the server's status response.
+            await GoogleHealthClient.shared.refreshConnectionStatus(in: modelContext)
         }
     }
 
