@@ -11,6 +11,8 @@ import SwiftData
 /// store has no concept of un-finishing a saved session).
 struct WorkoutDetailView: View {
     let session: LiftSessionEntry
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
 
     private var exercises: [WorkoutExercise] {
         CSVExporter.decodeExercises(session.detailsJSON)
@@ -23,6 +25,13 @@ struct WorkoutDetailView: View {
                 ForEach(exercises, id: \.id) { ex in
                     exerciseSection(ex)
                 }
+                SlideToDeleteBar(label: "Slide to delete workout") {
+                    modelContext.delete(session)
+                    try? modelContext.save()
+                    Haptics.warning()
+                    dismiss()
+                }
+                .padding(.top, 8)
                 Spacer(minLength: 80)
             }
             .padding(.horizontal, 14)

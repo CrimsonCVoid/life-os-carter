@@ -247,22 +247,9 @@ struct GymView: View {
         if !sessions.isEmpty {
             WorkoutCalendarSection(
                 sessions: Array(sessions),
-                onOpen: { detailSession = $0 },
-                onDelete: deleteSession
+                onOpen: { detailSession = $0 }
             )
         }
-    }
-
-    /// Drop a finished session from the local SwiftData store. PRs that
-    /// were derived from this session stay — they're recomputed from
-    /// every lift_sessions row on each new workout, so a stale PR will
-    /// either remain valid (it was the best across other sessions too)
-    /// or get superseded by the next workout that beats it. Long-press
-    /// the PR row to drop the row directly.
-    private func deleteSession(_ s: LiftSessionEntry) {
-        modelContext.delete(s)
-        try? modelContext.save()
-        Haptics.warning()
     }
 
     // MARK: - Actions
