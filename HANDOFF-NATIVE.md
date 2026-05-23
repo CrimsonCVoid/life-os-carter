@@ -78,7 +78,7 @@ fully wired and stable, those can be reverted to clean Drizzle as a follow-up.
 - **Body screen** — not built
 - **Push notifications (APNs)** — entitlement set, no device-token registration code
 - **Day-entry direct-input flows** — water/sleep/mood/weight/steps logs have Neon routes but no iOS UI writes to them yet
-- **TestFlight** — `DEVELOPMENT_TEAM` still empty in `project.yml` (line 28). Needs the 10-char Team ID from developer.apple.com → Membership
+- **TestFlight** — `DEVELOPMENT_TEAM` set to `6A3B3XQF6G` (wcarterbrady@icloud.com) in `project.yml`. Still needs an App Store Connect app record + first archive upload before TestFlight invites can go out
 
 ---
 
@@ -104,8 +104,10 @@ Set on **Production / Preview / Development**, then **Deployments → latest →
 2. **Wire HealthKit reads into Today + Analysis** — replace `Sample.*` static data with
    `HealthKitManager.fetchSum/fetchAverage` calls. Probably an `@Observable HealthDataStore` keyed
    off the range selector.
-3. **Set `DEVELOPMENT_TEAM` in `project.yml:28`** + create App Store Connect record + first
-   TestFlight archive. Recipe in earlier chat — paid Apple Developer Program required.
+3. **TestFlight: create App Store Connect record + first archive upload.** `DEVELOPMENT_TEAM`
+   is now wired (`6A3B3XQF6G` — wcarterbrady@icloud.com). Bundle IDs are
+   `com.hbrady.lifeos` and `com.hbrady.lifeos.WidgetExtension` — register both in App Store
+   Connect, then `Product → Archive` in Xcode and upload via Organizer.
 4. **Day-entry direct-input flows on Today screen** — water/weight/mood/etc. UI that writes to
    `DailyEntry` (SwiftData) and the matching `/api/data/{water,weight,mood}-logs` routes (Neon).
 5. **APNs token registration + push** — `UserNotifications` permission,

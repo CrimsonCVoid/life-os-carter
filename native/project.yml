@@ -26,7 +26,12 @@ settings:
     SWIFT_VERSION: "5.10"
     SWIFT_STRICT_CONCURRENCY: minimal
     CODE_SIGN_STYLE: Automatic
-    DEVELOPMENT_TEAM: ""
+    # Apple Developer team for wcarterbrady@icloud.com (WILLIAM CARTER
+    # BRADY). Same team is used for both the LifeOS app and the widget
+    # extension via this project-level base setting — no per-target
+    # override needed. Xcode auto-generates the provisioning profile
+    # on first build for any signed-into device.
+    DEVELOPMENT_TEAM: "6A3B3XQF6G"
     ENABLE_USER_SCRIPT_SANDBOXING: NO
     MARKETING_VERSION: "1.0"
     CURRENT_PROJECT_VERSION: "1"
