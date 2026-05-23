@@ -54,6 +54,9 @@ struct NutritionView: View {
             ScrollView {
                 LazyVStack(spacing: 16) {
                     macroSummary
+                    if loggingStreak >= 2 {
+                        streakChip
+                    }
                     quickCaptureStrip
                     SavedMealsBar()
                     NutritionInsightsCard(
@@ -73,8 +76,8 @@ struct NutritionView: View {
                     if todayMeals.isEmpty {
                         emptyState
                     } else {
-                        ForEach(todayMeals) { meal in
-                            mealRow(meal)
+                        ForEach(MealType.allCases) { type in
+                            mealSection(type)
                         }
                     }
                     Spacer(minLength: 80)
@@ -85,6 +88,14 @@ struct NutritionView: View {
             .background(LifeOSColor.base.ignoresSafeArea())
             .navigationTitle("Nutrition")
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    NavigationLink {
+                        WeeklyNutritionSummary()
+                    } label: {
+                        Image(systemName: "chart.bar.xaxis")
+                            .foregroundStyle(LifeOSColor.fg2)
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Button {
@@ -188,6 +199,58 @@ struct NutritionView: View {
         let fmt = ISO8601DateFormatter.dateOnly
         let earliestStr = fmt.string(from: earliest)
         return meals.filter { $0.date >= earliestStr }
+    }
+
+    /// Consecutive days walking back from today with at least one meal
+    /// logged. Stops the moment a gap day appears.
+    private var loggingStreak: Int {
+        let cal = Calendar.current
+        let dateSet = Set(meals.map(\.date))
+        var count = 0
+        var cursor = cal.startOfDay(for: Date())
+        let fmt = ISO8601DateFormatter.dateOnly
+        var safety = 0
+        while safety < 365 {
+            safety += 1
+            if dateSet.contains(fmt.string(from: cursor)) {
+                count += 1
+            } else {
+                break
+            }
+            guard let prev = cal.date(byAdding: .day, value: -1, to: cursor) else { break }
+            cursor = prev
+        }
+        return count
+    }
+
+    private var streakChip: some View {
+        HStack(spacing: 8) {
+            ZStack {
+                Circle().fill(LifeOSColor.warning.opacity(0.16))
+                Image(systemName: "flame.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(LifeOSColor.warning)
+            }
+            .frame(width: 26, height: 26)
+            VStack(alignment: .leading, spacing: 0) {
+                Text("\(loggingStreak)-day logging streak")
+                    .font(.system(size: 12, weight: .semibold))
+                Text("Don't break the chain.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(LifeOSColor.fg3)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(LifeOSColor.warning.opacity(0.06))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(LifeOSColor.warning.opacity(0.25), lineWidth: 0.5)
+                )
+        )
     }
 
     private var todayKcal: Double    { todayMeals.reduce(0) { $0 + $1.calories } }
@@ -325,6 +388,20 @@ struct NutritionView: View {
             } label: {
                 Label("Save as favorite", systemImage: "star")
             }
+            Menu {
+                ForEach(MealType.allCases) { type in
+                    Button {
+                        meal.mealType = type.rawValue
+                        meal.needsSync = true
+                        try? modelContext.save()
+                        Haptics.tick()
+                    } label: {
+                        Label(type.label, systemImage: type.icon)
+                    }
+                }
+            } label: {
+                Label("Move to…", systemImage: "tray.full")
+            }
             Button(role: .destructive) {
                 modelContext.delete(meal)
                 try? modelContext.save()
@@ -336,7 +413,72 @@ struct NutritionView: View {
     }
 
     @ViewBuilder
-    private func sourceBadge(_ source: String) -> some View {
+    private func mealSection(_ type: MealType) -> some View {
+        let bucket = todayMeals.filter { resolvedType($0) == type }
+        if !bucket.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                bucketHeader(type, meals: bucket)
+                ForEach(bucket) { meal in
+                    mealRow(meal)
+                }
+            }
+            .padding(.top, 6)
+        }
+    }
+
+    /// Resolved meal type honoring the explicit override when set,
+    /// otherwise re-deriving from loggedAt so older rows (pre-mealType
+    /// schema migration) still bucket sensibly.
+    private func resolvedType(_ meal: MealLog) -> MealType {
+        if !meal.mealType.isEmpty, let parsed = MealType(rawValue: meal.mealType) {
+            return parsed
+        }
+        return MealType(rawValue: MealLog.deriveMealType(at: meal.loggedAt)) ?? .snack
+    }
+
+    private func bucketHeader(_ type: MealType, meals: [MealLog]) -> some View {
+        let kcal = Int(meals.reduce(0) { $0 + $1.calories })
+        let p = Int(meals.reduce(0) { $0 + $1.proteinG })
+        return HStack(spacing: 6) {
+            Image(systemName: type.icon)
+                .font(.system(size: 9, weight: .heavy))
+                .foregroundStyle(LifeOSColor.fg3)
+            Text(type.label.uppercased())
+                .font(.system(size: 10, weight: .heavy)).tracking(0.8)
+                .foregroundStyle(LifeOSColor.fg3)
+            Spacer()
+            Text("\(kcal) kcal · \(p)g protein")
+                .font(.system(size: 10, weight: .semibold).monospacedDigit())
+                .foregroundStyle(LifeOSColor.fg3)
+        }
+        .padding(.horizontal, 4)
+    }
+}
+
+enum MealType: String, CaseIterable, Identifiable {
+    case breakfast, lunch, dinner, snack
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .breakfast: return "Breakfast"
+        case .lunch:     return "Lunch"
+        case .dinner:    return "Dinner"
+        case .snack:     return "Snack"
+        }
+    }
+    var icon: String {
+        switch self {
+        case .breakfast: return "sunrise.fill"
+        case .lunch:     return "sun.max.fill"
+        case .dinner:    return "moon.fill"
+        case .snack:     return "leaf.fill"
+        }
+    }
+}
+
+extension NutritionView {
+    @ViewBuilder
+    fileprivate func sourceBadge(_ source: String) -> some View {
         if source != "manual" {
             let icon: String = {
                 switch source {
@@ -352,7 +494,7 @@ struct NutritionView: View {
         }
     }
 
-    private func macroChip(_ name: String, value: Double, tint: Color) -> some View {
+    fileprivate func macroChip(_ name: String, value: Double, tint: Color) -> some View {
         HStack(spacing: 3) {
             Text(name).font(.system(size: 9, weight: .bold)).foregroundStyle(tint)
             Text("\(Int(value))g")

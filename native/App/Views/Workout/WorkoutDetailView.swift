@@ -14,6 +14,8 @@ struct WorkoutDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
+    @State private var notesEditorOpen = false
+
     private var exercises: [WorkoutExercise] {
         CSVExporter.decodeExercises(session.detailsJSON)
     }
@@ -22,6 +24,7 @@ struct WorkoutDetailView: View {
         ScrollView {
             VStack(spacing: 16) {
                 summaryHeader
+                notesCard
                 ForEach(exercises, id: \.id) { ex in
                     exerciseSection(ex)
                 }
@@ -40,6 +43,50 @@ struct WorkoutDetailView: View {
         .background(LifeOSColor.base.ignoresSafeArea())
         .navigationTitle(session.workoutType)
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $notesEditorOpen) {
+            NotesEditorSheet(initialText: session.notes) { newText in
+                session.notes = newText
+                session.needsSync = true
+                try? modelContext.save()
+            }
+            .presentationDetents([.medium, .large])
+        }
+    }
+
+    private var notesCard: some View {
+        Button {
+            Haptics.tap()
+            notesEditorOpen = true
+        } label: {
+            Card {
+                HStack(spacing: 12) {
+                    ZStack {
+                        Circle().fill(LifeOSColor.fg2.opacity(0.12))
+                        Image(systemName: "note.text")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(LifeOSColor.fg2)
+                    }
+                    .frame(width: 36, height: 36)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(session.notes.isEmpty ? "Add notes" : "Notes")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(LifeOSColor.fg)
+                        Text(session.notes.isEmpty
+                             ? "How it felt, what to remember next time"
+                             : session.notes)
+                            .font(.system(size: 11))
+                            .foregroundStyle(LifeOSColor.fg3)
+                            .lineLimit(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    Image(systemName: "pencil")
+                        .font(.system(size: 11))
+                        .foregroundStyle(LifeOSColor.fg3)
+                }
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Summary header

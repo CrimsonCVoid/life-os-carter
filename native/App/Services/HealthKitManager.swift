@@ -161,35 +161,65 @@ final class HealthKitManager {
 
     // MARK: - Typed convenience reads
 
-    /// Sleep hours for the night that ENDED on the given calendar date.
-    /// Sums any sleep stage value (asleep core/REM/deep) across the
-    /// 6pm-prior-day → noon-current-day window — the standard "last
-    /// night's sleep" semantics every health app uses.
-    func fetchSleepHours(forNightEnding date: Date) async -> Double? {
+    struct SleepBreakdown {
+        let totalHours: Double
+        let remMin: Int
+        let deepMin: Int
+        let lightMin: Int      // includes asleepCore + asleepUnspecified
+        let awakeMin: Int
+    }
+
+    /// Sleep totals + per-stage breakdown for the night that ENDED on
+    /// the given date. Single query over the 6pm-prior-day → noon-
+    /// current-day window — same semantics as a standard "last
+    /// night's sleep" view. Returns nil when no sleep samples exist
+    /// in the window.
+    func fetchSleepBreakdown(forNightEnding date: Date) async -> SleepBreakdown? {
         guard let type = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) else { return nil }
         let cal = Calendar.current
         let dayStart = cal.startOfDay(for: date)
         let start = cal.date(byAdding: .hour, value: -6, to: dayStart) ?? dayStart
         let end = cal.date(byAdding: .hour, value: 12, to: dayStart) ?? dayStart
         let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: [])
-        return await withCheckedContinuation { (cont: CheckedContinuation<Double?, Never>) in
+        return await withCheckedContinuation { (cont: CheckedContinuation<SleepBreakdown?, Never>) in
             let q = HKSampleQuery(
                 sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil
             ) { _, samples, _ in
-                let asleepValues: Set<Int> = [
-                    HKCategoryValueSleepAnalysis.asleepCore.rawValue,
-                    HKCategoryValueSleepAnalysis.asleepDeep.rawValue,
-                    HKCategoryValueSleepAnalysis.asleepREM.rawValue,
-                    HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue,
-                ]
-                var totalSec: TimeInterval = 0
-                for s in (samples as? [HKCategorySample] ?? []) where asleepValues.contains(s.value) {
-                    totalSec += s.endDate.timeIntervalSince(s.startDate)
+                var rem = 0.0, deep = 0.0, light = 0.0, awake = 0.0
+                for s in (samples as? [HKCategorySample] ?? []) {
+                    let secs = s.endDate.timeIntervalSince(s.startDate)
+                    switch s.value {
+                    case HKCategoryValueSleepAnalysis.asleepREM.rawValue:
+                        rem += secs
+                    case HKCategoryValueSleepAnalysis.asleepDeep.rawValue:
+                        deep += secs
+                    case HKCategoryValueSleepAnalysis.asleepCore.rawValue,
+                         HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue:
+                        light += secs
+                    case HKCategoryValueSleepAnalysis.awake.rawValue:
+                        awake += secs
+                    default:
+                        break
+                    }
                 }
-                cont.resume(returning: totalSec > 0 ? totalSec / 3600.0 : nil)
+                let asleep = rem + deep + light
+                if asleep <= 0 { cont.resume(returning: nil); return }
+                cont.resume(returning: SleepBreakdown(
+                    totalHours: asleep / 3600.0,
+                    remMin: Int(rem / 60.0),
+                    deepMin: Int(deep / 60.0),
+                    lightMin: Int(light / 60.0),
+                    awakeMin: Int(awake / 60.0)
+                ))
             }
             self.store.execute(q)
         }
+    }
+
+    /// Backwards-compatible total-hours-only call, used by the
+    /// recovery calculator's baseline math.
+    func fetchSleepHours(forNightEnding date: Date) async -> Double? {
+        await fetchSleepBreakdown(forNightEnding: date)?.totalHours
     }
 
     /// Most recent HRV (SDNN) sample within the last 24h, in ms.
@@ -287,7 +317,7 @@ final class HealthKitManager {
         let todayKey = HealthKitDateFmt.ymd(now)
         let dayStart = cal.startOfDay(for: now)
 
-        async let sleep = fetchSleepHours(forNightEnding: now)
+        async let sleepBreakdown = fetchSleepBreakdown(forNightEnding: now)
         async let hrv = fetchLatestHRV()
         async let rhr = fetchLatestRHR()
         async let weight = fetchLatestWeightLb()
@@ -298,8 +328,8 @@ final class HealthKitManager {
         async let rhrBase = fetchBaseline(of: .restingHeartRate,
                                           unit: HKUnit.count().unitDivided(by: .minute()), days: 14)
 
-        let (sleepV, hrvV, rhrV, weightV, stepsV, waterV, hrvBaseV, rhrBaseV) =
-            await (sleep, hrv, rhr, weight, stepsD, waterOz, hrvBase, rhrBase)
+        let (sleepBd, hrvV, rhrV, weightV, stepsV, waterV, hrvBaseV, rhrBaseV) =
+            await (sleepBreakdown, hrv, rhr, weight, stepsD, waterOz, hrvBase, rhrBase)
 
         await MainActor.run {
             // Locate (or create) today's DailyEntry row.
@@ -312,7 +342,11 @@ final class HealthKitManager {
                 return r
             }()
 
-            row.sleepHours = sleepV
+            row.sleepHours = sleepBd?.totalHours
+            row.sleepREMMin = sleepBd?.remMin
+            row.sleepDeepMin = sleepBd?.deepMin
+            row.sleepLightMin = sleepBd?.lightMin
+            row.sleepAwakeMin = sleepBd?.awakeMin
             row.hrvMs = hrvV
             row.restingHr = rhrV
             row.weightLb = weightV ?? row.weightLb

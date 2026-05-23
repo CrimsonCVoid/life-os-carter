@@ -19,6 +19,14 @@ struct ActiveWorkoutView: View {
     @State private var plateOpen: Double?
     @State private var confirmCancel = false
     @State private var now = Date()
+    @State private var prCelebration: PRDetection?
+
+    struct PRDetection: Identifiable {
+        let id = UUID()
+        let exerciseName: String
+        let kindLabel: String
+        let value: String
+    }
 
     private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -69,6 +77,75 @@ struct ActiveWorkoutView: View {
             Text("All logged sets will be deleted. Tap Finish on the bottom bar to save instead.")
         }
         .onReceive(tick) { _ in now = Date() }
+        .overlay {
+            if let pr = prCelebration {
+                PRCelebrationOverlay(
+                    exerciseName: pr.exerciseName,
+                    kindLabel: pr.kindLabel,
+                    value: pr.value
+                ) {
+                    prCelebration = nil
+                }
+                .transition(.opacity)
+            }
+        }
+    }
+
+    /// Live PR detection: when the user toggles a set complete, check
+    /// whether it just beat their all-time best for that exercise on
+    /// 1RM or heaviest-weight. Surface the most impressive one as a
+    /// brief celebration overlay. Skipped on uncomplete + on sets
+    /// with no weight (bodyweight rows would otherwise spam PRs).
+    private func checkForPR(exerciseID: UUID, setID: UUID) {
+        guard let ex = store.exercises.first(where: { $0.id == exerciseID }),
+              let set = ex.sets.first(where: { $0.id == setID }),
+              set.completed, set.weight > 0, set.reps > 0 else { return }
+        let newOneRM = estimate1RM(weight: set.weight, reps: set.reps)
+        let bestOneRM = PersonalRecordsService.best(
+            forExercise: ex.name,
+            kind: .oneRepMax,
+            modelContext: modelContext
+        )?.value ?? 0
+        let bestWeight = PersonalRecordsService.best(
+            forExercise: ex.name,
+            kind: .heaviestWeight,
+            modelContext: modelContext
+        )?.value ?? 0
+
+        // Prefer the heavier-weight celebration when both PRs are
+        // broken simultaneously — that's the more visceral milestone.
+        if set.weight > bestWeight && bestWeight > 0 {
+            celebrate(name: ex.name, kindLabel: "TOP WEIGHT",
+                      value: "\(formatNumber(set.weight)) lb × \(set.reps)")
+            return
+        }
+        if newOneRM > bestOneRM && bestOneRM > 0 {
+            celebrate(name: ex.name, kindLabel: "ESTIMATED 1RM",
+                      value: "\(formatNumber(newOneRM)) lb")
+        }
+    }
+
+    private func celebrate(name: String, kindLabel: String, value: String) {
+        // Already showing one? Don't stack.
+        guard prCelebration == nil else { return }
+        Haptics.success()
+        // Extra notification ping — a second .success haptic ~120ms
+        // later spaces the celebration so it doesn't feel like just
+        // another set tick.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            Haptics.heavy()
+        }
+        prCelebration = PRDetection(
+            exerciseName: name,
+            kindLabel: kindLabel,
+            value: value
+        )
+    }
+
+    private func formatNumber(_ v: Double) -> String {
+        v.truncatingRemainder(dividingBy: 1) == 0
+            ? String(format: "%.0f", v)
+            : String(format: "%.1f", v)
     }
 
     // MARK: - Header
@@ -158,8 +235,15 @@ struct ActiveWorkoutView: View {
                         .frame(width: 22, height: 22)
                         .background(Circle().fill(LifeOSColor.Metric.peak.opacity(0.18)))
                 }
-                Text(ex.name)
-                    .font(.system(size: 16, weight: .semibold))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(ex.name)
+                        .font(.system(size: 16, weight: .semibold))
+                    if let last = ExerciseHistoryLookup.lastPerformance(of: ex.name, in: sessions) {
+                        Text(last.oneLine)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(LifeOSColor.Metric.peak)
+                    }
+                }
                 Spacer()
                 Menu {
                     Button { addSet(to: ex, isDrop: false) } label: {
@@ -189,7 +273,10 @@ struct ActiveWorkoutView: View {
                     SetRow(
                         index: idx + 1,
                         set: set,
-                        onToggleComplete: { store.toggleSetComplete(exerciseID: ex.id, setID: set.id) },
+                        onToggleComplete: {
+                            store.toggleSetComplete(exerciseID: ex.id, setID: set.id)
+                            checkForPR(exerciseID: ex.id, setID: set.id)
+                        },
                         onTapPlate: { plateOpen = set.weight },
                         onOpenRPE: { rpeTarget = (ex.id, set.id) },
                         onChangeWeight: { newW in

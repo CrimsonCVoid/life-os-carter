@@ -29,6 +29,10 @@ struct TodayView: View {
                         strain: strainScore
                     )
                     .cascadeReveal(index: 1, visible: revealed)
+                    if let advice = recoveryAdvice {
+                        RecoveryAdviceCard(line: advice)
+                            .cascadeReveal(index: 2, visible: revealed)
+                    }
                     activityRingsCard.cascadeReveal(index: 2, visible: revealed)
                     vitalsGrid.cascadeReveal(index: 3, visible: revealed)
                     caloriesCard.cascadeReveal(index: 4, visible: revealed)
@@ -148,6 +152,35 @@ struct TodayView: View {
             liftVolumeMax7dLb: weekMaxDayVolume,
             activeEnergyKcal: 0
         )
+    }
+
+    private var recoveryAdvice: RecoveryAdvice.Line? {
+        RecoveryAdvice.generate(
+            recovery: recoveryScore,
+            strainToday: strainScore,
+            consecutiveTrainingDays: consecutiveTrainingDays
+        )
+    }
+
+    private var consecutiveTrainingDays: Int {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let trainedSet: Set<String> = Set(allSessions.map { $0.date })
+        var count = 0
+        var cursor = today
+        var safety = 0
+        while safety < 60 {
+            safety += 1
+            let key = ymd(cursor)
+            if trainedSet.contains(key) {
+                count += 1
+            } else {
+                break
+            }
+            guard let prev = cal.date(byAdding: .day, value: -1, to: cursor) else { break }
+            cursor = prev
+        }
+        return count
     }
 
     private var moodTrend7d: [Double] {
@@ -275,8 +308,11 @@ struct TodayView: View {
                 )
                 VitalTile(
                     icon: "scalemass.fill", label: "Weight",
-                    value: todayEntry.weightLb.map { String(format: "%.1f", $0) } ?? "—",
-                    unit: "lb",
+                    value: todayEntry.weightLb.map {
+                        WeightUnit.from(settings.weightUnit).formatted(fromLb: $0)
+                            .replacingOccurrences(of: " \(settings.weightUnit)", with: "")
+                    } ?? "—",
+                    unit: settings.weightUnit,
                     tint: LifeOSColor.Metric.weight,
                     trend: [],
                     delta: "—"
@@ -389,25 +425,25 @@ struct TodayView: View {
 
     // MARK: - Sleep
 
+    @ViewBuilder
     private var sleepCard: some View {
-        Card {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("SLEEP")
-                    .font(.system(size: 10, weight: .heavy)).tracking(0.8)
-                    .foregroundStyle(LifeOSColor.fg3)
-                if let s = todayEntry.sleepHours {
-                    let h = Int(s)
-                    let m = Int((s - Double(h)) * 60)
-                    HStack(alignment: .firstTextBaseline, spacing: 4) {
-                        Text(String(format: "%dh %02dm", h, m))
-                            .font(.system(size: 28, weight: .bold).monospacedDigit())
-                            .foregroundStyle(LifeOSColor.Metric.sleep)
-                        Text("/ \(Int(settings.sleepGoalHours))h goal")
-                            .font(.system(size: 12))
-                            .foregroundStyle(LifeOSColor.fg3)
-                    }
-                    sleepBar(filled: s / settings.sleepGoalHours)
-                } else {
+        if let totalHours = todayEntry.sleepHours {
+            // Whoop-style breakdown when stages came back from HealthKit;
+            // otherwise just totals.
+            let stages = makeStages(from: todayEntry)
+            SleepCard(
+                totalHours: totalHours,
+                bedtime: bedtimeApprox(for: totalHours),
+                wake: wakeApprox(),
+                stages: stages,
+                weekAverageHours: sleepAvg7d
+            )
+        } else {
+            Card {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("SLEEP")
+                        .font(.system(size: 10, weight: .heavy)).tracking(0.8)
+                        .foregroundStyle(LifeOSColor.fg3)
                     Text("No sleep data for last night yet.")
                         .font(.system(size: 12))
                         .foregroundStyle(LifeOSColor.fg3)
@@ -416,17 +452,39 @@ struct TodayView: View {
         }
     }
 
-    private func sleepBar(filled: Double) -> some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(LifeOSColor.Metric.sleep.opacity(0.18))
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(LifeOSColor.Metric.sleep)
-                    .frame(width: geo.size.width * min(1.05, max(0, filled)))
-            }
-        }
-        .frame(height: 8)
+    private func makeStages(from d: DailyEntry) -> [SleepCard.Stage] {
+        // Only return staged data when HealthKit gave us per-stage
+        // minutes; otherwise return an empty array so the SleepCard
+        // can render a simpler view.
+        guard let rem = d.sleepREMMin, let deep = d.sleepDeepMin,
+              let light = d.sleepLightMin else { return [] }
+        let awake = d.sleepAwakeMin ?? 0
+        return [
+            .init(kind: .awake, minutes: Double(awake)),
+            .init(kind: .rem,   minutes: Double(rem)),
+            .init(kind: .core,  minutes: Double(light)),
+            .init(kind: .deep,  minutes: Double(deep)),
+        ]
+    }
+
+    /// Approximate bedtime/wake when we only have a total hours number.
+    /// We don't store the actual sample timestamps yet, so derive from
+    /// the user's reported sleep goal anchored to ~6:30am wake.
+    private func bedtimeApprox(for hours: Double) -> Date {
+        let cal = Calendar.current
+        let wake = wakeApprox()
+        return cal.date(byAdding: .second, value: -Int(hours * 3600), to: wake) ?? wake
+    }
+
+    private func wakeApprox() -> Date {
+        let cal = Calendar.current
+        return cal.date(bySettingHour: 6, minute: 30, second: 0, of: Date()) ?? Date()
+    }
+
+    private var sleepAvg7d: Double {
+        let values = last7Dailies.compactMap { $0?.sleepHours }
+        guard !values.isEmpty else { return 0 }
+        return values.reduce(0, +) / Double(values.count)
     }
 
     // MARK: - Habits roll-up

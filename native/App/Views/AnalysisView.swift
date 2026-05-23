@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 import Charts
 
 /// Analysis — insights-first deep-dive into your wearable data. Every
@@ -8,8 +9,19 @@ import Charts
 /// per-second granularity since that data doesn't exist outside an
 /// active workout.
 struct AnalysisView: View {
+    @Query private var dailies: [DailyEntry]
+    @Query private var sessions: [LiftSessionEntry]
     @State private var range: TimeRange = .month
     @State private var cardsVisible = false
+
+    /// Real-data backing for every chart. Recomputed on range change.
+    private var data: AnalysisData {
+        AnalysisData.compute(
+            dailies: dailies,
+            sessions: sessions,
+            daysBack: range.dayCount
+        )
+    }
 
     enum TimeRange: String, CaseIterable, Identifiable {
         case week    = "7d"
@@ -110,7 +122,7 @@ struct AnalysisView: View {
                             .font(.system(size: 10, weight: .heavy)).tracking(1.4)
                             .foregroundStyle(LifeOSColor.Metric.peak)
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
-                            Text("78")
+                            Text("\(data.performanceLatest)")
                                 .font(.system(size: 56, weight: .bold, design: .rounded))
                                 .monospacedDigit()
                                 .foregroundStyle(.white)
@@ -121,9 +133,9 @@ struct AnalysisView: View {
                         }
                     }
                     Spacer()
-                    deltaPill(delta: +4.2, label: "vs prior \(range.dayCount)d")
+                    deltaPill(delta: data.performanceDelta, label: "vs prior \(range.dayCount)d")
                 }
-                Chart(Sample.performanceTrend, id: \.day) { item in
+                Chart(data.performanceTrend, id: \.day) { item in
                     AreaMark(
                         x: .value("Day", item.day),
                         y: .value("Score", item.score)
@@ -142,11 +154,11 @@ struct AnalysisView: View {
                     .foregroundStyle(LifeOSColor.Metric.peak)
                     .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round))
 
-                    RuleMark(y: .value("Average", Sample.performanceAvg))
+                    RuleMark(y: .value("Average", data.performanceAvg))
                         .foregroundStyle(LifeOSColor.fg3.opacity(0.4))
                         .lineStyle(StrokeStyle(lineWidth: 0.5, dash: [3]))
                         .annotation(position: .topTrailing, alignment: .trailing, spacing: 2) {
-                            Text("avg \(Int(Sample.performanceAvg))")
+                            Text("avg \(Int(data.performanceAvg))")
                                 .font(.system(size: 9))
                                 .foregroundStyle(LifeOSColor.fg3)
                         }
@@ -193,7 +205,7 @@ struct AnalysisView: View {
             title: "How's your sleep architecture trending?",
             tint: LifeOSColor.Metric.sleep
         ) {
-            Chart(Sample.sleepStageSeries, id: \.id) { item in
+            Chart(data.sleepStageSeries, id: \.id) { item in
                 AreaMark(
                     x: .value("Day", item.day),
                     y: .value("Minutes", item.minutes)
@@ -218,12 +230,25 @@ struct AnalysisView: View {
             .frame(height: 160)
 
             HStack {
-                takeaway(label: "AVG TOTAL",  value: "7h 18m")
-                takeaway(label: "AVG DEEP",   value: "1h 24m")
-                takeaway(label: "AVG REM",    value: "1h 32m")
-                takeaway(label: "EFFICIENCY", value: "93%")
+                takeaway(label: "AVG TOTAL",  value: hm(data.avgSleepTotalMin))
+                takeaway(label: "AVG DEEP",   value: hm(data.avgSleepDeepMin))
+                takeaway(label: "AVG REM",    value: hm(data.avgSleepREMMin))
+                takeaway(label: "EFFICIENCY", value: efficiencyLabel)
             }
         }
+    }
+
+    private var efficiencyLabel: String {
+        guard data.avgSleepTotalMin > 0, data.avgSleepDeepMin + data.avgSleepREMMin > 0 else { return "—" }
+        let restorative = data.avgSleepDeepMin + data.avgSleepREMMin
+        return "\(Int(Double(restorative) / Double(data.avgSleepTotalMin) * 100))%"
+    }
+
+    private func hm(_ minutes: Int) -> String {
+        guard minutes > 0 else { return "—" }
+        let h = minutes / 60
+        let m = minutes % 60
+        return h > 0 ? String(format: "%dh %02dm", h, m) : "\(m)m"
     }
 
     // MARK: - Heart Health (RHR + HRV dual chart)
@@ -235,7 +260,7 @@ struct AnalysisView: View {
             tint: LifeOSColor.Metric.mood
         ) {
             Chart {
-                ForEach(Sample.rhrTrend, id: \.day) { item in
+                ForEach(data.rhrTrend, id: \.day) { item in
                     LineMark(
                         x: .value("Day", item.day),
                         y: .value("RHR", item.value),
@@ -245,7 +270,7 @@ struct AnalysisView: View {
                     .foregroundStyle(LifeOSColor.Metric.mood)
                     .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round))
                 }
-                ForEach(Sample.hrvTrend, id: \.day) { item in
+                ForEach(data.hrvTrend, id: \.day) { item in
                     LineMark(
                         x: .value("Day", item.day),
                         y: .value("HRV", item.value),
@@ -266,10 +291,20 @@ struct AnalysisView: View {
             .frame(height: 140)
 
             HStack(spacing: 12) {
-                metricBig(label: "Resting HR", value: "58", unit: "bpm",
-                          delta: "−2 vs prior", tint: LifeOSColor.Metric.mood)
-                metricBig(label: "HRV (rMSSD)", value: "62", unit: "ms",
-                          delta: "+4 vs prior", tint: LifeOSColor.Metric.sleep)
+                metricBig(
+                    label: "Resting HR",
+                    value: data.rhrLatest.map { "\(Int($0.rounded()))" } ?? "—",
+                    unit: "bpm",
+                    delta: signedDelta(data.rhrDelta, suffix: " vs prior"),
+                    tint: LifeOSColor.Metric.mood
+                )
+                metricBig(
+                    label: "HRV (rMSSD)",
+                    value: data.hrvLatest.map { "\(Int($0.rounded()))" } ?? "—",
+                    unit: "ms",
+                    delta: signedDelta(data.hrvDelta, suffix: " vs prior"),
+                    tint: LifeOSColor.Metric.sleep
+                )
             }
         }
     }
@@ -282,7 +317,7 @@ struct AnalysisView: View {
             title: "More sleep → higher HRV?",
             tint: LifeOSColor.Metric.peak
         ) {
-            Chart(Sample.hrvVsSleep, id: \.id) { item in
+            Chart(data.hrvVsSleep, id: \.id) { item in
                 PointMark(
                     x: .value("Sleep", item.sleepHours),
                     y: .value("HRV", item.hrv)
@@ -306,9 +341,7 @@ struct AnalysisView: View {
             }
             .frame(height: 160)
 
-            calloutText(
-                "Slope of +5.2 ms/hr over the period — sleep is the single strongest predictor of next-day HRV in your data."
-            )
+            calloutText(hrvSleepCallout)
         }
     }
 
@@ -320,12 +353,12 @@ struct AnalysisView: View {
             title: "Workout streak heatmap",
             tint: LifeOSColor.Metric.strain
         ) {
-            ConsistencyHeatmap(days: Sample.workoutDays)
+            ConsistencyHeatmap(days: data.workoutDays)
             HStack(spacing: 12) {
-                takeaway(label: "SESSIONS", value: "18")
-                takeaway(label: "STREAK",   value: "12 days")
-                takeaway(label: "REST DAYS", value: "9")
-                takeaway(label: "VOLUME",   value: "186k lb")
+                takeaway(label: "SESSIONS", value: "\(data.workoutSessionCount)")
+                takeaway(label: "STREAK",   value: "\(data.workoutStreakDays)d")
+                takeaway(label: "REST DAYS", value: "\(data.workoutRestDays)")
+                takeaway(label: "VOLUME",   value: kFormat(data.workoutTotalVolume) + " lb")
             }
         }
     }
@@ -370,7 +403,7 @@ struct AnalysisView: View {
             title: "When are you most active?",
             tint: LifeOSColor.Metric.steps
         ) {
-            Chart(Sample.stepsByDOW, id: \.day) { item in
+            Chart(data.stepsByDOW, id: \.day) { item in
                 BarMark(
                     x: .value("Day", item.day),
                     y: .value("Steps", item.steps)
@@ -397,9 +430,7 @@ struct AnalysisView: View {
             }
             .frame(height: 140)
 
-            calloutText(
-                "Saturdays are your highest-activity day (avg 11.2k steps) — your lowest are Mondays (5.8k)."
-            )
+            calloutText(stepsDowCallout)
         }
     }
 
@@ -412,7 +443,7 @@ struct AnalysisView: View {
             tint: LifeOSColor.Metric.weight
         ) {
             Chart {
-                ForEach(Sample.weightTrend, id: \.day) { item in
+                ForEach(data.weightTrend, id: \.day) { item in
                     LineMark(
                         x: .value("Day", item.day),
                         y: .value("Weight", item.weight),
@@ -428,14 +459,6 @@ struct AnalysisView: View {
                     .foregroundStyle(LifeOSColor.Metric.weight)
                     .symbolSize(16)
                 }
-                RuleMark(y: .value("Goal", 172))
-                    .foregroundStyle(LifeOSColor.success.opacity(0.6))
-                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [4]))
-                    .annotation(position: .topTrailing, alignment: .trailing, spacing: 2) {
-                        Text("goal 172")
-                            .font(.system(size: 9))
-                            .foregroundStyle(LifeOSColor.success)
-                    }
             }
             .chartYAxis {
                 AxisMarks { _ in
@@ -447,12 +470,43 @@ struct AnalysisView: View {
             .frame(height: 140)
 
             HStack(spacing: 12) {
-                metricBig(label: "Current", value: "176.4", unit: "lb",
-                          delta: "−2.1 lb / 30d", tint: LifeOSColor.Metric.weight)
-                metricBig(label: "Trend slope", value: "−0.07", unit: "lb/d",
-                          delta: "consistent loss", tint: LifeOSColor.success)
+                metricBig(
+                    label: "Current",
+                    value: data.weightTrend.last.map { String(format: "%.1f", $0.weight) } ?? "—",
+                    unit: "lb",
+                    delta: weightDeltaLabel,
+                    tint: LifeOSColor.Metric.weight
+                )
+                metricBig(
+                    label: "Trend",
+                    value: weightSlopeValue,
+                    unit: "lb/d",
+                    delta: weightSlopeLabel,
+                    tint: weightChangeTint
+                )
             }
         }
+    }
+
+    private var weightDeltaLabel: String {
+        guard let change = data.weightChange else { return "no history" }
+        return String(format: "%+.1f lb / %dd", change, range.dayCount)
+    }
+    private var weightSlopeValue: String {
+        guard let change = data.weightChange,
+              data.weightTrend.count >= 2 else { return "—" }
+        let slope = change / Double(max(1, range.dayCount))
+        return String(format: "%+.2f", slope)
+    }
+    private var weightSlopeLabel: String {
+        guard let change = data.weightChange else { return "—" }
+        return change < -0.1 ? "consistent loss"
+             : change > 0.1 ? "consistent gain"
+             : "holding"
+    }
+    private var weightChangeTint: Color {
+        guard let change = data.weightChange else { return LifeOSColor.fg2 }
+        return change < 0 ? LifeOSColor.success : LifeOSColor.fg2
     }
 
     // MARK: - Cardio fitness gauge
@@ -626,6 +680,38 @@ struct AnalysisView: View {
             .padding(.horizontal, 10).padding(.vertical, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    // MARK: - Real-data callouts
+
+    private var hrvSleepCallout: String {
+        guard data.hrvVsSleep.count >= 3 else {
+            return "Log a few more nights with both sleep and HRV to spot a pattern."
+        }
+        let slope = data.hrvSleepSlope
+        if abs(slope) < 0.5 {
+            return "No clear sleep → HRV trend in your data yet — needs a wider range or more variation."
+        }
+        let dir = slope >= 0 ? "+\(String(format: "%.1f", slope))" : String(format: "%.1f", slope)
+        return "Slope of \(dir) ms/hr — \(slope >= 0 ? "more sleep tracks with higher HRV" : "an inverse trend the model can't fully explain") in your data."
+    }
+
+    private var stepsDowCallout: String {
+        guard let high = data.mostActiveDOW, let low = data.leastActiveDOW, high != low else {
+            return "Log more days to see your weekly activity pattern."
+        }
+        return "\(high)s are your highest-activity day, \(low)s the lowest."
+    }
+
+    private func signedDelta(_ d: Double, suffix: String = "") -> String {
+        if abs(d) < 0.05 { return "stable\(suffix)" }
+        let sign = d >= 0 ? "+" : ""
+        return "\(sign)\(String(format: "%.1f", d))\(suffix)"
+    }
+
+    private func kFormat(_ v: Double) -> String {
+        if v >= 1000 { return "\(Int(v / 1000))k" }
+        return "\(Int(v))"
     }
 }
 

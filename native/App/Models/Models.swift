@@ -35,6 +35,17 @@ final class DailyEntry {
     /// 1–5 scale. nil = unanswered, not "no stress."
     var stressLevel: Int?
 
+    /// Per-stage sleep minutes pulled from HealthKit's sleepAnalysis
+    /// samples. nil = no sample data (e.g. user without an Apple Watch
+    /// or before HealthKit auth was granted). Sum can differ from
+    /// `sleepHours` by a few minutes due to awake-time and HealthKit's
+    /// reconciliation; we still display both because the breakdown is
+    /// what makes Whoop's sleep view valuable.
+    var sleepREMMin: Int?
+    var sleepDeepMin: Int?
+    var sleepLightMin: Int?
+    var sleepAwakeMin: Int?
+
     init(
         date: String,
         sleepHours: Double? = nil,
@@ -165,9 +176,15 @@ final class MealLog {
     var proteinG: Double
     var carbsG: Double
     var fatG: Double
-    /// Source — "manual", "barcode", "photo", "voice". Useful for
-    /// nutrition coach summaries.
+    /// Source — "manual", "barcode", "photo", "voice", "favorite",
+    /// "quickadd". Useful for nutrition coach summaries.
     var source: String
+    /// Bucket — "breakfast" | "lunch" | "dinner" | "snack". Auto-set
+    /// from `loggedAt` hour on insert; the user can override via the
+    /// row context menu. Default to the empty string for pre-existing
+    /// rows (lightweight migration); read-site falls back to a
+    /// time-of-day derive when empty.
+    var mealType: String = ""
     var needsSync: Bool = true
     var serverID: String?
 
@@ -178,7 +195,8 @@ final class MealLog {
         proteinG: Double = 0,
         carbsG: Double = 0,
         fatG: Double = 0,
-        source: String = "manual"
+        source: String = "manual",
+        mealType: String = ""
     ) {
         self.id = UUID()
         self.date = date
@@ -189,6 +207,19 @@ final class MealLog {
         self.carbsG = carbsG
         self.fatG = fatG
         self.source = source
+        self.mealType = mealType.isEmpty ? Self.deriveMealType(at: Date()) : mealType
+    }
+
+    /// Heuristic time-of-day bucketing — 4am-10:59 → breakfast,
+    /// 11am-3:59pm → lunch, 4pm-8:59pm → dinner, otherwise snack.
+    static func deriveMealType(at date: Date) -> String {
+        let h = Calendar.current.component(.hour, from: date)
+        switch h {
+        case 4..<11:  return "breakfast"
+        case 11..<16: return "lunch"
+        case 16..<21: return "dinner"
+        default:      return "snack"
+        }
     }
 }
 
@@ -207,6 +238,9 @@ final class LiftSessionEntry {
     /// Lightweight JSON blob of exercises + sets — full schema isn't
     /// worth modeling as separate tables for an app at this scale.
     var detailsJSON: String
+    /// Free-form session notes (how it felt, what to remember next
+    /// time). Empty string is the "not set" state.
+    var notes: String = ""
     var needsSync: Bool = true
     var serverID: String?
 
@@ -217,7 +251,8 @@ final class LiftSessionEntry {
         endedAt: Date,
         totalVolumeLb: Double,
         setCount: Int,
-        detailsJSON: String
+        detailsJSON: String,
+        notes: String = ""
     ) {
         self.id = UUID()
         self.date = date
@@ -227,5 +262,6 @@ final class LiftSessionEntry {
         self.totalVolumeLb = totalVolumeLb
         self.setCount = setCount
         self.detailsJSON = detailsJSON
+        self.notes = notes
     }
 }
