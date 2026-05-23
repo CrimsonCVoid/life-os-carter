@@ -15,6 +15,8 @@ struct SettingsView: View {
         ScrollView {
             VStack(spacing: 14) {
                 accountCard
+                goalsLinkCard
+                healthSourceCard
                 integrationsCard
                 testDataCard
                 aboutCard
@@ -26,6 +28,144 @@ struct SettingsView: View {
         .background(LifeOSColor.base.ignoresSafeArea())
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    // MARK: - Goals + Health source
+
+    private var settings: UserSettings {
+        UserSettings.loadOrCreate(in: modelContext)
+    }
+
+    private var goalsLinkCard: some View {
+        NavigationLink {
+            GoalsEditor(settings: settings)
+        } label: {
+            Card {
+                HStack(spacing: 14) {
+                    ZStack {
+                        Circle().fill(LifeOSColor.accent.opacity(0.16))
+                        Image(systemName: "target")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(LifeOSColor.accent)
+                    }
+                    .frame(width: 44, height: 44)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Goals")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(LifeOSColor.fg)
+                        Text("\(settings.caloriesGoal) kcal · \(settings.proteinGoal)p · \(Int(settings.sleepGoalHours))h sleep · \(settings.stepsGoal) steps")
+                            .font(.system(size: 11))
+                            .foregroundStyle(LifeOSColor.fg3)
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11))
+                        .foregroundStyle(LifeOSColor.fg3)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var healthSourceCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Text("HEALTH DATA SOURCE")
+                        .font(.system(size: 10, weight: .heavy)).tracking(0.8)
+                        .foregroundStyle(LifeOSColor.fg3)
+                    Spacer()
+                    if HealthDataSource.from(settings.healthDataSource) == .googleHealth {
+                        Text(settings.lastGoogleHealthSyncAt.map { _ in "synced" } ?? "not connected")
+                            .font(.system(size: 9, weight: .heavy))
+                            .foregroundStyle(LifeOSColor.fg3)
+                    }
+                }
+                Text("Where the app reads sleep, HRV, resting heart rate, steps, and weight from.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(LifeOSColor.fg2)
+                VStack(spacing: 8) {
+                    ForEach(HealthDataSource.allCases) { src in
+                        sourceRow(src)
+                    }
+                }
+                if HealthDataSource.from(settings.healthDataSource) == .googleHealth {
+                    googleHealthControls
+                }
+            }
+        }
+    }
+
+    private func sourceRow(_ src: HealthDataSource) -> some View {
+        let active = HealthDataSource.from(settings.healthDataSource) == src
+        return Button {
+            settings.healthDataSource = src.rawValue
+            try? modelContext.save()
+            Haptics.tick()
+            Task { await HealthSync.syncToday(in: modelContext) }
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle().fill((active ? LifeOSColor.accent : LifeOSColor.fg3).opacity(0.16))
+                    Image(systemName: src.icon)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(active ? LifeOSColor.accent : LifeOSColor.fg2)
+                }
+                .frame(width: 36, height: 36)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(src.label)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(active ? LifeOSColor.fg : LifeOSColor.fg2)
+                    Text(src.subtitle)
+                        .font(.system(size: 11))
+                        .foregroundStyle(LifeOSColor.fg3)
+                }
+                Spacer()
+                Image(systemName: active ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 18))
+                    .foregroundStyle(active ? LifeOSColor.accent : LifeOSColor.fg3)
+            }
+            .padding(.vertical, 6)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var googleHealthControls: some View {
+        VStack(spacing: 8) {
+            Divider().overlay(LifeOSColor.stroke)
+            Button {
+                Haptics.tap()
+                GoogleHealthClient.shared.startAuthFlow()
+            } label: {
+                HStack {
+                    Image(systemName: "link")
+                    Text(settings.lastGoogleHealthSyncAt == nil ? "Connect Google Health" : "Reconnect Google Health")
+                    Spacer()
+                    Image(systemName: "arrow.up.right")
+                }
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(LifeOSColor.accent)
+                .padding(.vertical, 8)
+            }
+            .buttonStyle(.plain)
+            if settings.lastGoogleHealthSyncAt != nil {
+                Button(role: .destructive) {
+                    Haptics.warning()
+                    Task {
+                        await GoogleHealthClient.shared.disconnect()
+                        settings.lastGoogleHealthSyncAt = nil
+                        try? modelContext.save()
+                    }
+                } label: {
+                    Text("Disconnect")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(LifeOSColor.danger)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     // MARK: - Account card

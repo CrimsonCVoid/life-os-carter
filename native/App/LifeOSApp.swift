@@ -17,6 +17,9 @@ struct LifeOSApp: App {
             MealLog.self,
             LiftSessionEntry.self,
             PersonalRecord.self,
+            UserSettings.self,
+            SavedMeal.self,
+            WorkoutTemplate.self,
         ])
         let configuration = ModelConfiguration(
             schema: schema,
@@ -44,7 +47,14 @@ struct LifeOSApp: App {
                 .environment(syncService)
                 .onAppear {
                     Haptics.prepareAll()
-                    Task { await HealthKitManager.shared.requestAuthorization() }
+                    WorkoutTemplateSeeds.seedIfNeeded(in: sharedModelContainer.mainContext)
+                    Task {
+                        // HealthKit authorization is harmless to request even
+                        // for users on Google Health — they just decline. The
+                        // unified HealthSync respects the user's chosen source.
+                        await HealthKitManager.shared.requestAuthorization()
+                        await HealthSync.syncToday(in: sharedModelContainer.mainContext)
+                    }
                     Task {
                         await auth.ensureSignedIn()
                         syncService.attach(modelContainer: sharedModelContainer)

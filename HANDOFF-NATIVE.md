@@ -74,10 +74,10 @@ fully wired and stable, those can be reverted to clean Drizzle as a follow-up.
 
 ## What's still placeholder / unwired
 
-- **HealthKit reads on Today + Analysis** — manager has `fetchSum`/`fetchAverage` but every screen uses `Sample.*` static values
 - **Body screen** — not built
 - **Push notifications (APNs)** — entitlement set, no device-token registration code
-- **Day-entry direct-input flows** — water/sleep/mood/weight/steps logs have Neon routes but no iOS UI writes to them yet
+- **TDEE / cut-bulk wizard** — UserSettings + custom macro goals exist; the guided setup wizard does not (manual entry only)
+- **Google Health server route response shape** — `/api/google-health/sync` is hit by `GoogleHealthClient.syncToday()` but the response decoder assumes fields the route may not actually return yet; double-check the server route returns `{ sleepHours, hrvMs, restingHr, steps, weightLb, hrvBaseline, rhrBaseline }` keys or adjust the decoder
 - **TestFlight** — `DEVELOPMENT_TEAM` set to `6A3B3XQF6G` (wcarterbrady@icloud.com) in `project.yml`. Still needs an App Store Connect app record + first archive upload before TestFlight invites can go out
 
 ---

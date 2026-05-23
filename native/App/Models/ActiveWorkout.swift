@@ -97,6 +97,33 @@ final class ActiveWorkoutStore {
         LiveActivityManager.shared.start(workoutType: workoutType)
     }
 
+    /// Start a workout pre-populated from a WorkoutTemplate. Each
+    /// template exercise contributes an exercise with `targetSets`
+    /// empty sets (weight 0, target reps). Rest target is taken from
+    /// the first exercise so the Live Activity timer behaves
+    /// sensibly out of the gate; per-set rest can still be tuned
+    /// inside the active view.
+    func start(template: WorkoutTemplate) {
+        self.workoutType = template.name
+        self.startedAt = Date()
+        self.exercises = template.exercises.map { tx in
+            WorkoutExercise(
+                name: tx.name,
+                sets: (0..<max(1, tx.sets)).map { _ in
+                    WorkoutSet(weight: 0, reps: tx.reps)
+                }
+            )
+        }
+        if let firstRest = template.exercises.first?.restSec, firstRest > 0 {
+            self.restTargetSeconds = firstRest
+        }
+        self.lastSetAt = nil
+        self.restDismissedAt = nil
+        Haptics.success()
+        LiveActivityManager.shared.start(workoutType: template.name)
+        pushLiveActivity()
+    }
+
     func cancel() {
         Haptics.warning()
         LiveActivityManager.shared.end()

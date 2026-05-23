@@ -16,6 +16,7 @@ struct NutritionView: View {
         sort: \MealLog.loggedAt,
         order: .reverse
     ) private var meals: [MealLog]
+    @Query private var userSettingsRows: [UserSettings]
     @Environment(\.modelContext) private var modelContext
 
     // Capture sheet selection — only one open at a time. `nil` = none.
@@ -23,8 +24,14 @@ struct NutritionView: View {
     // Result waiting to be reviewed. Identifiable so we can use sheet(item:).
     @State private var pendingReview: PendingReview?
     @State private var manualOpen = false
+    @State private var quickAddOpen = false
+    @State private var savingFavorite: MealLog?
     @State private var editingMeal: MealLog?
     @State private var lookupError: String?
+
+    private var userSettings: UserSettings {
+        userSettingsRows.first ?? UserSettings.loadOrCreate(in: modelContext)
+    }
 
     enum CaptureFlow: Identifiable {
         case barcode, photo, voice
@@ -48,14 +55,15 @@ struct NutritionView: View {
                 LazyVStack(spacing: 16) {
                     macroSummary
                     quickCaptureStrip
+                    SavedMealsBar()
                     NutritionInsightsCard(
                         todayMeals: todayMeals,
                         last7Meals: last7Meals,
                         targets: NutritionTargetsIn(
-                            calories: 2200,
-                            protein: 180,
-                            carbs: 240,
-                            fat: 75
+                            calories: userSettings.caloriesGoal,
+                            protein: userSettings.proteinGoal,
+                            carbs: userSettings.carbsGoal,
+                            fat: userSettings.fatGoal
                         )
                     )
                     if let err = lookupError {
@@ -78,9 +86,19 @@ struct NutritionView: View {
             .navigationTitle("Nutrition")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        Haptics.tap()
-                        manualOpen = true
+                    Menu {
+                        Button {
+                            Haptics.tap()
+                            manualOpen = true
+                        } label: {
+                            Label("Full entry", systemImage: "square.and.pencil")
+                        }
+                        Button {
+                            Haptics.tap()
+                            quickAddOpen = true
+                        } label: {
+                            Label("Quick add calories", systemImage: "bolt.fill")
+                        }
                     } label: {
                         Image(systemName: "plus")
                             .foregroundStyle(LifeOSColor.accent)
@@ -90,6 +108,14 @@ struct NutritionView: View {
             .sheet(isPresented: $manualOpen) {
                 AddMealSheet()
                     .presentationDetents([.large])
+            }
+            .sheet(isPresented: $quickAddOpen) {
+                QuickAddCaloriesSheet()
+                    .presentationDetents([.medium, .large])
+            }
+            .sheet(item: $savingFavorite) { meal in
+                SaveAsFavoriteSheet(meal: meal)
+                    .presentationDetents([.medium])
             }
             .sheet(item: $editingMeal) { meal in
                 AddMealSheet(editing: meal)
@@ -292,6 +318,12 @@ struct NutritionView: View {
                 editingMeal = meal
             } label: {
                 Label("Edit meal", systemImage: "pencil")
+            }
+            Button {
+                savingFavorite = meal
+                Haptics.tap()
+            } label: {
+                Label("Save as favorite", systemImage: "star")
             }
             Button(role: .destructive) {
                 modelContext.delete(meal)

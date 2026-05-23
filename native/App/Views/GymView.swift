@@ -15,6 +15,7 @@ struct GymView: View {
     @State private var csvShareURL: URL?
     @State private var revealed = false
     @State private var detailSession: LiftSessionEntry?
+    @State private var templatePickerOpen = false
 
     var body: some View {
         NavigationStack {
@@ -25,8 +26,12 @@ struct GymView: View {
                     } else {
                         startCard.cascadeReveal(index: 0, visible: revealed)
                     }
-                    prSection.cascadeReveal(index: 1, visible: revealed)
-                    historySection.cascadeReveal(index: 2, visible: revealed)
+                    MuscleVolumeCard(
+                        rollup: MuscleVolumeRollup.compute(sessions: Array(sessions))
+                    )
+                    .cascadeReveal(index: 1, visible: revealed)
+                    prSection.cascadeReveal(index: 2, visible: revealed)
+                    historySection.cascadeReveal(index: 3, visible: revealed)
                     Spacer(minLength: 80)
                 }
                 .padding(.horizontal, 14)
@@ -54,6 +59,10 @@ struct GymView: View {
                 ShareSheet(items: [wrapper.url])
                     .presentationDetents([.medium])
             }
+            .sheet(isPresented: $templatePickerOpen) {
+                WorkoutTemplatePicker()
+                    .presentationDetents([.large])
+            }
             .fullScreenCover(isPresented: $activeOpen) {
                 ActiveWorkoutView(store: workoutStore)
             }
@@ -71,7 +80,8 @@ struct GymView: View {
     /// once inside.
     private var startCard: some View {
         Button {
-            startBlankWorkout()
+            Haptics.tap()
+            templatePickerOpen = true
         } label: {
             VStack(alignment: .leading, spacing: 16) {
                 HStack {

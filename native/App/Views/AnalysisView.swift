@@ -36,6 +36,7 @@ struct AnalysisView: View {
                 LazyVStack(spacing: 16) {
                     rangeSelector
                     revealCard(delay: 0.00) { CoachChatView() }
+                    revealCard(delay: 0.01) { CorrelationsCard() }
                     revealCard(delay: 0.02) { performanceHero }
                     revealCard(delay: 0.04) { sleepArchitectureCard }
                     revealCard(delay: 0.08) { heartHealthCard }

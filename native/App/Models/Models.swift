@@ -24,6 +24,17 @@ final class DailyEntry {
     var notes: String?
     var needsSync: Bool = true
 
+    /// Behavioral journal prompts — quick yes/no flags the user toggles
+    /// on Today. Feed the correlation engine: "your sleep is 28% better
+    /// on no-alcohol days." All optional/false by default so this is a
+    /// lightweight migration on existing rows.
+    var alcoholYesterday: Bool = false
+    var caffeineAfter2pm: Bool = false
+    var lateEating: Bool = false
+    var screenBeforeBed: Bool = false
+    /// 1–5 scale. nil = unanswered, not "no stress."
+    var stressLevel: Int?
+
     init(
         date: String,
         sleepHours: Double? = nil,

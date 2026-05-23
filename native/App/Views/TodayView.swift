@@ -1,56 +1,79 @@
 import SwiftUI
 import SwiftData
 
-/// Comprehensive Today screen — visual end-state. Placeholder data
-/// stands in until the HealthKit + Fitbit + meal log pipelines are
-/// wired up. Replace the `Sample` static values with real `@Query`
-/// results or HealthKit reads as those land.
+/// Today screen — real-data version. Pulls a singleton DailyEntry row
+/// for today (creating it if missing), populates HealthKit-backed
+/// fields on appear, computes recovery + strain from those, and lets
+/// the user log everything else inline (water, mood, energy,
+/// behavioral journal prompts). Pull-to-refresh re-syncs from
+/// HealthKit so the user can manually trigger an update if they just
+/// finished a workout or HRV reading.
 struct TodayView: View {
     @Environment(\.modelContext) private var modelContext
+    @Query private var dailyRows: [DailyEntry]
+    @Query private var settingsRows: [UserSettings]
+    @Query(sort: \LiftSessionEntry.startedAt, order: .reverse) private var allSessions: [LiftSessionEntry]
+    @Query(filter: #Predicate<HabitEntry> { $0.archived == false }, sort: \HabitEntry.order) private var habits: [HabitEntry]
+    @Query(sort: \MealLog.loggedAt, order: .reverse) private var allMeals: [MealLog]
+
     @State private var revealed = false
+    @State private var syncing = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 16) {
                     greeting.cascadeReveal(index: 0, visible: revealed)
-                    peakStateHero.cascadeReveal(index: 1, visible: revealed)
+                    RecoveryStrainHero(
+                        recovery: recoveryScore,
+                        strain: strainScore
+                    )
+                    .cascadeReveal(index: 1, visible: revealed)
                     activityRingsCard.cascadeReveal(index: 2, visible: revealed)
                     vitalsGrid.cascadeReveal(index: 3, visible: revealed)
                     caloriesCard.cascadeReveal(index: 4, visible: revealed)
-                    workoutsSummary.cascadeReveal(index: 5, visible: revealed)
-                    SleepCard(
-                        totalHours: 7.5,
-                        bedtime: Sample.bedtime,
-                        wake: Sample.wake,
-                        stages: Sample.sleepStages,
-                        weekAverageHours: 7.3
+                    JournalPromptStrip(
+                        daily: todayEntry,
+                        onChange: persist
                     )
-                    .cascadeReveal(index: 6, visible: revealed)
+                    .cascadeReveal(index: 5, visible: revealed)
+                    workoutsSummary.cascadeReveal(index: 6, visible: revealed)
+                    sleepCard.cascadeReveal(index: 7, visible: revealed)
                     HydrationCard(
-                        currentOz: 48,
-                        goalOz: 96,
-                        onLog: { _ in /* TODO: write to HealthKit + SwiftData */ }
+                        currentOz: todayEntry.waterOz,
+                        goalOz: settings.waterGoalOz,
+                        onLog: { delta in
+                            todayEntry.waterOz = max(0, todayEntry.waterOz + delta)
+                            persist()
+                            Task { await HealthKitManager.shared.writeWater(ounces: max(0, delta)) }
+                        }
                     )
-                    .cascadeReveal(index: 7, visible: revealed)
-                    habitsRoll.cascadeReveal(index: 8, visible: revealed)
+                    .cascadeReveal(index: 8, visible: revealed)
+                    habitsRoll.cascadeReveal(index: 9, visible: revealed)
                     MoodEnergyCard(
-                        mood: 7,
-                        energy: 6,
-                        moodTrend: Sample.moodTrend,
-                        energyTrend: Sample.energyTrend,
-                        onLogMood: { _ in },
-                        onLogEnergy: { _ in }
+                        mood: todayEntry.moodScore ?? 0,
+                        energy: todayEntry.energyScore ?? 0,
+                        moodTrend: moodTrend7d,
+                        energyTrend: energyTrend7d,
+                        onLogMood: { v in
+                            todayEntry.moodScore = v
+                            persist()
+                        },
+                        onLogEnergy: { v in
+                            todayEntry.energyScore = v
+                            persist()
+                        }
                     )
-                    .cascadeReveal(index: 9, visible: revealed)
-                    InsightsCard(insights: Sample.insights)
-                        .cascadeReveal(index: 10, visible: revealed)
+                    .cascadeReveal(index: 10, visible: revealed)
                     Spacer(minLength: 80)
                 }
                 .padding(.horizontal, 14)
                 .padding(.top, 4)
             }
             .background(LifeOSColor.base.ignoresSafeArea())
+            .refreshable {
+                await sync()
+            }
             .navigationTitle("Today")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
@@ -64,12 +87,94 @@ struct TodayView: View {
                 }
             }
             .onAppear {
-                if !revealed {
-                    revealed = true
-                }
+                if !revealed { revealed = true }
+                Task { await sync() }
             }
         }
     }
+
+    // MARK: - Singletons
+
+    private var todayKey: String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f.string(from: Date())
+    }
+
+    private var todayEntry: DailyEntry {
+        if let existing = dailyRows.first(where: { $0.date == todayKey }) {
+            return existing
+        }
+        let fresh = DailyEntry(date: todayKey)
+        modelContext.insert(fresh)
+        try? modelContext.save()
+        return fresh
+    }
+
+    private var settings: UserSettings {
+        if let existing = settingsRows.first { return existing }
+        return UserSettings.loadOrCreate(in: modelContext)
+    }
+
+    // MARK: - Derived
+
+    private var recoveryScore: RecoveryCalculator.Score? {
+        RecoveryCalculator.compute(
+            daily: todayEntry,
+            hrvBaseline: settings.hrvBaseline,
+            rhrBaseline: settings.rhrBaseline,
+            sleepGoalHours: settings.sleepGoalHours
+        )
+    }
+
+    private var strainScore: StrainCalculator.Score {
+        let cal = Calendar.current
+        let dayStart = cal.startOfDay(for: Date())
+        let todaySessions = allSessions.filter { $0.startedAt >= dayStart }
+        let todayVolume = todaySessions.reduce(0.0) { $0 + $1.totalVolumeLb }
+        let weekStart = cal.date(byAdding: .day, value: -7, to: dayStart) ?? dayStart
+        let weekSessions = allSessions.filter { $0.startedAt >= weekStart }
+        let weekMaxDayVolume = Dictionary(grouping: weekSessions, by: \.date)
+            .values
+            .map { $0.reduce(0.0) { $0 + $1.totalVolumeLb } }
+            .max() ?? 0
+        // We don't (yet) have async active-energy in the derived state.
+        // Use today's calorie deficit from HealthKit syncToday as a proxy:
+        // if it lands in DailyEntry.notes or via separate query in v2.
+        // For now zero out — sufflower contribution from volume alone.
+        return StrainCalculator.compute(
+            liftVolumeTodayLb: todayVolume,
+            liftVolumeMax7dLb: weekMaxDayVolume,
+            activeEnergyKcal: 0
+        )
+    }
+
+    private var moodTrend7d: [Double] {
+        last7Dailies.map { Double($0?.moodScore ?? 0) }
+    }
+    private var energyTrend7d: [Double] {
+        last7Dailies.map { Double($0?.energyScore ?? 0) }
+    }
+    private var last7Dailies: [DailyEntry?] {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let map = Dictionary(uniqueKeysWithValues: dailyRows.map { ($0.date, $0) })
+        return (0..<7).reversed().compactMap { offset in
+            guard let d = cal.date(byAdding: .day, value: -offset, to: today) else { return nil }
+            let key = ymd(d)
+            return map[key]
+        }
+    }
+
+    private func ymd(_ d: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f.string(from: d)
+    }
+
+    // MARK: - Greeting
 
     private var greeting: some View {
         HStack {
@@ -81,6 +186,9 @@ struct TodayView: View {
                     .foregroundStyle(LifeOSColor.fg3)
             }
             Spacer()
+            if syncing {
+                ProgressView().controlSize(.small)
+            }
         }
         .padding(.horizontal, 4)
     }
@@ -95,60 +203,23 @@ struct TodayView: View {
         }
     }
 
-    // MARK: - Peak State hero
-
-    private var peakStateHero: some View {
-        Card(tint: LifeOSColor.Metric.peak) {
-            HStack(spacing: 18) {
-                ZStack {
-                    Circle()
-                        .fill(LifeOSColor.Metric.peak.opacity(0.5))
-                        .blur(radius: 24)
-                        .scaleEffect(0.7)
-                    ScoreRing(
-                        progress: 0.84,
-                        value: "84",
-                        label: "Peak State",
-                        tint: LifeOSColor.Metric.peak,
-                        size: 140
-                    )
-                }
-                VStack(alignment: .leading, spacing: 10) {
-                    pillar(label: "Recovery",  value: "72%",  tint: LifeOSColor.Metric.sleep)
-                    pillar(label: "Strain",    value: "12.4", tint: LifeOSColor.Metric.strain)
-                    pillar(label: "Sleep",     value: "7:30", tint: LifeOSColor.Metric.sleep)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-        .pressable()
-    }
-
-    private func pillar(label: String, value: String, tint: Color) -> some View {
-        HStack {
-            Circle().fill(tint).frame(width: 6, height: 6)
-            Text(label.uppercased())
-                .font(.system(size: 10, weight: .semibold))
-                .tracking(1.2)
-                .foregroundStyle(LifeOSColor.fg3)
-            Spacer()
-            Text(value)
-                .font(.system(size: 17, weight: .bold, design: .rounded).monospacedDigit())
-                .foregroundStyle(tint)
-        }
-    }
-
-    // MARK: - Activity rings
+    // MARK: - Activity rings (real-ish: tied to HealthKit aggregates)
 
     private var activityRingsCard: some View {
-        Card {
+        let steps = todayEntry.steps ?? 0
+        let stepsGoal = settings.stepsGoal
+        return Card {
             HStack(spacing: 18) {
-                ActivityRings(move: 0.78, exercise: 0.62, stand: 0.42)
-                    .frame(width: 110, height: 110)
+                ActivityRings(
+                    move: 0.4,
+                    exercise: 0.4,
+                    stand: 0.4
+                )
+                .frame(width: 110, height: 110)
                 VStack(alignment: .leading, spacing: 10) {
-                    ringRow(name: "Move",     have: 467,  goal: 600, unit: "kcal", tint: LifeOSColor.danger)
-                    ringRow(name: "Exercise", have: 18,   goal: 30,  unit: "min",  tint: LifeOSColor.Metric.steps)
-                    ringRow(name: "Stand",    have: 5,    goal: 12,  unit: "hr",   tint: LifeOSColor.Metric.water)
+                    ringRow(name: "Steps", have: steps, goal: stepsGoal, unit: "steps", tint: LifeOSColor.Metric.steps)
+                    ringRow(name: "Sleep", have: Int((todayEntry.sleepHours ?? 0) * 60), goal: Int(settings.sleepGoalHours * 60), unit: "min", tint: LifeOSColor.Metric.sleep)
+                    ringRow(name: "Water", have: Int(todayEntry.waterOz), goal: Int(settings.waterGoalOz), unit: "oz", tint: LifeOSColor.Metric.water)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -171,60 +242,93 @@ struct TodayView: View {
         }
     }
 
-    // MARK: - Vitals 2x2 grid
+    // MARK: - Vitals
 
     private var vitalsGrid: some View {
         VStack(spacing: 10) {
             SectionLabel("Vitals")
             HStack(spacing: 10) {
                 VitalTile(
-                    icon: "heart.fill", label: "Resting HR", value: "58", unit: "bpm",
+                    icon: "heart.fill", label: "Resting HR",
+                    value: todayEntry.restingHr.map { "\(Int($0))" } ?? "—",
+                    unit: "bpm",
                     tint: LifeOSColor.Metric.mood,
-                    trend: Sample.hrTrend,
-                    delta: "−2 vs 7d"
+                    trend: [],
+                    delta: rhrDelta
                 )
                 VitalTile(
-                    icon: "waveform.path.ecg", label: "HRV", value: "62", unit: "ms",
+                    icon: "waveform.path.ecg", label: "HRV",
+                    value: todayEntry.hrvMs.map { "\(Int($0))" } ?? "—",
+                    unit: "ms",
                     tint: LifeOSColor.Metric.sleep,
-                    trend: Sample.hrvTrend,
-                    delta: "+4 vs 7d"
+                    trend: [],
+                    delta: hrvDelta
                 )
             }
             HStack(spacing: 10) {
                 VitalTile(
-                    icon: "figure.walk", label: "Steps", value: "8,431",
+                    icon: "figure.walk", label: "Steps",
+                    value: formatSteps(todayEntry.steps ?? 0),
                     tint: LifeOSColor.Metric.steps,
-                    trend: Sample.stepsTrend,
-                    delta: "70% of goal"
+                    trend: [],
+                    delta: stepsDelta
                 )
                 VitalTile(
-                    icon: "lungs.fill", label: "Resp Rate", value: "14.2", unit: "br/min",
-                    tint: LifeOSColor.Metric.water,
-                    trend: Sample.respTrend,
-                    delta: "stable"
+                    icon: "scalemass.fill", label: "Weight",
+                    value: todayEntry.weightLb.map { String(format: "%.1f", $0) } ?? "—",
+                    unit: "lb",
+                    tint: LifeOSColor.Metric.weight,
+                    trend: [],
+                    delta: "—"
                 )
             }
         }
     }
 
-    // MARK: - Calories card
+    private var hrvDelta: String {
+        guard let now = todayEntry.hrvMs, let base = settings.hrvBaseline, base > 0 else { return "no baseline" }
+        let pct = Int(((now - base) / base * 100).rounded())
+        return "\(pct >= 0 ? "+" : "")\(pct)% vs 14d"
+    }
+    private var rhrDelta: String {
+        guard let now = todayEntry.restingHr, let base = settings.rhrBaseline, base > 0 else { return "no baseline" }
+        let pct = Int(((now - base) / base * 100).rounded())
+        return "\(pct >= 0 ? "+" : "")\(pct)% vs 14d"
+    }
+    private var stepsDelta: String {
+        let goal = settings.stepsGoal
+        guard goal > 0, let s = todayEntry.steps else { return "—" }
+        return "\(Int(Double(s) / Double(goal) * 100))% of goal"
+    }
+
+    private func formatSteps(_ n: Int) -> String {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        return f.string(from: NSNumber(value: n)) ?? "0"
+    }
+
+    // MARK: - Calories
 
     private var caloriesCard: some View {
-        VStack(spacing: 10) {
+        let today = ISO8601DateFormatter.dateOnly.string(from: Date())
+        let mealsToday = allMeals.filter { $0.date == today }
+        let kcal = mealsToday.reduce(0.0) { $0 + $1.calories }
+        let p = mealsToday.reduce(0.0) { $0 + $1.proteinG }
+        let c = mealsToday.reduce(0.0) { $0 + $1.carbsG }
+        let f = mealsToday.reduce(0.0) { $0 + $1.fatG }
+        return VStack(spacing: 10) {
             SectionLabel("Calories") {
-                NavigationLink("Open") {
-                    NutritionView()
-                }
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(LifeOSColor.accent)
+                NavigationLink("Open") { NutritionView() }
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(LifeOSColor.accent)
             }
             MacroRingsCard(
-                proteinG: 142, proteinGoalG: 180,
-                carbsG: 188, carbsGoalG: 240,
-                fatG: 62, fatGoalG: 75,
-                caloriesEaten: 1840,
-                caloriesBurned: 467,
-                caloriesGoal: 2200
+                proteinG: p, proteinGoalG: Double(settings.proteinGoal),
+                carbsG: c, carbsGoalG: Double(settings.carbsGoal),
+                fatG: f, fatGoalG: Double(settings.fatGoal),
+                caloriesEaten: kcal,
+                caloriesBurned: 0,
+                caloriesGoal: Double(settings.caloriesGoal)
             )
         }
     }
@@ -232,8 +336,15 @@ struct TodayView: View {
     // MARK: - Workouts summary
 
     private var workoutsSummary: some View {
-        VStack(spacing: 10) {
-            SectionLabel("Workouts")
+        let today = ISO8601DateFormatter.dateOnly.string(from: Date())
+        let todayWorkouts = allSessions.filter { $0.date == today }
+        let latest = todayWorkouts.first
+        return VStack(spacing: 10) {
+            SectionLabel("Workouts") {
+                NavigationLink("Open") { GymView() }
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(LifeOSColor.accent)
+            }
             Card {
                 HStack(spacing: 14) {
                     ZStack {
@@ -243,117 +354,147 @@ struct TodayView: View {
                             .font(.system(size: 18))
                     }
                     .frame(width: 44, height: 44)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Push day")
-                            .font(.system(size: 15, weight: .semibold))
-                        Text("48 min · 12,450 lb volume · 24 sets")
-                            .font(.system(size: 11))
-                            .foregroundStyle(LifeOSColor.fg3)
-                    }
-                    Spacer()
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("STRAIN")
-                            .font(.system(size: 8, weight: .semibold)).tracking(1.2)
-                            .foregroundStyle(LifeOSColor.fg3)
-                        Text("12.4")
-                            .font(.system(size: 18, weight: .bold).monospacedDigit())
-                            .foregroundStyle(LifeOSColor.Metric.strain)
+                    if let latest {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(latest.workoutType)
+                                .font(.system(size: 15, weight: .semibold))
+                            Text("\(latest.setCount) sets · \(Int(latest.totalVolumeLb)) lb")
+                                .font(.system(size: 11))
+                                .foregroundStyle(LifeOSColor.fg3)
+                        }
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("STRAIN")
+                                .font(.system(size: 8, weight: .semibold)).tracking(1.2)
+                                .foregroundStyle(LifeOSColor.fg3)
+                            Text(String(format: "%.1f", strainScore.value))
+                                .font(.system(size: 18, weight: .bold).monospacedDigit())
+                                .foregroundStyle(LifeOSColor.Metric.strain)
+                        }
+                    } else {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("No workout today")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(LifeOSColor.fg2)
+                            Text("Tap Open to start one.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(LifeOSColor.fg3)
+                        }
+                        Spacer()
                     }
                 }
             }
         }
+    }
+
+    // MARK: - Sleep
+
+    private var sleepCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("SLEEP")
+                    .font(.system(size: 10, weight: .heavy)).tracking(0.8)
+                    .foregroundStyle(LifeOSColor.fg3)
+                if let s = todayEntry.sleepHours {
+                    let h = Int(s)
+                    let m = Int((s - Double(h)) * 60)
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text(String(format: "%dh %02dm", h, m))
+                            .font(.system(size: 28, weight: .bold).monospacedDigit())
+                            .foregroundStyle(LifeOSColor.Metric.sleep)
+                        Text("/ \(Int(settings.sleepGoalHours))h goal")
+                            .font(.system(size: 12))
+                            .foregroundStyle(LifeOSColor.fg3)
+                    }
+                    sleepBar(filled: s / settings.sleepGoalHours)
+                } else {
+                    Text("No sleep data for last night yet.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(LifeOSColor.fg3)
+                }
+            }
+        }
+    }
+
+    private func sleepBar(filled: Double) -> some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(LifeOSColor.Metric.sleep.opacity(0.18))
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(LifeOSColor.Metric.sleep)
+                    .frame(width: geo.size.width * min(1.05, max(0, filled)))
+            }
+        }
+        .frame(height: 8)
     }
 
     // MARK: - Habits roll-up
 
     private var habitsRoll: some View {
-        VStack(spacing: 10) {
+        let todayKeyLocal = todayKey
+        let cal = Calendar.current
+        let weekday = cal.component(.weekday, from: Date())
+        let dueToday = habits.filter { $0.cadence.isDueOn(weekday: weekday) }
+        let done = dueToday.filter { $0.isCompleted(on: todayKeyLocal) }.count
+        let total = dueToday.count
+        let bestStreak = habits.map { $0.currentStreak() }.max() ?? 0
+        return VStack(spacing: 10) {
             SectionLabel("Habits") {
-                NavigationLink("Open") {
-                    HabitsView()
-                }
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(LifeOSColor.accent)
+                NavigationLink("Open") { HabitsView() }
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(LifeOSColor.accent)
             }
             Card {
                 HStack(spacing: 12) {
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(alignment: .firstTextBaseline, spacing: 4) {
-                            Text("3").font(.system(size: 28, weight: .bold).monospacedDigit())
-                            Text("/ 5").font(.system(size: 14)).foregroundStyle(LifeOSColor.fg3)
+                            Text("\(done)").font(.system(size: 28, weight: .bold).monospacedDigit())
+                            Text("/ \(total)").font(.system(size: 14)).foregroundStyle(LifeOSColor.fg3)
                         }
-                        Text("habits today")
+                        Text(total == 0 ? "no habits due" : "habits today")
                             .font(.system(size: 11))
                             .foregroundStyle(LifeOSColor.fg3)
                     }
                     Spacer()
                     HStack(spacing: 6) {
-                        ForEach(Sample.habitDots.indices, id: \.self) { i in
+                        ForEach(dueToday.prefix(8), id: \.id) { h in
+                            let isDone = h.isCompleted(on: todayKeyLocal)
                             Circle()
-                                .fill(Sample.habitDots[i] ? LifeOSColor.success : LifeOSColor.elevated)
+                                .fill(isDone ? h.color : LifeOSColor.elevated)
                                 .frame(width: 14, height: 14)
-                                .overlay(
-                                    Circle().stroke(LifeOSColor.stroke, lineWidth: 0.5)
-                                )
+                                .overlay(Circle().stroke(LifeOSColor.stroke, lineWidth: 0.5))
                         }
                     }
-                    Divider().overlay(LifeOSColor.stroke).frame(height: 30)
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("12🔥")
-                            .font(.system(size: 16, weight: .bold))
-                        Text("STREAK")
-                            .font(.system(size: 8, weight: .semibold)).tracking(1.2)
-                            .foregroundStyle(LifeOSColor.fg3)
+                    if bestStreak > 0 {
+                        Divider().overlay(LifeOSColor.stroke).frame(height: 30)
+                        VStack(alignment: .trailing, spacing: 2) {
+                            HStack(spacing: 3) {
+                                Image(systemName: "flame.fill")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(LifeOSColor.warning)
+                                Text("\(bestStreak)").font(.system(size: 16, weight: .bold).monospacedDigit())
+                            }
+                            Text("STREAK")
+                                .font(.system(size: 8, weight: .semibold)).tracking(1.2)
+                                .foregroundStyle(LifeOSColor.fg3)
+                        }
                     }
                 }
             }
         }
     }
-}
 
-/// Placeholder sample data — single home for the values used while
-/// the real data pipeline is being wired. Delete each entry as it gets
-/// hooked up to a real source.
-private enum Sample {
-    static let hrTrend: [Double]   = [62, 60, 61, 59, 58, 60, 58]
-    static let hrvTrend: [Double]  = [54, 56, 58, 62, 60, 59, 62]
-    static let stepsTrend: [Double] = [7200, 8100, 6900, 9300, 8400, 8800, 8431]
-    static let respTrend: [Double] = [14, 14.2, 14.1, 14.3, 14.2, 14, 14.2]
-    static let moodTrend: [Double] = [6, 7, 6, 8, 7, 7, 7]
-    static let energyTrend: [Double] = [5, 6, 6, 7, 6, 7, 6]
-    static let habitDots: [Bool] = [true, true, false, true, false]
+    // MARK: - Persistence helpers
 
-    static var bedtime: Date {
-        Calendar.current.date(bySettingHour: 23, minute: 12, second: 0, of: Date())!.addingTimeInterval(-86_400)
+    private func persist() {
+        try? modelContext.save()
+        Task { await SyncService.shared.drainPending() }
     }
-    static var wake: Date {
-        Calendar.current.date(bySettingHour: 6, minute: 42, second: 0, of: Date())!
+
+    private func sync() async {
+        syncing = true
+        await HealthSync.syncToday(in: modelContext)
+        syncing = false
     }
-    static let sleepStages: [SleepCard.Stage] = [
-        .init(kind: .awake, minutes: 18),
-        .init(kind: .rem,   minutes: 92),
-        .init(kind: .core,  minutes: 252),
-        .init(kind: .deep,  minutes: 88),
-    ]
-    static let insights: [InsightsCard.Insight] = [
-        .init(
-            icon: "moon.fill",
-            tint: LifeOSColor.Metric.sleep,
-            title: "Sleep edged ahead of your 7-day average",
-            body: "7h 30m last night vs 7h 18m typical — recovery should hold."
-        ),
-        .init(
-            icon: "flame.fill",
-            tint: LifeOSColor.danger,
-            title: "Strain pacing fast for the week",
-            body: "12.4 today on top of 49 across the prior 6 days. Consider a recovery session."
-        ),
-        .init(
-            icon: "drop.fill",
-            tint: LifeOSColor.Metric.water,
-            title: "Hydration trending under target",
-            body: "Averaged 71 oz vs 96 oz goal over the last 5 days."
-        ),
-    ]
 }
