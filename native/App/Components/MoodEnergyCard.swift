@@ -13,30 +13,33 @@ struct MoodEnergyCard: View {
     let onLogEnergy: (Int) -> Void
 
     var body: some View {
-        Card {
-            HStack(alignment: .top, spacing: 16) {
-                column(
-                    label: "Mood",
-                    value: mood,
-                    trend: moodTrend,
-                    tint: LifeOSColor.Metric.mood,
-                    icon: "face.smiling.fill",
-                    onLog: onLogMood
-                )
-                Divider().overlay(LifeOSColor.stroke)
-                column(
-                    label: "Energy",
-                    value: energy,
-                    trend: energyTrend,
-                    tint: LifeOSColor.Metric.energy,
-                    icon: "bolt.fill",
-                    onLog: onLogEnergy
-                )
-            }
+        VStack(spacing: 10) {
+            row(
+                label: "Mood",
+                value: mood,
+                trend: moodTrend,
+                tint: LifeOSColor.Metric.mood,
+                icon: "face.smiling.fill",
+                onLog: onLogMood
+            )
+            row(
+                label: "Energy",
+                value: energy,
+                trend: energyTrend,
+                tint: LifeOSColor.Metric.energy,
+                icon: "bolt.fill",
+                onLog: onLogEnergy
+            )
         }
     }
 
-    private func column(
+    /// Single full-width row per metric. Header line with icon +
+    /// label + big number + sparkline; full-width 1–10 chip row
+    /// underneath with chips sized for thumb tapping (32pt). Stacking
+    /// the two metrics (instead of two columns) gives each ~10× as
+    /// much horizontal room for the chip row, which was the real
+    /// problem with the old side-by-side layout.
+    private func row(
         label: String,
         value: Int?,
         trend: [Double],
@@ -44,46 +47,54 @@ struct MoodEnergyCard: View {
         icon: String,
         onLog: @escaping (Int) -> Void
     ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 5) {
-                Image(systemName: icon).font(.system(size: 11)).foregroundStyle(tint)
-                Text(label.uppercased())
-                    .font(.system(size: 9, weight: .semibold))
-                    .tracking(1.2)
-                    .foregroundStyle(LifeOSColor.fg3)
-            }
-            HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text(value.map(String.init) ?? "—")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(.white)
-                Text("/10")
-                    .font(.system(size: 11))
-                    .foregroundStyle(LifeOSColor.fg3)
-            }
-            if trend.count > 1 {
-                Sparkline(values: trend, tint: tint, height: 24)
-            }
-            HStack(spacing: 3) {
-                ForEach(1...10, id: \.self) { i in
-                    Button {
-                        Haptics.tick()
-                        onLog(i)
-                    } label: {
-                        Text("\(i)")
-                            .font(.system(size: 10, weight: .semibold).monospacedDigit())
-                            .frame(width: 18, height: 18)
-                            .background(
-                                Circle().fill(
-                                    value == i ? tint : tint.opacity(0.12)
-                                )
-                            )
-                            .foregroundStyle(value == i ? .black : tint)
+        Card(tint: tint) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    HStack(spacing: 6) {
+                        Image(systemName: icon).font(.system(size: 13)).foregroundStyle(tint)
+                        Text(label.uppercased())
+                            .font(.system(size: 10, weight: .heavy)).tracking(1.2)
+                            .foregroundStyle(LifeOSColor.fg3)
                     }
-                    .buttonStyle(.plain)
+                    Spacer()
+                    if trend.count > 1 {
+                        Sparkline(values: trend, tint: tint, height: 22)
+                            .frame(width: 84)
+                    }
+                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                        Text(value.map(String.init) ?? "—")
+                            .font(.system(size: 30, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(.white)
+                            .contentTransition(.numericText())
+                        Text("/10")
+                            .font(.system(size: 11))
+                            .foregroundStyle(LifeOSColor.fg3)
+                    }
                 }
+                chipRow(value: value, tint: tint, onLog: onLog)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func chipRow(value: Int?, tint: Color, onLog: @escaping (Int) -> Void) -> some View {
+        HStack(spacing: 6) {
+            ForEach(1...10, id: \.self) { i in
+                Button {
+                    Haptics.tick()
+                    onLog(i)
+                } label: {
+                    Text("\(i)")
+                        .font(.system(size: 12, weight: .bold).monospacedDigit())
+                        .frame(maxWidth: .infinity, minHeight: 32)
+                        .background(
+                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                .fill(value == i ? tint : tint.opacity(0.12))
+                        )
+                        .foregroundStyle(value == i ? .black : tint)
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 }

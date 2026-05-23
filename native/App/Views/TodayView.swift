@@ -41,22 +41,9 @@ struct TodayView: View {
                         onChange: persist
                     )
                     .cascadeReveal(index: 5, visible: revealed)
-                    workoutsSummary.cascadeReveal(index: 6, visible: revealed)
-                    sleepCard.cascadeReveal(index: 7, visible: revealed)
-                    HydrationCard(
-                        currentOz: todayEntry.waterOz,
-                        goalOz: settings.waterGoalOz,
-                        onLog: { delta in
-                            todayEntry.waterOz = max(0, todayEntry.waterOz + delta)
-                            persist()
-                            Task { await HealthKitManager.shared.writeWater(ounces: max(0, delta)) }
-                        }
-                    )
-                    .cascadeReveal(index: 8, visible: revealed)
-                    habitsRoll.cascadeReveal(index: 9, visible: revealed)
                     MoodEnergyCard(
-                        mood: todayEntry.moodScore ?? 0,
-                        energy: todayEntry.energyScore ?? 0,
+                        mood: todayEntry.moodScore,
+                        energy: todayEntry.energyScore,
                         moodTrend: moodTrend7d,
                         energyTrend: energyTrend7d,
                         onLogMood: { v in
@@ -68,7 +55,20 @@ struct TodayView: View {
                             persist()
                         }
                     )
-                    .cascadeReveal(index: 10, visible: revealed)
+                    .cascadeReveal(index: 6, visible: revealed)
+                    workoutsSummary.cascadeReveal(index: 7, visible: revealed)
+                    sleepCard.cascadeReveal(index: 8, visible: revealed)
+                    HydrationCard(
+                        currentOz: todayEntry.waterOz,
+                        goalOz: settings.waterGoalOz,
+                        onLog: { delta in
+                            todayEntry.waterOz = max(0, todayEntry.waterOz + delta)
+                            persist()
+                            Task { await HealthKitManager.shared.writeWater(ounces: max(0, delta)) }
+                        }
+                    )
+                    .cascadeReveal(index: 9, visible: revealed)
+                    habitsRoll.cascadeReveal(index: 10, visible: revealed)
                     Spacer(minLength: 80)
                 }
                 .padding(.horizontal, 14)
