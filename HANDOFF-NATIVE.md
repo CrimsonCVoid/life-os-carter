@@ -77,7 +77,16 @@ fully wired and stable, those can be reverted to clean Drizzle as a follow-up.
 - **Body screen** — not built
 - **Push notifications (APNs)** — entitlement set, no device-token registration code
 - **TDEE / cut-bulk wizard** — UserSettings + custom macro goals exist; the guided setup wizard does not (manual entry only)
-- **Google Health server route response shape** — `/api/google-health/sync` is hit by `GoogleHealthClient.syncToday()` but the response decoder assumes fields the route may not actually return yet; double-check the server route returns `{ sleepHours, hrvMs, restingHr, steps, weightLb, hrvBaseline, rhrBaseline }` keys or adjust the decoder
+- **Google Health: end-to-end iOS-wired.** Tokens stored AES-256-GCM in
+  Neon `integrations` table (was httpOnly cookies — iOS couldn't see).
+  Signed-state JWT pins OAuth to the iOS user. Callback redirects via
+  `lifeos://google-health/connected` deep link. `GoogleHealthClient.handleReturn`
+  + LifeOSApp `.onOpenURL` close the loop. Sync decoder matches the real
+  `{ updates: [{date, fields}], syncedAt, range, persisted }` server shape and
+  hydrates today's DailyEntry from the matching `updates[]` row + walks the
+  window for HRV/RHR baselines. **Verify on device:** `GOOGLE_HEALTH_REDIRECT_URI`
+  in Vercel env must still be `https://life-os-carter.vercel.app/api/fitbit/callback`
+  (the only registered URI in Google Cloud Console — we kept the legacy path)
 - **TestFlight** — `DEVELOPMENT_TEAM` set to `6A3B3XQF6G` (wcarterbrady@icloud.com) in `project.yml`. Still needs an App Store Connect app record + first archive upload before TestFlight invites can go out
 
 ---

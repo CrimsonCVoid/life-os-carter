@@ -80,6 +80,17 @@ struct LifeOSApp: App {
                         }
                     }
                 }
+                .onOpenURL { url in
+                    // Google Health OAuth callback returns the user to
+                    // the app via the lifeos:// scheme. The host tells
+                    // us which integration to refresh.
+                    Task {
+                        await GoogleHealthClient.shared.handleReturn(
+                            url: url,
+                            in: sharedModelContainer.mainContext
+                        )
+                    }
+                }
         }
         .modelContainer(sharedModelContainer)
     }

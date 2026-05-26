@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   getValidAccessToken,
   markNeedsReconnect,
-} from "@/lib/integrations/google-health/tokens-server";
+  setLastSyncedAt,
+} from "@/lib/integrations/google-health/tokens-db";
 import { RefreshFailedError } from "@/lib/integrations/google-health/oauth-server";
 import {
   fetchCardioLoad,
@@ -60,10 +61,10 @@ export async function POST(req: NextRequest) {
 
   let accessToken: string;
   try {
-    accessToken = await getValidAccessToken();
+    accessToken = await getValidAccessToken(user.id);
   } catch (e) {
     if (e instanceof RefreshFailedError) {
-      await markNeedsReconnect();
+      await markNeedsReconnect(user.id);
       return NextResponse.json(
         { error: "reconnect_needed" },
         { status: 401 }
@@ -97,7 +98,7 @@ export async function POST(req: NextRequest) {
     } else {
       const reason = r.reason;
       if (reason instanceof RefreshFailedError) {
-        await markNeedsReconnect();
+        await markNeedsReconnect(user.id);
         return NextResponse.json(
           { error: "reconnect_needed" },
           { status: 401 }
@@ -152,6 +153,14 @@ export async function POST(req: NextRequest) {
         `rhr persist ${u.date}: ${e instanceof Error ? e.message : "unknown"}`
       );
     }
+  }
+
+  // Stamp the lastSyncedAt on the integrations row so the Settings
+  // card can show "synced 5m ago" without a separate query.
+  try {
+    await setLastSyncedAt(user.id, syncedAtDate);
+  } catch {
+    // intentional: stamping is metadata-only
   }
 
   return NextResponse.json({
