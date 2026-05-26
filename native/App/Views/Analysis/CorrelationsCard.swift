@@ -83,15 +83,19 @@ struct CorrelationsCard: View {
     }
 
     private var loadingBody: some View {
-        HStack(spacing: 10) {
-            ProgressView()
-                .controlSize(.small)
-                .tint(LifeOSColor.accent)
-            Text("Crunching 30 days of logs…")
-                .font(.system(size: 12))
-                .foregroundStyle(LifeOSColor.fg2)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: "sparkles")
+                    .symbolEffect(.pulse.byLayer, options: .repeating)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(LifeOSColor.accent)
+                Text("Crunching 30 days of logs…")
+                    .font(.system(size: 12))
+                    .foregroundStyle(LifeOSColor.fg2)
+                Spacer()
+            }
+            SkeletonShimmer(lines: 4, lastLineFraction: 0.6)
         }
-        .padding(.vertical, 4)
     }
 
     private func loadedBody(_ r: CorrelationsResponse) -> some View {

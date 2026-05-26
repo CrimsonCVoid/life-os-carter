@@ -26,6 +26,13 @@ struct RecoveryStrainHero: View {
     private var recoverySide: some View {
         VStack(spacing: 8) {
             ZStack {
+                // Soft halo behind the ring — matches the recovery
+                // band's tint so a low score reads as red atmosphere
+                // and a high score reads as a green glow.
+                Circle()
+                    .fill(recoveryTint.opacity(0.32))
+                    .frame(width: 96, height: 96)
+                    .blur(radius: 28)
                 ScoreRing(
                     progress: Double(recovery?.value ?? 0) / 100.0,
                     value: recovery.map { "\($0.value)" } ?? "—",
@@ -33,6 +40,8 @@ struct RecoveryStrainHero: View {
                     tint: recoveryTint,
                     size: 96
                 )
+                .contentTransition(.numericText())
+                .animation(.spring(response: 0.4, dampingFraction: 0.8), value: recovery?.value)
             }
             Text(recoveryBandLabel)
                 .font(.system(size: 10, weight: .heavy)).tracking(0.8)
@@ -79,13 +88,21 @@ struct RecoveryStrainHero: View {
 
     private var strainSide: some View {
         VStack(spacing: 8) {
-            ScoreRing(
-                progress: strain.value / 21.0,
-                value: String(format: "%.1f", strain.value),
-                label: "STRAIN",
-                tint: strainTint,
-                size: 96
-            )
+            ZStack {
+                Circle()
+                    .fill(strainTint.opacity(0.28))
+                    .frame(width: 96, height: 96)
+                    .blur(radius: 28)
+                ScoreRing(
+                    progress: strain.value / 21.0,
+                    value: String(format: "%.1f", strain.value),
+                    label: "STRAIN",
+                    tint: strainTint,
+                    size: 96
+                )
+                .contentTransition(.numericText())
+                .animation(.spring(response: 0.4, dampingFraction: 0.8), value: strain.value)
+            }
             Text(strainBandLabel)
                 .font(.system(size: 10, weight: .heavy)).tracking(0.8)
                 .foregroundStyle(strainTint)

@@ -16,40 +16,22 @@ struct Card<Content: View>: View {
         content
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                ZStack {
-                    // Base glass
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                    // Optional accent wash
-                    if let tint {
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [tint.opacity(0.08), tint.opacity(0.0)],
-                                    startPoint: .topLeading, endPoint: .bottomTrailing
-                                )
-                            )
-                    }
+            .liquidGlass(cornerRadius: 20, tint: tint, depth: .soft)
+            .overlay(alignment: .topTrailing) {
+                // Soft tint bloom in the top-right corner when a tint
+                // is provided — adds visual weight to the active card
+                // without overwhelming the read.
+                if let tint {
+                    Circle()
+                        .fill(tint.opacity(0.18))
+                        .frame(width: 140, height: 140)
+                        .blur(radius: 60)
+                        .offset(x: 40, y: -40)
+                        .allowsHitTesting(false)
+                        .blendMode(.plusLighter)
+                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                 }
-            )
-            .overlay(
-                // Sheen: brighter at the top, fading to invisible. Sells
-                // the "glass" treatment without resorting to a hard border.
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.14),
-                                Color.white.opacity(0.04),
-                                Color.white.opacity(0.0),
-                            ],
-                            startPoint: .top, endPoint: .bottom
-                        ),
-                        lineWidth: 0.5
-                    )
-            )
-            .shadow(color: Color.black.opacity(0.4), radius: 16, x: 0, y: 8)
+            }
     }
 }
 
