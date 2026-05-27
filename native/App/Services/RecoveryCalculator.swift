@@ -5,10 +5,10 @@ import Foundation
 /// deviation (inverted — higher RHR is worse), sleep hours vs goal,
 /// and a small subjective component from mood/energy if logged.
 ///
-/// All components default to neutral (50%) when their inputs are
-/// missing so a fresh install — or a user without an Apple Watch —
-/// still sees a score instead of a "—". Returns nil only when no
-/// signal at all is present (no HRV, no RHR, no sleep, no mood).
+/// HRV/RHR/mood components fall back to neutral (50%) when missing, but
+/// SLEEP IS REQUIRED: recovery is a morning-after-sleep metric, so with no
+/// sleep data we return nil and the UI shows an empty state instead of a
+/// number you "recovered" to without having slept.
 enum RecoveryCalculator {
     struct Score {
         let value: Int           // 0–100
@@ -40,10 +40,8 @@ enum RecoveryCalculator {
         let sleepNow = daily?.sleepHours
         let mood = daily?.moodScore
 
-        // Bail when there's literally nothing to compute from.
-        guard hrvNow != nil || rhrNow != nil || sleepNow != nil || mood != nil else {
-            return nil
-        }
+        // Recovery requires last night's sleep — no sleep, no score.
+        guard sleepNow != nil else { return nil }
 
         var comps: [Component] = []
 

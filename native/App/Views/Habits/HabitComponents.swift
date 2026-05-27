@@ -14,13 +14,23 @@ struct HabitHeatmapStrip: View {
     private let cal = Calendar.current
 
     var body: some View {
-        HStack(spacing: spacing) {
-            ForEach(cells, id: \.date) { c in
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(fill(for: c))
-                    .frame(width: squareSize, height: squareSize)
+        // Shrink squares to fit the available width so a 30-day row never
+        // overflows a narrow screen (it was ~420pt wide at squareSize 10).
+        // `squareSize` is treated as a maximum.
+        let count = max(1, cells.count)
+        return GeometryReader { geo in
+            let totalSpacing = spacing * CGFloat(count - 1)
+            let size = max(4, min(squareSize, (geo.size.width - totalSpacing) / CGFloat(count)))
+            HStack(spacing: spacing) {
+                ForEach(cells, id: \.date) { c in
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .fill(fill(for: c))
+                        .frame(width: size, height: size)
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         }
+        .frame(height: squareSize)
     }
 
     private struct Cell {

@@ -17,6 +17,7 @@ struct NutritionView: View {
         order: .reverse
     ) private var meals: [MealLog]
     @Query private var userSettingsRows: [UserSettings]
+    @Query private var dailyRows: [DailyEntry]
     @Environment(\.modelContext) private var modelContext
 
     // Capture sheet selection — only one open at a time. `nil` = none.
@@ -258,15 +259,22 @@ struct NutritionView: View {
     private var todayCarbs: Double   { todayMeals.reduce(0) { $0 + $1.carbsG   } }
     private var todayFat: Double     { todayMeals.reduce(0) { $0 + $1.fatG     } }
 
+    /// Calories burned today from the active health source — prefer total
+    /// (active + BMR), fall back to active, then 0.
+    private var todayBurnedKcal: Double {
+        let key = ISO8601DateFormatter.dateOnly.string(from: Date())
+        let row = dailyRows.first { $0.date == key }
+        return row?.totalCaloriesKcal ?? row?.activeEnergyKcal ?? 0
+    }
+
     private var macroSummary: some View {
-        // TODO: pull goals from a Settings @Model once user-configurable targets exist.
         MacroRingsCard(
-            proteinG: todayProtein, proteinGoalG: 180,
-            carbsG: todayCarbs, carbsGoalG: 240,
-            fatG: todayFat, fatGoalG: 75,
+            proteinG: todayProtein, proteinGoalG: Double(userSettings.proteinGoal),
+            carbsG: todayCarbs, carbsGoalG: Double(userSettings.carbsGoal),
+            fatG: todayFat, fatGoalG: Double(userSettings.fatGoal),
             caloriesEaten: todayKcal,
-            caloriesBurned: 467,
-            caloriesGoal: 2200
+            caloriesBurned: todayBurnedKcal,
+            caloriesGoal: Double(userSettings.caloriesGoal)
         )
     }
 

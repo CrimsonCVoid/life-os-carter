@@ -304,25 +304,55 @@ struct OnboardingFlow: View {
 
     private var biometricsStep: some View {
         VStack(alignment: .leading, spacing: 16) {
-            stepHeader("About you", "Used to compute your daily calorie and macro targets. Nothing leaves your device.")
+            stepHeader("About you", "Drag the dials. Used to compute your daily calorie and macro targets — nothing leaves your device.")
 
             Card {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 20) {
                     segmented(
                         label: "Sex",
                         options: [("male", "Male"), ("female", "Female")],
                         selection: $sex
                     )
-                    stepperRow(label: "Age", value: $ageYears, range: 14...90, step: 1, unit: "yrs")
+                    rulerField("AGE") {
+                        RulerPicker(value: $ageYears, range: 14...90, tint: LifeOSColor.accent,
+                                    majorEvery: 5, format: { "\($0)" }, majorLabel: { "\($0)" })
+                    }
                     if usesMetric {
-                        stepperRow(label: "Height", value: heightCmBinding, range: 120...220, step: 1, unit: "cm")
-                        stepperRow(label: "Weight", value: weightKgBinding, range: 36...205, step: 1, unit: "kg")
+                        rulerField("HEIGHT") {
+                            RulerPicker(value: heightCmBinding, range: 120...220, tint: LifeOSColor.accent,
+                                        majorEvery: 10, format: { "\($0) cm" }, majorLabel: { "\($0)" })
+                        }
+                        rulerField("WEIGHT") {
+                            RulerPicker(value: weightKgBinding, range: 36...205, tint: LifeOSColor.accent,
+                                        majorEvery: 10, format: { "\($0) kg" }, majorLabel: { "\($0)" })
+                        }
                     } else {
-                        stepperRow(label: "Height", value: $heightInches, range: 48...84, step: 1, unit: "in")
-                        stepperRow(label: "Weight", value: $weightLb, range: 80...450, step: 1, unit: "lb")
+                        rulerField("HEIGHT") {
+                            RulerPicker(value: $heightInches, range: 48...84, tint: LifeOSColor.accent,
+                                        majorEvery: 12, format: heightFtIn, majorLabel: { "\($0 / 12)′" })
+                        }
+                        rulerField("WEIGHT") {
+                            RulerPicker(value: $weightLb, range: 80...450, tint: LifeOSColor.accent,
+                                        majorEvery: 10, format: { "\($0) lb" }, majorLabel: { "\($0)" })
+                        }
                     }
                 }
             }
+        }
+    }
+
+    /// "70" inches -> "5 ft 10 in" (drops the inches when it's a round foot).
+    private func heightFtIn(_ inches: Int) -> String {
+        let ft = inches / 12, inch = inches % 12
+        return inch == 0 ? "\(ft) ft" : "\(ft) ft \(inch) in"
+    }
+
+    private func rulerField<P: View>(_ label: String, @ViewBuilder _ picker: () -> P) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.system(size: 10, weight: .heavy)).tracking(0.8)
+                .foregroundStyle(LifeOSColor.fg3)
+            picker()
         }
     }
 
