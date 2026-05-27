@@ -32,6 +32,7 @@ import {
 import { signOAuthState } from "@/lib/integrations/google-health/state-jwt";
 import { getCurrentUser } from "@/lib/auth-server";
 import { verifyNativeToken } from "@/lib/native-jwt";
+import { externalIdToUuid } from "@/lib/user-id";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +52,14 @@ export async function GET(req: NextRequest) {
   let userId: string | null = null;
   const bearer = req.nextUrl.searchParams.get("bearer");
   if (bearer) {
-    userId = await verifyNativeToken(bearer);
+    // verifyNativeToken returns the prefixed external id ("google:<sub>").
+    // The integrations table — like every user-scoped table — is keyed
+    // by the hashed UUID that getCurrentUser() returns, so hash it here.
+    // Without this the callback persists tokens under "google:<sub>"
+    // while status/sync look them up by the UUID; they never match and
+    // the connection reads as not-connected with no data.
+    const externalId = await verifyNativeToken(bearer);
+    userId = externalId ? externalIdToUuid(externalId) : null;
   }
   if (!userId) {
     const user = await getCurrentUser();
