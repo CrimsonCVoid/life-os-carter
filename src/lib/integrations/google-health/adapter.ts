@@ -584,6 +584,24 @@ export async function debugRawFetches(opts: {
         pageSize: "5",
       }).toString()
   );
+  await grab(
+    "weight_rollup",
+    `${base}/users/me/dataTypes/weight/dataPoints:dailyRollUp`,
+    { method: "POST", body: rollupBody }
+  );
+  await grab(
+    "azm_rollup",
+    `${base}/users/me/dataTypes/active-zone-minutes/dataPoints:dailyRollUp`,
+    { method: "POST", body: rollupBody }
+  );
+  await grab(
+    "hrv_list",
+    `${base}/users/me/dataTypes/heart-rate-variability/dataPoints?` +
+      new URLSearchParams({
+        filter: `heart_rate_variability.sample_time.civil_time >= "${isoStartOf(startDate)}" AND heart_rate_variability.sample_time.civil_time < "${isoStartOf(nextDay(endDate))}"`,
+        pageSize: "5",
+      }).toString()
+  );
   return out;
 }
 
