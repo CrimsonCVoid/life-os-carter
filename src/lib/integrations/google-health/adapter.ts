@@ -687,6 +687,137 @@ function clampWindow(startDate: DateStr, endDate: DateStr, maxDays: number): Dat
 }
 
 // ---------------------------------------------------------------------------
+// INTRADAY HEART RATE (sample type — ~1 Hz; bucketed to minute-of-day)
+// ---------------------------------------------------------------------------
+
+/** Clock-time component of a civilTime. Zero parts are OMITTED by the API
+ * (e.g. {minutes:23,seconds:20} means hour 0) — default each to 0. */
+type CivilTimeOfDay = { hours?: number; minutes?: number; seconds?: number };
+
+type RawHeartRateDataPoint = {
+  heartRate?: {
+    sampleTime?: {
+      physicalTime?: string;
+      utcOffset?: string;
+      civilTime?: { date?: CivilDateParts; time?: CivilTimeOfDay };
+    };
+    beatsPerMinute?: number | string;
+  };
+};
+
+export type IntradayHeartRate = {
+  date: DateStr;
+  /** One bucket per minute-of-day that has data (0..1439). */
+  samples: { minute: number; avg: number; min: number; max: number }[];
+  min: number;
+  max: number;
+  avg: number;
+  count: number;
+};
+
+/** Minute-of-day (0..1439) for a sample, preferring the structured civil
+ * time and falling back to physicalTime + utcOffset (seconds, e.g.
+ * "-14400s") when civilTime is absent. */
+function minuteOfDay(sample: {
+  physicalTime?: string;
+  utcOffset?: string;
+  civilTime?: { time?: CivilTimeOfDay };
+}): number | undefined {
+  const t = sample.civilTime?.time;
+  if (t) {
+    const h = t.hours ?? 0;
+    const m = t.minutes ?? 0;
+    return h * 60 + m;
+  }
+  if (sample.physicalTime) {
+    const base = new Date(sample.physicalTime).getTime();
+    if (!Number.isFinite(base)) return undefined;
+    const offsetSec = sample.utcOffset
+      ? parseInt(sample.utcOffset.replace(/[^\d-]/g, ""), 10)
+      : 0;
+    const local = new Date(base + (Number.isFinite(offsetSec) ? offsetSec : 0) * 1000);
+    return local.getUTCHours() * 60 + local.getUTCMinutes();
+  }
+  return undefined;
+}
+
+export async function fetchIntradayHeartRate(opts: {
+  accessToken: string;
+  date: DateStr;
+}): Promise<IntradayHeartRate> {
+  const end = nextDay(opts.date);
+  // Per-minute buckets: minute-of-day -> running sum/min/max/count.
+  const buckets = new Map<
+    number,
+    { sum: number; min: number; max: number; n: number }
+  >();
+  let dayMin = Infinity;
+  let dayMax = -Infinity;
+  let daySum = 0;
+  let dayCount = 0;
+
+  let pageToken: string | undefined;
+  // Hard cap is defensive: a full day at ~1 Hz is tens of thousands of
+  // samples, so 60 pages of 1000 covers it with headroom.
+  for (let page = 0; page < 60; page += 1) {
+    const params = new URLSearchParams({
+      filter: `heart_rate.sample_time.civil_time >= "${isoStartOf(opts.date)}" AND heart_rate.sample_time.civil_time < "${isoStartOf(end)}"`,
+      pageSize: "1000",
+    });
+    if (pageToken) params.set("pageToken", pageToken);
+    const url = `${GOOGLE_HEALTH_BASE_URL}/users/me/dataTypes/${DATA_TYPES.heartRate}/dataPoints?${params.toString()}`;
+    const res = await callGoogle<ListResponse<RawHeartRateDataPoint>>(url, {
+      accessToken: opts.accessToken,
+    });
+
+    for (const p of res.dataPoints ?? []) {
+      const hr = p.heartRate;
+      if (!hr) continue;
+      const bpm = parseIntegerish(hr.beatsPerMinute);
+      if (bpm == null) continue;
+      const minute = minuteOfDay(hr.sampleTime ?? {});
+      if (minute == null) continue;
+      const cur = buckets.get(minute) ?? {
+        sum: 0,
+        min: Infinity,
+        max: -Infinity,
+        n: 0,
+      };
+      cur.sum += bpm;
+      cur.n += 1;
+      if (bpm < cur.min) cur.min = bpm;
+      if (bpm > cur.max) cur.max = bpm;
+      buckets.set(minute, cur);
+      daySum += bpm;
+      dayCount += 1;
+      if (bpm < dayMin) dayMin = bpm;
+      if (bpm > dayMax) dayMax = bpm;
+    }
+
+    pageToken = res.nextPageToken;
+    if (!pageToken) break;
+  }
+
+  const samples = [...buckets.entries()]
+    .map(([minute, b]) => ({
+      minute,
+      avg: Math.round(b.sum / b.n),
+      min: b.min,
+      max: b.max,
+    }))
+    .sort((a, b) => a.minute - b.minute);
+
+  return {
+    date: opts.date,
+    samples,
+    min: dayCount > 0 ? dayMin : 0,
+    max: dayCount > 0 ? dayMax : 0,
+    avg: dayCount > 0 ? Math.round(daySum / dayCount) : 0,
+    count: dayCount,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // MERGE
 // ---------------------------------------------------------------------------
 
