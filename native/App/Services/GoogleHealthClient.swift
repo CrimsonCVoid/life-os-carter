@@ -149,6 +149,11 @@ final class GoogleHealthClient {
         let restingHeartRate: Double?     // bpm
         let heartRateVariability: Double? // ms (rMSSD-style)
         let cardioLoad: Double?
+        let activeEnergyKcal: Double?
+        let totalCaloriesKcal: Double?
+        let distanceMeters: Double?
+        let floors: Int?
+        let vo2Max: Double?
     }
 
     private struct SleepStages: Decodable {
@@ -246,6 +251,11 @@ final class GoogleHealthClient {
             if let v = fields.restingHeartRate { row.restingHr = v }
             if let v = fields.heartRateVariability { row.hrvMs = v }
             if let v = fields.weight           { row.weightLb = v }
+            if let v = fields.activeEnergyKcal { row.activeEnergyKcal = v }
+            if let v = fields.totalCaloriesKcal { row.totalCaloriesKcal = v }
+            if let v = fields.distanceMeters   { row.distanceMeters = v }
+            if let v = fields.floors           { row.floors = v }
+            if let v = fields.vo2Max           { row.vo2Max = v }
             if let s = fields.sleepStages {
                 if let l = s.lightMin { row.sleepLightMin = l }
                 if let d = s.deepMin  { row.sleepDeepMin = d }

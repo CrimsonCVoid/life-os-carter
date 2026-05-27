@@ -143,14 +143,10 @@ struct TodayView: View {
             .values
             .map { $0.reduce(0.0) { $0 + $1.totalVolumeLb } }
             .max() ?? 0
-        // We don't (yet) have async active-energy in the derived state.
-        // Use today's calorie deficit from HealthKit syncToday as a proxy:
-        // if it lands in DailyEntry.notes or via separate query in v2.
-        // For now zero out — sufflower contribution from volume alone.
         return StrainCalculator.compute(
             liftVolumeTodayLb: todayVolume,
             liftVolumeMax7dLb: weekMaxDayVolume,
-            activeEnergyKcal: 0
+            activeEnergyKcal: todayEntry.activeEnergyKcal ?? 0
         )
     }
 
@@ -327,7 +323,32 @@ struct TodayView: View {
                     delta: weight.map { $0.isToday ? "—" : asOfCaption($0.date) } ?? "—"
                 )
             }
+            HStack(spacing: 10) {
+                VitalTile(
+                    icon: "flame.fill", label: "Active Cal",
+                    value: todayEntry.activeEnergyKcal.map { "\(Int($0))" } ?? "—",
+                    unit: "kcal",
+                    tint: LifeOSColor.Metric.calories,
+                    trend: [],
+                    delta: caloriesDelta
+                )
+                VitalTile(
+                    icon: "point.topleft.down.curvedto.point.bottomright.up", label: "Distance",
+                    value: todayEntry.distanceMeters.map { String(format: "%.2f", $0 / 1609.34) } ?? "—",
+                    unit: "mi",
+                    tint: LifeOSColor.Metric.energy,
+                    trend: [],
+                    delta: "—"
+                )
+            }
         }
+    }
+
+    /// Caption for the active-calories tile: total burned (active + BMR)
+    /// when available, since active calories alone reads low.
+    private var caloriesDelta: String {
+        guard let total = todayEntry.totalCaloriesKcal else { return "—" }
+        return "\(Int(total)) total"
     }
 
     /// A metric value plus where it came from, for the "as of …" fallback.

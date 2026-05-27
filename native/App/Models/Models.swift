@@ -46,6 +46,15 @@ final class DailyEntry {
     var sleepLightMin: Int?
     var sleepAwakeMin: Int?
 
+    /// Activity metrics from the active health source (Apple Health /
+    /// Google Health). nil = no data synced for the day. Additive
+    /// optional fields => lightweight SwiftData migration on existing rows.
+    var activeEnergyKcal: Double?
+    var totalCaloriesKcal: Double?
+    var distanceMeters: Double?
+    var floors: Int?
+    var vo2Max: Double?
+
     init(
         date: String,
         sleepHours: Double? = nil,
