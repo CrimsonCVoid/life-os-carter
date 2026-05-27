@@ -9,31 +9,87 @@ cd ~/Downloads/life-os-hbrady && ./scripts/handoff-native.sh
 
 ---
 
-## State (2026-05-22)
+## State (2026-05-26)
 
-- **Branch:** `native` at `dcf339b`
+- **Branch:** `native` at `a32ecaf`
 - **Working tree:** clean
-- **Pushed to:** origin/native, carter/native, life-os-dev/native, carter/main — all at `dcf339b`
+- **Pushed to:** origin/native, life-os-dev/native, carter/native:main — all at `a32ecaf`
+- **TestFlight:** 1.0 (1) shipped May 22. 1.1 (2) is bumped in `project.yml` — awaiting Xcode Archive + Upload (no CI yet)
+- **Project version on disk:** MARKETING_VERSION `1.1`, CURRENT_PROJECT_VERSION `2`
 
 ---
 
-## Big infrastructure pivot this session
+## Session arcs that landed since 2026-05-22
 
-The live Neon database the old Capacitor app pointed at had drifted materially from
-`src/lib/db/schema.ts`. Every new `/api/data/*` call from the native app surfaced a different
-column-missing or constraint-mismatch error (`name`, `archived_at`, `photo_indexeddb_key`,
-`exercises`, etc.). After a few cycles of whack-a-mole patching, we **created a fresh Neon project
-and pushed schema.ts cleanly**:
+This is what's true today on top of the prior state:
 
-- New Neon project endpoint: `ep-billowing-thunder-apmp5h9d.c-7.us-east-1.aws.neon.tech`
-- 48 tables created via `npm run db:push` — matches `schema.ts` exactly
-- Old Neon project is dead — do not point at it
-- **Vercel env vars `DATABASE_URL` + `DATABASE_URL_UNPOOLED` must be set to the new project**
-  before any /api/* call works
+**1. Data backbone is real.** Every Today/Analysis chart reads from `DailyEntry` /
+`LiftSessionEntry` / `MealLog` / `HabitEntry` now. The `Sample.*` placeholders are
+gone from the productive paths. `AnalysisDataProvider` is the central snapshot
+function — pure-functional, cached in `@State` and refreshed via `.onChange` on
+range/count keys so chart cards don't re-walk 30 days every body eval.
 
-The data-layer functions (`createMeal`, `createHabit`, `createLiftSession`) still use raw SQL
-bypasses written during the drift period — they work against either schema. Once the new DB is
-fully wired and stable, those can be reverted to clean Drizzle as a follow-up.
+**2. Recovery + Strain are computed.** `RecoveryCalculator` (0–100, HRV/RHR/sleep/
+mood weighted) and `StrainCalculator` (0–21, lift volume + active energy) feed
+the `RecoveryStrainHero` on Today. `RecoveryAdvice` derives a one-line training
+recommendation that pairs with the hero (green=push, yellow=moderate, red=rest).
+
+**3. HealthKit + Google Health both real.** `HealthKitManager.syncToday(in:)`
+hydrates today's DailyEntry from HK (sleep totals + per-stage breakdown,
+HRV/RHR/steps/weight). `HealthSync` switches between Apple Health / Google
+Health / Manual per `UserSettings.healthDataSource`. **The CPU pegging on tab
+switch was caused by this:** sync ran unconditionally on every appear, rewrote
+SwiftData fields, triggered @Query churn across every screen. Now throttled to
+60s (force-bypass via pull-to-refresh).
+
+**4. Google Health is end-to-end wired for iOS.** Tokens moved out of httpOnly
+cookies (iOS couldn't see them) into the Neon `integrations` table, AES-256-
+GCM encrypted via `lib/db/encryption.ts`. OAuth user attribution via signed
+state JWT (`state-jwt.ts`) — iOS hits `/api/google-health/auth/start?bearer=<JWT>&client=ios`,
+server signs `{userId, nonce}` into the OAuth state, callback (`/api/fitbit/callback`)
+decodes + persists tokens under that user. Returns via `lifeos://google-health/connected`
+deep link. `GoogleHealthClient.handleReturn` + `LifeOSApp.onOpenURL` close the
+loop. Sync decoder matches the real `{ updates: [{date, fields}], syncedAt,
+range, persisted }` server shape — old decoder expected top-level fields that
+never existed.
+
+**5. UI overhaul layer 1.** Floating Liquid Glass tab bar replaces stock
+`TabView`; ambient mesh-gradient background (iOS 18+ MeshGradient, iOS 17
+LinearGradient fallback); `LiquidGlassBackground` modifier with depth-aware
+shadow + tint-aware radial glow; `Card` delegates to it; sheen overlay; soft
+halo behind hero rings; cross-fading tab content (220ms ease-in-out); skeleton
+shimmer for async cards (CorrelationsCard / NutritionInsightsCard);
+`HeroSectionLabel` with gradient hairline; `EmptyStateCard` premium empty state;
+`TrendDelta` direction-aware pill (upIsGood vs upIsBad); `VitalTile` upgrade
+with content-transitions + bigger numbers.
+
+**6. Habits overhaul.** Custom cadence (daily/weekdays/weekends/specific
+days/N-per-week), count-based habits with +/-, categories, archived state,
+30-day heatmap strip, detail view with stats grid, editor sheet, themed seed
+packs. `HabitCore.swift` + `HabitComponents.swift` carry the primitives.
+
+**7. PR celebration overlay.** Mid-workout: when a completed set beats all-time
+top weight or estimated 1RM, an animated trophy card pops with double haptic.
+Auto-dismisses at 2.4s.
+
+**8. Workout templates + muscle volume.** Six built-in templates (Push/Pull/
+Legs/Upper/Lower/Full Body) seeded on first launch. Tap Start → picker sheet.
+`MuscleVolumeRollup` aggregates 7-day per-muscle volume (cached in @State for
+perf). Last-performance banner under each exercise in active workout.
+
+**9. Nutrition: saved meals, quick-add, weekly summary, meal categorization.**
+SavedMeal favorites with usage-count ranking; QuickAddCaloriesSheet for ad-hoc
+logging; meals grouped Breakfast/Lunch/Dinner/Snack via time-of-day derive +
+manual override; WeeklyNutritionSummary screen pushed from toolbar.
+
+**10. TDEE wizard.** Sex/age/height/weight/activity/goal → Mifflin-St Jeor BMR
+× activity × goal modifier → 40/30/30 (maintain) or 40/40/20 (cut) or 30/45/25
+(bulk) macro split. Writes through to UserSettings.
+
+**11. Behavior correlation engine.** New `/api/correlations` route. iOS sends
+30-day daily snapshot + journal flags + workout/meal counts; Gemini returns
+3-5 correlations with effect size, sample sizes, confidence qualifier. Lazy
+loaded from CorrelationsCard on Analysis tab.
 
 ---
 
@@ -76,18 +132,11 @@ fully wired and stable, those can be reverted to clean Drizzle as a follow-up.
 
 - **Body screen** — not built
 - **Push notifications (APNs)** — entitlement set, no device-token registration code
-- **TDEE / cut-bulk wizard** — UserSettings + custom macro goals exist; the guided setup wizard does not (manual entry only)
-- **Google Health: end-to-end iOS-wired.** Tokens stored AES-256-GCM in
-  Neon `integrations` table (was httpOnly cookies — iOS couldn't see).
-  Signed-state JWT pins OAuth to the iOS user. Callback redirects via
-  `lifeos://google-health/connected` deep link. `GoogleHealthClient.handleReturn`
-  + LifeOSApp `.onOpenURL` close the loop. Sync decoder matches the real
-  `{ updates: [{date, fields}], syncedAt, range, persisted }` server shape and
-  hydrates today's DailyEntry from the matching `updates[]` row + walks the
-  window for HRV/RHR baselines. **Verify on device:** `GOOGLE_HEALTH_REDIRECT_URI`
-  in Vercel env must still be `https://life-os-carter.vercel.app/api/fitbit/callback`
-  (the only registered URI in Google Cloud Console — we kept the legacy path)
-- **TestFlight** — `DEVELOPMENT_TEAM` set to `6A3B3XQF6G` (wcarterbrady@icloud.com) in `project.yml`. Still needs an App Store Connect app record + first archive upload before TestFlight invites can go out
+- **Recipe builder + searchable food database** — MFP-killer features still missing. Capture is barcode + AI estimate + favorites only
+- **Sleep coach + auto-detect HK workouts + HR zones** — sleep stages render but no recommended-bedtime / next-day-strain coach yet
+- **Apple Watch companion** — separate target, not started
+- **Xcode Cloud workflow not created.** `ci_scripts/ci_post_clone.sh` is in place (installs xcodegen + regen on each cloud build), but no workflow exists yet to trigger on push. User must `Product → Xcode Cloud → Create Workflow` in Xcode once; see "Xcode Cloud setup" below
+- **Google Health connect flow being verified on device.** Env vars `GOOGLE_HEALTH_CLIENT_ID / SECRET / REDIRECT_URI` need to be set on Vercel (Web OAuth client created in Google Cloud project `778767465909`; redirect URI must be exactly `https://life-os-carter.vercel.app/api/fitbit/callback`). On last test the OAuth was hitting an unrelated "Edge Finder" project — root cause was stale/missing Vercel env. Redeploy after env changes
 
 ---
 
@@ -102,32 +151,57 @@ Set on **Production / Preview / Development**, then **Deployments → latest →
 | `NEXTAUTH_SECRET` | YES (32+ char random, `openssl rand -base64 32`) | Every bearer JWT 401 |
 | `GEMINI_API_KEY` | YES | Voice/photo/Coach all 500 |
 | `GOOGLE_IOS_CLIENT_ID` | YES (`778767465909-49jj6q2nd2gcn4qocvnlmgvbv8lhknuk.apps.googleusercontent.com`) | Link Google in Settings 401s |
-| `CRON_SECRET`, `VAPID_*`, `AUTH_GOOGLE_*`, `BLOB_READ_WRITE_TOKEN` | Optional | Legacy/web features only |
+| `GOOGLE_HEALTH_CLIENT_ID` | YES for Fitbit/Pixel users (`778767465909-8o8pcgqa81j1hp81hef48jkvi4eq3la4.apps.googleusercontent.com`) | Connect Google Health → 500 / "unsupported_response_type" |
+| `GOOGLE_HEALTH_CLIENT_SECRET` | YES for Fitbit/Pixel users | OAuth callback can't exchange code |
+| `GOOGLE_HEALTH_REDIRECT_URI` | YES for Fitbit/Pixel users (must be `https://life-os-carter.vercel.app/api/fitbit/callback` — matches Google Cloud Console registered URI) | OAuth "redirect_uri_mismatch" |
+| `CRON_SECRET`, `VAPID_*`, `AUTH_GOOGLE_*`, `BLOB_READ_WRITE_TOKEN` | Optional | Legacy/web features only — confirmed via grep, no iOS impact |
 
 ---
 
 ## Open items (priority order)
 
-1. **Update Vercel `DATABASE_URL` + `DATABASE_URL_UNPOOLED` to the new Neon project** if not already.
-   Verify with the pre-flight curl below. Without this, device-mint 500s with auth/password errors.
-2. **Wire HealthKit reads into Today + Analysis** — replace `Sample.*` static data with
-   `HealthKitManager.fetchSum/fetchAverage` calls. Probably an `@Observable HealthDataStore` keyed
-   off the range selector.
-3. **TestFlight: create App Store Connect record + first archive upload.** `DEVELOPMENT_TEAM`
-   is now wired (`6A3B3XQF6G` — wcarterbrady@icloud.com). Bundle IDs are
-   `com.hbrady.lifeos` and `com.hbrady.lifeos.WidgetExtension` — register both in App Store
-   Connect, then `Product → Archive` in Xcode and upload via Organizer.
-4. **Day-entry direct-input flows on Today screen** — water/weight/mood/etc. UI that writes to
-   `DailyEntry` (SwiftData) and the matching `/api/data/{water,weight,mood}-logs` routes (Neon).
+1. **Verify Google Health connect flow on device.** Add `GOOGLE_HEALTH_*` env vars on Vercel
+   → redeploy → open iOS app → Settings → Health Source → Google Health → Connect → consent in
+   Safari → returns via `lifeos://` deep link → "synced" shows in Settings. On the last attempt
+   it errored with "unsupported_response_type" from an unrelated "Edge Finder" project —
+   meaning `GOOGLE_HEALTH_CLIENT_ID` on Vercel was stale/wrong. Re-check the saved value.
+2. **Upload 1.1 (2) to TestFlight.** `Product → Archive` in Xcode (destination: Any iOS Device),
+   Organizer → Distribute App → App Store Connect → Upload. ~15 min processing. Or follow
+   "Xcode Cloud setup" below to automate future uploads.
+3. **Rotate three secrets that were pasted in chat.** `NEXTAUTH_SECRET`, `GEMINI_API_KEY`,
+   `GOOGLE_HEALTH_CLIENT_SECRET`. NEXTAUTH_SECRET rotation logs out all iOS users + breaks
+   encrypted Google Health tokens in Neon (the AES key is HKDF-derived from it) — pick a quiet
+   moment, update Vercel + local in lockstep.
+4. **Body screen** — unbuilt. Weight trend, body comp, photos.
 5. **APNs token registration + push** — `UserNotifications` permission,
    `application(_:didRegisterForRemoteNotificationsWithDeviceToken:)`, POST to
    `/api/push/register-apns`.
-6. **Body + Journal screens** — fully unbuilt.
-7. **Revert raw-SQL bypasses to clean Drizzle** — only safe AFTER confirming the new Neon DB
+6. **Recipe builder + searchable food database** — biggest remaining MFP gap.
+7. **Sleep coach + auto-detect HK workouts + HR zones** — biggest remaining Whoop gap.
+8. **Revert raw-SQL bypasses to clean Drizzle** — only safe AFTER confirming the new Neon DB
    matches `schema.ts` (which it does, post-`db:push`). Files to revert:
    `src/lib/data/{meals,habits,workouts}.ts`,
    `src/app/api/auth/{device-mint,native-mint,link-identity}/route.ts`,
    `src/lib/auth-server.ts`, `src/lib/user-id.ts`.
+
+---
+
+## Xcode Cloud setup (one-time, ~10 min)
+
+Once configured, every push to `carter:main` auto-archives + uploads to TestFlight.
+
+1. Open `native/LifeOS.xcodeproj` in Xcode
+2. **Product → Xcode Cloud → Create Workflow**
+3. Wizard:
+   - Authorize Apple's GitHub app on `CrimsonCVoid/life-os-carter`
+   - Workflow name: `TestFlight`
+   - Start condition: Branch → `main`
+   - Environment: macOS latest, Xcode latest
+   - Actions: delete default Build → add **Archive** → **Deployment Preparation: Internal Testing** → pick your `test` group
+4. Run manually once from the Xcode Cloud panel to verify `ci_scripts/ci_post_clone.sh`
+   installs xcodegen + regenerates the project (script lives at repo root; auto-discovered)
+5. Before every push, bump `CURRENT_PROJECT_VERSION` in `native/project.yml` — TestFlight
+   rejects duplicate build numbers
 
 ---
 
