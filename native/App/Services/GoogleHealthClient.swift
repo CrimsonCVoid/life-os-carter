@@ -198,17 +198,19 @@ final class GoogleHealthClient {
             return
         }
 
-        let todayKey = GHDateFmt.ymd(Date())
-        let todayUpdate = response.updates.first { $0.date == todayKey }
-
-        // Update the synced-at timestamp regardless of whether today
+        // Update the synced-at timestamp regardless of whether any day
         // had data — the round-trip itself succeeded, which is what
         // the UI cares about.
         if let date = Self.iso8601.date(from: response.syncedAt) {
             settings.lastGoogleHealthSyncAt = date.timeIntervalSince1970 * 1000
         }
 
-        if let update = todayUpdate {
+        // Mirror every returned day into its DailyEntry row, not just
+        // today. Fitbit/Pixel data lags — a sync frequently lands only
+        // yesterday's resting HR / steps / weight, and dropping the
+        // non-today rows meant that data never reached the Today tile or
+        // the Analysis history that read DailyEntry.
+        for update in response.updates {
             await Self.applyToDailyEntry(
                 fields: update.fields,
                 date: update.date,
@@ -279,14 +281,4 @@ final class GoogleHealthClient {
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f
     }()
-}
-
-private enum GHDateFmt {
-    static let formatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.locale = Locale(identifier: "en_US_POSIX")
-        return f
-    }()
-    static func ymd(_ d: Date) -> String { formatter.string(from: d) }
 }
