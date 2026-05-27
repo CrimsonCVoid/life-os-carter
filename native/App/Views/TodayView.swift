@@ -385,8 +385,9 @@ struct TodayView: View {
             }
             HStack(spacing: 10) {
                 VitalTile(
-                    icon: "flame.fill", label: "Active Cal",
-                    value: todayEntry.activeEnergyKcal.map { "\(Int($0))" } ?? "—",
+                    icon: "flame.fill", label: "Calories",
+                    value: (todayEntry.totalCaloriesKcal ?? todayEntry.activeEnergyKcal)
+                        .map { "\(Int($0))" } ?? "—",
                     unit: "kcal",
                     tint: LifeOSColor.Metric.calories,
                     trend: [],
@@ -404,11 +405,12 @@ struct TodayView: View {
         }
     }
 
-    /// Caption for the active-calories tile: total burned (active + BMR)
-    /// when available, since active calories alone reads low.
+    /// Caption for the Calories tile. The tile headline is TOTAL burned
+    /// (active + resting) so it matches the Nutrition tab's "burned" ring;
+    /// the caption breaks out the active (movement) portion.
     private var caloriesDelta: String {
-        guard let total = todayEntry.totalCaloriesKcal else { return "—" }
-        return "\(Int(total)) total"
+        guard let active = todayEntry.activeEnergyKcal else { return "—" }
+        return "\(Int(active)) active"
     }
 
     /// A metric value plus where it came from, for the "as of …" fallback.
