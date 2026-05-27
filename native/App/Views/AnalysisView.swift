@@ -14,6 +14,11 @@ struct AnalysisView: View {
     @State private var range: TimeRange = .month
     @State private var cardsVisible = false
 
+    /// Per-card scrubbed point, keyed by a stable card id. Lets each
+    /// in-place chart echo the finger's value into its own header
+    /// without one card's scrub leaking into another's readout.
+    @State private var scrub: [String: TrendPoint] = [:]
+
     /// Cached snapshot. Recomputing AnalysisData.compute on every
     /// body evaluation pegged CPU — the chart cards all read off it,
     /// so every @Query emission (every HealthKit sync, every meal
@@ -48,8 +53,12 @@ struct AnalysisView: View {
                     rangeSelector
                     revealCard(delay: 0.00) { CoachChatView() }
                     revealCard(delay: 0.01) { CorrelationsCard() }
-                    revealCard(delay: 0.02) { performanceHero }
-                    revealCard(delay: 0.04) { sleepArchitectureCard }
+                    revealCard(delay: 0.02) {
+                        drillIn(destination: performanceDetail) { performanceHero }
+                    }
+                    revealCard(delay: 0.04) {
+                        drillIn(destination: sleepDetail) { sleepArchitectureCard }
+                    }
                     revealCard(delay: 0.08) {
                         NavigationLink {
                             HeartRateGraphView()
@@ -59,18 +68,17 @@ struct AnalysisView: View {
                         .buttonStyle(.plain)
                         .simultaneousGesture(TapGesture().onEnded { Haptics.tap() })
                     }
-                    revealCard(delay: 0.10) {
-                        HStack(spacing: 12) {
-                            caloriesCard
-                            distanceCard
-                        }
+                    revealCard(delay: 0.10) { caloriesBurnedCard }
+                    revealCard(delay: 0.12) { distanceTrendCard }
+                    revealCard(delay: 0.14) { vo2MaxCard }
+                    revealCard(delay: 0.16) { hrvSleepCorrelation }
+                    revealCard(delay: 0.20) { workoutConsistency }
+                    revealCard(delay: 0.24) {
+                        drillIn(destination: stepsDetail) { activityByDayOfWeek }
                     }
-                    revealCard(delay: 0.12) { hrvSleepCorrelation }
-                    revealCard(delay: 0.16) { workoutConsistency }
-                    revealCard(delay: 0.20) { heartRateZonesCard }
-                    revealCard(delay: 0.24) { activityByDayOfWeek }
-                    revealCard(delay: 0.28) { bodyCompositionCard }
-                    revealCard(delay: 0.32) { cardioFitnessCard }
+                    revealCard(delay: 0.28) {
+                        drillIn(destination: weightDetail) { bodyCompositionCard }
+                    }
                     revealCard(delay: 0.36) { patternsCard }
                     Spacer(minLength: 80)
                 }
@@ -109,6 +117,48 @@ struct AnalysisView: View {
         )
     }
 
+    // MARK: - Series → TrendPoint adapters
+    //
+    // The reusable ScrubbableTrendChart speaks TrendPoint; AnalysisData
+    // ships per-metric DTOs. These thin maps bridge them. Kept here (not
+    // in the provider) so the provider stays UI-agnostic.
+
+    private var performancePoints: [TrendPoint] {
+        data.performanceTrend.map { TrendPoint(day: $0.day, value: $0.score) }
+    }
+    private var weightPoints: [TrendPoint] {
+        data.weightTrend.map { TrendPoint(day: $0.day, value: $0.weight) }
+    }
+    /// Total nightly sleep minutes per day, derived by summing the
+    /// stacked stage series. Drives the in-place sleep scrub + drill-in.
+    private var sleepTotalPoints: [TrendPoint] {
+        let byDay = Dictionary(grouping: data.sleepStageSeries, by: \.day)
+        return byDay
+            .map { day, rows in
+                TrendPoint(day: day, value: rows.filter { $0.stage != "Awake" }.map(\.minutes).reduce(0, +))
+            }
+            .sorted { $0.day < $1.day }
+    }
+    private var activeEnergyPoints: [TrendPoint] {
+        data.activeEnergyTrend.map { TrendPoint(day: $0.day, value: $0.value) }
+    }
+    private var totalEnergyPoints: [TrendPoint] {
+        data.totalEnergyTrend.map { TrendPoint(day: $0.day, value: $0.value) }
+    }
+    private var distancePoints: [TrendPoint] {
+        data.distanceTrend.map { TrendPoint(day: $0.day, value: $0.value) }
+    }
+    private var vo2MaxPoints: [TrendPoint] {
+        data.vo2MaxTrend.map { TrendPoint(day: $0.day, value: $0.value) }
+    }
+
+    /// Format helpers shared between cards and readouts.
+    private func milesFmt(_ v: Double) -> String { String(format: "%.1f", v) }
+    private func stepsFmt(_ v: Double) -> String {
+        v >= 1000 ? String(format: "%.1fk", v / 1000) : "\(Int(v))"
+    }
+    private func sleepFmt(_ v: Double) -> String { hm(Int(v)) }
+
     /// Wrap any card view in a staggered reveal — the same spring +
     /// vertical offset across the whole scroll, but with progressive
     /// delays so cards cascade in from the top.
@@ -124,6 +174,75 @@ struct AnalysisView: View {
                 .spring(response: 0.6, dampingFraction: 0.85).delay(delay),
                 value: cardsVisible
             )
+    }
+
+    /// Wrap a card in a NavigationLink to a full-screen drill-in, with a
+    /// chevron-free plain style and a tap haptic. The whole card surface
+    /// stays the tap target.
+    @ViewBuilder
+    private func drillIn<Destination: View, Label: View>(
+        destination: Destination,
+        @ViewBuilder label: () -> Label
+    ) -> some View {
+        NavigationLink {
+            destination
+        } label: {
+            label()
+        }
+        .buttonStyle(.plain)
+        .simultaneousGesture(TapGesture().onEnded { Haptics.tap() })
+    }
+
+    // MARK: - Drill-in destinations
+
+    private var performanceDetail: some View {
+        TrendDetailView(
+            title: "Performance",
+            kicker: "Performance Score",
+            tint: LifeOSColor.Metric.peak,
+            unit: "/ 100",
+            series: { $0.performanceTrend.map { TrendPoint(day: $0.day, value: $0.score) } },
+            yDomain: 40...100
+        )
+    }
+    private var sleepDetail: some View {
+        TrendDetailView(
+            title: "Sleep",
+            kicker: "Total Sleep",
+            tint: LifeOSColor.Metric.sleep,
+            unit: "",
+            series: { snap in
+                let byDay = Dictionary(grouping: snap.sleepStageSeries, by: \.day)
+                return byDay.map { day, rows in
+                    TrendPoint(day: day, value: rows.filter { $0.stage != "Awake" }.map(\.minutes).reduce(0, +))
+                }.sorted { $0.day < $1.day }
+            },
+            valueFormat: { [self] in sleepFmt($0) },
+            yAxisFormat: { [self] in sleepFmt($0) }
+        )
+    }
+    private var weightDetail: some View {
+        TrendDetailView(
+            title: "Weight",
+            kicker: "Body Weight",
+            tint: LifeOSColor.Metric.weight,
+            unit: "lb",
+            series: { $0.weightTrend.map { TrendPoint(day: $0.day, value: $0.weight) } },
+            valueFormat: { String(format: "%.1f", $0) },
+            yAxisFormat: { String(format: "%.0f", $0) },
+            higherIsBetter: false
+        )
+    }
+    private var stepsDetail: some View {
+        TrendDetailView(
+            title: "Steps",
+            kicker: "Daily Steps",
+            tint: LifeOSColor.Metric.steps,
+            unit: "steps",
+            series: { $0.stepsTrend.map { TrendPoint(day: $0.day, value: $0.value) } },
+            valueFormat: { [self] in stepsFmt($0) },
+            yAxisFormat: { [self] in stepsFmt($0) }
+        )
     }
 
     // MARK: - Range selector
@@ -144,20 +263,26 @@ struct AnalysisView: View {
     // MARK: - Hero — composite performance score with delta
 
     private var performanceHero: some View {
-        Card {
+        let scrubbed = scrub["perf"]
+        return Card {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("PERFORMANCE SCORE")
-                            .font(.system(size: 10, weight: .heavy)).tracking(1.4)
-                            .foregroundStyle(LifeOSColor.Metric.peak)
+                        HStack(spacing: 4) {
+                            Text(scrubbed != nil ? "SELECTED" : "PERFORMANCE SCORE")
+                                .font(.system(size: 10, weight: .heavy)).tracking(1.4)
+                                .foregroundStyle(LifeOSColor.Metric.peak)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(LifeOSColor.Metric.peak.opacity(0.7))
+                        }
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
-                            Text("\(data.performanceLatest)")
+                            Text(scrubbed.map { "\(Int($0.value.rounded()))" } ?? "\(data.performanceLatest)")
                                 .font(.system(size: 56, weight: .bold, design: .rounded))
                                 .monospacedDigit()
-                                .foregroundStyle(.white)
+                                .foregroundStyle(LifeOSColor.fg)
                                 .contentTransition(.numericText())
-                            Text("/ 100")
+                            Text(scrubbed.map { ScrubbableTrendChart.dateLabel($0.day) } ?? "/ 100")
                                 .font(.system(size: 14, weight: .medium))
                                 .foregroundStyle(LifeOSColor.fg3)
                         }
@@ -165,62 +290,35 @@ struct AnalysisView: View {
                     Spacer()
                     deltaPill(delta: data.performanceDelta, label: "vs prior \(range.dayCount)d")
                 }
-                Chart(data.performanceTrend, id: \.day) { item in
-                    AreaMark(
-                        x: .value("Day", item.day),
-                        y: .value("Score", item.score)
-                    )
-                    .interpolationMethod(.catmullRom)
-                    .foregroundStyle(
-                        LinearGradient(colors: [LifeOSColor.Metric.peak.opacity(0.6),
-                                                LifeOSColor.Metric.peak.opacity(0.05)],
-                                       startPoint: .top, endPoint: .bottom)
-                    )
-                    LineMark(
-                        x: .value("Day", item.day),
-                        y: .value("Score", item.score)
-                    )
-                    .interpolationMethod(.catmullRom)
-                    .foregroundStyle(LifeOSColor.Metric.peak)
-                    .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round))
 
-                    RuleMark(y: .value("Average", data.performanceAvg))
-                        .foregroundStyle(LifeOSColor.fg3.opacity(0.4))
-                        .lineStyle(StrokeStyle(lineWidth: 0.5, dash: [3]))
-                        .annotation(position: .topTrailing, alignment: .trailing, spacing: 2) {
-                            Text("avg \(Int(data.performanceAvg))")
-                                .font(.system(size: 9))
-                                .foregroundStyle(LifeOSColor.fg3)
-                        }
-                }
-                .chartYScale(domain: 40...100)
-                .chartXAxis(.hidden)
-                .chartYAxis {
-                    AxisMarks(values: [50, 75, 100]) { _ in
-                        AxisValueLabel().foregroundStyle(LifeOSColor.fg3)
-                        AxisGridLine().foregroundStyle(LifeOSColor.stroke)
-                    }
-                }
+                ScrubbableTrendChart(
+                    points: performancePoints,
+                    tint: LifeOSColor.Metric.peak,
+                    average: data.performanceTrend.isEmpty ? nil : data.performanceAvg,
+                    valueFormat: { "\(Int($0.rounded()))" },
+                    yDomain: 40...100,
+                    onScrub: { scrub["perf"] = $0 }
+                )
                 .frame(height: 120)
 
                 HStack(spacing: 8) {
-                    contributor("Sleep",    pct: 28, tint: LifeOSColor.Metric.sleep)
-                    contributor("Activity", pct: 24, tint: LifeOSColor.Metric.steps)
-                    contributor("Recovery", pct: 17, tint: LifeOSColor.Metric.peak)
-                    contributor("Strain",   pct: 9,  tint: LifeOSColor.Metric.strain)
+                    contributor("Sleep",  tint: LifeOSColor.Metric.sleep)
+                    contributor("Mood",   tint: LifeOSColor.Metric.mood)
+                    contributor("Energy", tint: LifeOSColor.Metric.energy)
                 }
             }
         }
     }
 
-    private func contributor(_ name: String, pct: Int, tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(name.uppercased())
-                .font(.system(size: 8, weight: .semibold)).tracking(1)
-                .foregroundStyle(LifeOSColor.fg3)
-            Text("+\(pct)")
-                .font(.system(size: 14, weight: .bold).monospacedDigit())
-                .foregroundStyle(tint)
+    /// The three inputs the composite score is built from (see
+    /// AnalysisData.compute). Equal-weighted, so no fabricated per-input
+    /// percentage — just labels the user can trust.
+    private func contributor(_ name: String, tint: Color) -> some View {
+        HStack(spacing: 5) {
+            Circle().fill(tint).frame(width: 6, height: 6)
+            Text(name)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(LifeOSColor.fg2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10).padding(.vertical, 6)
@@ -230,19 +328,36 @@ struct AnalysisView: View {
     // MARK: - Sleep architecture (stacked area)
 
     private var sleepArchitectureCard: some View {
-        analysisCard(
+        let scrubbed = scrub["sleep"]
+        return analysisCard(
             kicker: "SLEEP",
             title: "How's your sleep architecture trending?",
-            tint: LifeOSColor.Metric.sleep
+            tint: LifeOSColor.Metric.sleep,
+            accessory: AnyView(
+                HStack(spacing: 3) {
+                    Text("DETAIL")
+                        .font(.system(size: 9, weight: .bold)).tracking(0.8)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .bold))
+                }
+                .foregroundStyle(LifeOSColor.Metric.sleep)
+            )
         ) {
-            Chart(data.sleepStageSeries, id: \.id) { item in
-                AreaMark(
-                    x: .value("Day", item.day),
-                    y: .value("Minutes", item.minutes)
-                )
-                .interpolationMethod(.monotone)
-                .foregroundStyle(by: .value("Stage", item.stage))
-                .position(by: .value("Stage", item.stage))
+            Chart {
+                ForEach(data.sleepStageSeries, id: \.id) { item in
+                    AreaMark(
+                        x: .value("Day", item.day),
+                        y: .value("Minutes", item.minutes)
+                    )
+                    .interpolationMethod(.monotone)
+                    .foregroundStyle(by: .value("Stage", item.stage))
+                    .position(by: .value("Stage", item.stage))
+                }
+                if let p = scrubbed {
+                    RuleMark(x: .value("Day", p.day))
+                        .foregroundStyle(LifeOSColor.fg2.opacity(0.6))
+                        .lineStyle(StrokeStyle(lineWidth: 1))
+                }
             }
             .chartForegroundStyleScale([
                 "Deep":  Color(hex: 0x1E40AF),
@@ -257,14 +372,48 @@ struct AnalysisView: View {
                     AxisGridLine().foregroundStyle(LifeOSColor.stroke)
                 }
             }
+            .chartOverlay { proxy in
+                GeometryReader { geo in
+                    Rectangle().fill(.clear).contentShape(Rectangle())
+                        .gesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { v in scrubSleep(v.location, proxy: proxy, geo: geo) }
+                                .onEnded { _ in scrub["sleep"] = nil; Haptics.tap() }
+                        )
+                }
+            }
             .frame(height: 160)
 
             HStack {
-                takeaway(label: "AVG TOTAL",  value: hm(data.avgSleepTotalMin))
-                takeaway(label: "AVG DEEP",   value: hm(data.avgSleepDeepMin))
-                takeaway(label: "AVG REM",    value: hm(data.avgSleepREMMin))
-                takeaway(label: "EFFICIENCY", value: efficiencyLabel)
+                if let p = scrubbed {
+                    takeaway(label: ScrubbableTrendChart.dateLabel(p.day).uppercased(), value: hm(Int(p.value)))
+                    takeaway(label: "AVG TOTAL", value: hm(data.avgSleepTotalMin))
+                    takeaway(label: "AVG DEEP",  value: hm(data.avgSleepDeepMin))
+                    takeaway(label: "AVG REM",   value: hm(data.avgSleepREMMin))
+                } else {
+                    takeaway(label: "AVG TOTAL",  value: hm(data.avgSleepTotalMin))
+                    takeaway(label: "AVG DEEP",   value: hm(data.avgSleepDeepMin))
+                    takeaway(label: "AVG REM",    value: hm(data.avgSleepREMMin))
+                    takeaway(label: "EFFICIENCY", value: efficiencyLabel)
+                }
             }
+        }
+    }
+
+    /// Resolve the scrubbed day on the stacked sleep chart to its total
+    /// (non-awake) minutes and fire one tick per distinct day crossed.
+    private func scrubSleep(_ location: CGPoint, proxy: ChartProxy, geo: GeometryProxy) {
+        let pts = sleepTotalPoints
+        guard !pts.isEmpty, let anchor = proxy.plotFrame else { return }
+        let xInPlot = location.x - geo[anchor].origin.x
+        guard let rawDate: Date = proxy.value(atX: xInPlot) else { return }
+        guard let nearest = pts.min(by: {
+            abs($0.day.timeIntervalSince(rawDate)) < abs($1.day.timeIntervalSince(rawDate))
+        }) else { return }
+        let prior = scrub["sleep"]
+        if prior == nil || !Calendar.current.isDate(prior!.day, inSameDayAs: nearest.day) {
+            scrub["sleep"] = nearest
+            Haptics.tick()
         }
     }
 
@@ -402,35 +551,215 @@ struct AnalysisView: View {
         }
     }
 
-    // MARK: - Heart rate zones donut
+    // MARK: - Calories burned (active vs total energy)
 
-    private var heartRateZonesCard: some View {
-        analysisCard(
-            kicker: "INTENSITY",
-            title: "Time in heart rate zones",
-            tint: LifeOSColor.danger
+    private var caloriesBurnedCard: some View {
+        let scrubbed = scrub["cal"]
+        let active = activeEnergyPoints
+        let total = totalEnergyPoints
+        return analysisCard(
+            kicker: "ENERGY BURN",
+            title: "Calories burned — active vs total",
+            tint: LifeOSColor.Metric.calories
         ) {
-            Chart(Sample.hrZones, id: \.zone) { item in
-                SectorMark(
-                    angle: .value("Minutes", item.minutes),
-                    innerRadius: .ratio(0.55),
-                    angularInset: 2
+            if active.isEmpty && total.isEmpty {
+                metricEmptyState(
+                    icon: "flame.fill",
+                    tint: LifeOSColor.Metric.calories,
+                    message: "Once active-energy and total-burn sync from your watch, the daily burn trend lands here."
                 )
-                .cornerRadius(4)
-                .foregroundStyle(by: .value("Zone", item.zone))
-            }
-            .chartForegroundStyleScale([
-                "Easy":     Color(hex: 0x10B981),
-                "Fat burn": Color(hex: 0x84CC16),
-                "Cardio":   Color(hex: 0xF59E0B),
-                "Peak":     Color(hex: 0xF43F5E),
-            ])
-            .chartLegend(position: .trailing, alignment: .center, spacing: 8)
-            .frame(height: 160)
+            } else {
+                Chart {
+                    ForEach(total) { p in
+                        AreaMark(x: .value("Day", p.day), y: .value("Total", p.value))
+                            .interpolationMethod(.catmullRom)
+                            .foregroundStyle(
+                                LinearGradient(colors: [LifeOSColor.Metric.calories.opacity(0.22),
+                                                        LifeOSColor.Metric.calories.opacity(0.02)],
+                                               startPoint: .top, endPoint: .bottom)
+                            )
+                    }
+                    ForEach(total) { p in
+                        LineMark(x: .value("Day", p.day), y: .value("Total", p.value),
+                                 series: .value("M", "Total"))
+                            .interpolationMethod(.catmullRom)
+                            .foregroundStyle(LifeOSColor.Metric.calories.opacity(0.5))
+                            .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4]))
+                    }
+                    ForEach(active) { p in
+                        LineMark(x: .value("Day", p.day), y: .value("Active", p.value),
+                                 series: .value("M", "Active"))
+                            .interpolationMethod(.catmullRom)
+                            .foregroundStyle(LifeOSColor.Metric.calories)
+                            .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round))
+                    }
+                    if let p = scrubbed {
+                        RuleMark(x: .value("Day", p.day))
+                            .foregroundStyle(LifeOSColor.fg2.opacity(0.6))
+                            .lineStyle(StrokeStyle(lineWidth: 1))
+                    }
+                }
+                .chartYAxis {
+                    AxisMarks(position: .leading) { _ in
+                        AxisValueLabel().foregroundStyle(LifeOSColor.fg3)
+                        AxisGridLine().foregroundStyle(LifeOSColor.stroke)
+                    }
+                }
+                .chartXAxis(.hidden)
+                .chartOverlay { proxy in
+                    GeometryReader { geo in
+                        Rectangle().fill(.clear).contentShape(Rectangle())
+                            .gesture(
+                                DragGesture(minimumDistance: 0)
+                                    .onChanged { v in scrubNearest("cal", points: active.isEmpty ? total : active, location: v.location, proxy: proxy, geo: geo) }
+                                    .onEnded { _ in scrub["cal"] = nil; Haptics.tap() }
+                            )
+                    }
+                }
+                .frame(height: 150)
 
-            calloutText(
-                "Most of your time sits in Easy + Fat burn. Add 1 cardio session per week to hit the 150 min/week Zone 2-3 target."
-            )
+                HStack(spacing: 12) {
+                    if let p = scrubbed {
+                        metricBig(label: ScrubbableTrendChart.dateLabel(p.day), value: "\(Int(p.value.rounded()))",
+                                  unit: "kcal", delta: "active burn", tint: LifeOSColor.Metric.calories)
+                    } else {
+                        metricBig(label: "Avg Active", value: avgStr(active), unit: "kcal",
+                                  delta: "solid line", tint: LifeOSColor.Metric.calories)
+                    }
+                    metricBig(label: "Avg Total", value: avgStr(total), unit: "kcal",
+                              delta: "dashed line", tint: LifeOSColor.Metric.calories)
+                }
+            }
+        }
+    }
+
+    // MARK: - Distance trend
+
+    private var distanceTrendCard: some View {
+        let scrubbed = scrub["dist"]
+        let pts = distancePoints
+        return analysisCard(
+            kicker: "DISTANCE",
+            title: "Daily distance covered",
+            tint: LifeOSColor.Metric.steps
+        ) {
+            if pts.isEmpty {
+                metricEmptyState(
+                    icon: "figure.walk",
+                    tint: LifeOSColor.Metric.steps,
+                    message: "Walking + running distance shows up here once your watch syncs it."
+                )
+            } else {
+                ScrubbableTrendChart(
+                    points: pts,
+                    tint: LifeOSColor.Metric.steps,
+                    average: pts.map(\.value).reduce(0, +) / Double(pts.count),
+                    showPoints: pts.count <= 45,
+                    valueFormat: { [self] in milesFmt($0) },
+                    yAxisFormat: { String(format: "%.0f", $0) },
+                    onScrub: { scrub["dist"] = $0 }
+                )
+                .frame(height: 140)
+
+                HStack(spacing: 12) {
+                    if let p = scrubbed {
+                        metricBig(label: ScrubbableTrendChart.dateLabel(p.day), value: milesFmt(p.value),
+                                  unit: "mi", delta: "selected", tint: LifeOSColor.Metric.steps)
+                    } else {
+                        metricBig(label: "Avg / day", value: milesFmt(pts.map(\.value).reduce(0, +) / Double(pts.count)),
+                                  unit: "mi", delta: "\(pts.count)d window", tint: LifeOSColor.Metric.steps)
+                    }
+                    metricBig(label: "Total", value: milesFmt(pts.map(\.value).reduce(0, +)),
+                              unit: "mi", delta: "all logged days", tint: LifeOSColor.Metric.steps)
+                }
+            }
+        }
+    }
+
+    // MARK: - VO₂ max
+
+    private var vo2MaxCard: some View {
+        let scrubbed = scrub["vo2"]
+        let pts = vo2MaxPoints
+        return analysisCard(
+            kicker: "CARDIO FITNESS",
+            title: "VO₂ max trend",
+            tint: LifeOSColor.Metric.peak
+        ) {
+            if pts.isEmpty {
+                metricEmptyState(
+                    icon: "heart.circle.fill",
+                    tint: LifeOSColor.Metric.peak,
+                    message: "VO₂ max estimates from your watch will trend here. It updates after outdoor walks/runs."
+                )
+            } else {
+                ScrubbableTrendChart(
+                    points: pts,
+                    tint: LifeOSColor.Metric.peak,
+                    average: pts.map(\.value).reduce(0, +) / Double(pts.count),
+                    showPoints: pts.count <= 45,
+                    valueFormat: { String(format: "%.1f", $0) },
+                    yAxisFormat: { String(format: "%.0f", $0) },
+                    onScrub: { scrub["vo2"] = $0 }
+                )
+                .frame(height: 140)
+
+                HStack(spacing: 12) {
+                    if let p = scrubbed {
+                        metricBig(label: ScrubbableTrendChart.dateLabel(p.day), value: String(format: "%.1f", p.value),
+                                  unit: "ml/kg/min", delta: "selected", tint: LifeOSColor.Metric.peak)
+                    } else {
+                        metricBig(label: "Latest", value: String(format: "%.1f", pts.last!.value),
+                                  unit: "ml/kg/min", delta: vo2DeltaLabel(pts), tint: LifeOSColor.Metric.peak)
+                    }
+                    metricBig(label: "Peak", value: String(format: "%.1f", pts.map(\.value).max() ?? 0),
+                              unit: "ml/kg/min", delta: "best in range", tint: LifeOSColor.Metric.peak)
+                }
+            }
+        }
+    }
+
+    private func vo2DeltaLabel(_ pts: [TrendPoint]) -> String {
+        guard pts.count >= 2 else { return "first reading" }
+        let d = pts.last!.value - pts.first!.value
+        if abs(d) < 0.1 { return "holding" }
+        return String(format: "%+.1f over range", d)
+    }
+
+    /// Average of a series formatted as a rounded integer string ("—" if empty).
+    private func avgStr(_ pts: [TrendPoint]) -> String {
+        guard !pts.isEmpty else { return "—" }
+        return "\(Int((pts.map(\.value).reduce(0, +) / Double(pts.count)).rounded()))"
+    }
+
+    /// Generic "no data yet" block for the new metric cards.
+    private func metricEmptyState(icon: String, tint: Color, message: String) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 26))
+                .foregroundStyle(tint.opacity(0.6))
+            Text(message)
+                .font(.system(size: 12))
+                .foregroundStyle(LifeOSColor.fg2)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 18)
+    }
+
+    /// Shared nearest-day scrub for the in-place multi-series cards that
+    /// can't use ScrubbableTrendChart directly (calories has two lines).
+    private func scrubNearest(_ key: String, points pts: [TrendPoint], location: CGPoint, proxy: ChartProxy, geo: GeometryProxy) {
+        guard !pts.isEmpty, let anchor = proxy.plotFrame else { return }
+        let xInPlot = location.x - geo[anchor].origin.x
+        guard let rawDate: Date = proxy.value(atX: xInPlot) else { return }
+        guard let nearest = pts.min(by: {
+            abs($0.day.timeIntervalSince(rawDate)) < abs($1.day.timeIntervalSince(rawDate))
+        }) else { return }
+        let prior = scrub[key]
+        if prior == nil || !Calendar.current.isDate(prior!.day, inSameDayAs: nearest.day) {
+            scrub[key] = nearest
+            Haptics.tick()
         }
     }
 
@@ -440,7 +769,16 @@ struct AnalysisView: View {
         analysisCard(
             kicker: "PATTERNS",
             title: "When are you most active?",
-            tint: LifeOSColor.Metric.steps
+            tint: LifeOSColor.Metric.steps,
+            accessory: AnyView(
+                HStack(spacing: 3) {
+                    Text("DETAIL")
+                        .font(.system(size: 9, weight: .bold)).tracking(0.8)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .bold))
+                }
+                .foregroundStyle(LifeOSColor.Metric.steps)
+            )
         ) {
             Chart(data.stepsByDOW, id: \.day) { item in
                 BarMark(
@@ -476,53 +814,65 @@ struct AnalysisView: View {
     // MARK: - Body composition
 
     private var bodyCompositionCard: some View {
-        analysisCard(
+        let scrubbed = scrub["weight"]
+        return analysisCard(
             kicker: "BODY",
-            title: "Weight & lean mass trend",
-            tint: LifeOSColor.Metric.weight
+            title: "Weight trend",
+            tint: LifeOSColor.Metric.weight,
+            accessory: AnyView(
+                HStack(spacing: 3) {
+                    Text("DETAIL")
+                        .font(.system(size: 9, weight: .bold)).tracking(0.8)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .bold))
+                }
+                .foregroundStyle(LifeOSColor.Metric.weight)
+            )
         ) {
-            Chart {
-                ForEach(data.weightTrend, id: \.day) { item in
-                    LineMark(
-                        x: .value("Day", item.day),
-                        y: .value("Weight", item.weight),
-                        series: .value("M", "Weight")
-                    )
-                    .interpolationMethod(.catmullRom)
-                    .foregroundStyle(LifeOSColor.Metric.weight)
-                    .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round))
-                    PointMark(
-                        x: .value("Day", item.day),
-                        y: .value("Weight", item.weight)
-                    )
-                    .foregroundStyle(LifeOSColor.Metric.weight)
-                    .symbolSize(16)
-                }
-            }
-            .chartYAxis {
-                AxisMarks { _ in
-                    AxisValueLabel().foregroundStyle(LifeOSColor.fg3)
-                    AxisGridLine().foregroundStyle(LifeOSColor.stroke)
-                }
-            }
-            .chartXAxis(.hidden)
-            .frame(height: 140)
+            if weightPoints.isEmpty {
+                metricEmptyState(
+                    icon: "scalemass.fill",
+                    tint: LifeOSColor.Metric.weight,
+                    message: "Log a couple of weigh-ins and your weight trend appears here — scrub it day by day."
+                )
+            } else {
+                ScrubbableTrendChart(
+                    points: weightPoints,
+                    tint: LifeOSColor.Metric.weight,
+                    showArea: false,
+                    showPoints: weightPoints.count <= 45,
+                    valueFormat: { String(format: "%.1f", $0) },
+                    yAxisFormat: { String(format: "%.0f", $0) },
+                    onScrub: { scrub["weight"] = $0 }
+                )
+                .frame(height: 140)
 
-            HStack(spacing: 12) {
-                metricBig(
-                    label: "Current",
-                    value: data.weightTrend.last.map { String(format: "%.1f", $0.weight) } ?? "—",
-                    unit: "lb",
-                    delta: weightDeltaLabel,
-                    tint: LifeOSColor.Metric.weight
-                )
-                metricBig(
-                    label: "Trend",
-                    value: weightSlopeValue,
-                    unit: "lb/d",
-                    delta: weightSlopeLabel,
-                    tint: weightChangeTint
-                )
+                HStack(spacing: 12) {
+                    if let p = scrubbed {
+                        metricBig(
+                            label: ScrubbableTrendChart.dateLabel(p.day),
+                            value: String(format: "%.1f", p.value),
+                            unit: "lb",
+                            delta: "selected",
+                            tint: LifeOSColor.Metric.weight
+                        )
+                    } else {
+                        metricBig(
+                            label: "Current",
+                            value: data.weightTrend.last.map { String(format: "%.1f", $0.weight) } ?? "—",
+                            unit: "lb",
+                            delta: weightDeltaLabel,
+                            tint: LifeOSColor.Metric.weight
+                        )
+                    }
+                    metricBig(
+                        label: "Trend",
+                        value: weightSlopeValue,
+                        unit: "lb/d",
+                        delta: weightSlopeLabel,
+                        tint: weightChangeTint
+                    )
+                }
             }
         }
     }
@@ -546,106 +896,6 @@ struct AnalysisView: View {
     private var weightChangeTint: Color {
         guard let change = data.weightChange else { return LifeOSColor.fg2 }
         return change < 0 ? LifeOSColor.success : LifeOSColor.fg2
-    }
-
-    // MARK: - Cardio fitness gauge
-
-    private var cardioFitnessCard: some View {
-        analysisCard(
-            kicker: "CARDIO FITNESS",
-            title: "VO₂ max estimate",
-            tint: LifeOSColor.Metric.steps
-        ) {
-            HStack(spacing: 18) {
-                Gauge(value: 42, in: 20...60) {
-                    Text("VO₂")
-                } currentValueLabel: {
-                    Text("42")
-                        .font(.system(size: 22, weight: .bold, design: .rounded).monospacedDigit())
-                } minimumValueLabel: {
-                    Text("20").font(.system(size: 9)).foregroundStyle(LifeOSColor.fg3)
-                } maximumValueLabel: {
-                    Text("60").font(.system(size: 9)).foregroundStyle(LifeOSColor.fg3)
-                }
-                .gaugeStyle(.accessoryCircular)
-                .tint(
-                    Gradient(colors: [LifeOSColor.warning, LifeOSColor.success])
-                )
-                .scaleEffect(1.6)
-                .frame(width: 110, height: 110)
-
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 4) {
-                        Circle().fill(LifeOSColor.success).frame(width: 6, height: 6)
-                        Text("ABOVE AVERAGE")
-                            .font(.system(size: 9, weight: .bold)).tracking(1.1)
-                            .foregroundStyle(LifeOSColor.success)
-                    }
-                    Text("Top 30% for your age + sex bracket. A 7 ml/kg/min lift over the last year.")
-                        .font(.system(size: 12))
-                        .foregroundStyle(LifeOSColor.fg2)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-    }
-
-    // MARK: - Calories + Distance (latest synced day)
-
-    /// Most recent DailyEntry value for a keypath, scanning newest-first.
-    private func latestDaily<T>(_ keyPath: KeyPath<DailyEntry, T?>) -> T? {
-        dailies
-            .sorted { $0.date > $1.date }
-            .lazy
-            .compactMap { $0[keyPath: keyPath] }
-            .first
-    }
-
-    private var caloriesCard: some View {
-        let kcal = latestDaily(\.activeEnergyKcal)
-        return miniStatCard(
-            kicker: "ACTIVE ENERGY",
-            value: kcal.map { "\(Int($0.rounded()))" } ?? "—",
-            unit: "kcal",
-            icon: "flame.fill",
-            tint: LifeOSColor.Metric.calories
-        )
-    }
-
-    private var distanceCard: some View {
-        let meters = latestDaily(\.distanceMeters)
-        let miles = meters.map { $0 / 1609.344 }
-        return miniStatCard(
-            kicker: "DISTANCE",
-            value: miles.map { String(format: "%.1f", $0) } ?? "—",
-            unit: "mi",
-            icon: "figure.walk",
-            tint: LifeOSColor.Metric.steps
-        )
-    }
-
-    private func miniStatCard(kicker: String, value: String, unit: String, icon: String, tint: Color) -> some View {
-        Card {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 6) {
-                    Image(systemName: icon)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(tint)
-                    Text(kicker)
-                        .font(.system(size: 10, weight: .heavy)).tracking(1.2)
-                        .foregroundStyle(tint)
-                }
-                HStack(alignment: .firstTextBaseline, spacing: 3) {
-                    Text(value)
-                        .font(.system(size: 28, weight: .bold, design: .rounded).monospacedDigit())
-                        .foregroundStyle(.white)
-                    Text(unit)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(LifeOSColor.fg3)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
     }
 
     // MARK: - Patterns / observations
@@ -847,82 +1097,5 @@ private struct ConsistencyHeatmap: View {
         if intensity < 0.33 { return LifeOSColor.Metric.strain.opacity(0.3) }
         if intensity < 0.66 { return LifeOSColor.Metric.strain.opacity(0.6) }
         return LifeOSColor.Metric.strain
-    }
-}
-
-// MARK: - Sample data — replace with HealthKit/Fitbit reads
-
-private enum Sample {
-    struct DailyValue { let day: Int; let value: Double }
-    struct DailyScore { let day: Int; let score: Double }
-    struct DailyWeight { let day: Int; let weight: Double }
-    struct ScatterPoint: Identifiable { let id = UUID(); let sleepHours: Double; let hrv: Double }
-    struct StageRow: Identifiable { let id = UUID(); let day: Int; let stage: String; let minutes: Double }
-    struct HRZone { let zone: String; let minutes: Double }
-    struct DOWBar { let day: String; let steps: Double }
-
-    static let performanceTrend: [DailyScore] = (0..<30).map { i in
-        let base = 75 + sin(Double(i) / 3) * 6 + Double(i) * 0.2
-        return DailyScore(day: i, score: min(95, max(50, base)))
-    }
-    static let performanceAvg: Double = 78
-
-    static let rhrTrend: [DailyValue] = (0..<30).map { i in
-        DailyValue(day: i, value: 60 + sin(Double(i) / 4) * 2 - Double(i) * 0.05)
-    }
-    static let hrvTrend: [DailyValue] = (0..<30).map { i in
-        DailyValue(day: i, value: 56 + sin(Double(i) / 3) * 4 + Double(i) * 0.08)
-    }
-
-    static let sleepStageSeries: [StageRow] = (0..<14).flatMap { i -> [StageRow] in
-        let base = 420.0 + sin(Double(i) / 2) * 25
-        return [
-            StageRow(day: i, stage: "Deep",  minutes: base * 0.20),
-            StageRow(day: i, stage: "Core",  minutes: base * 0.55),
-            StageRow(day: i, stage: "REM",   minutes: base * 0.22),
-            StageRow(day: i, stage: "Awake", minutes: base * 0.03),
-        ]
-    }
-
-    static let hrvVsSleep: [ScatterPoint] = (0..<25).map { i in
-        let sleep = 5.5 + Double(i % 7) * 0.4
-        let hrv = 38 + sleep * 5.2 + Double.random(in: -4...4)
-        return ScatterPoint(sleepHours: sleep, hrv: hrv)
-    }
-
-    static let workoutDays: [Date: Double] = {
-        var dict: [Date: Double] = [:]
-        for offset in -69...0 {
-            guard let d = Calendar.current.date(byAdding: .day, value: offset, to: Date()) else { continue }
-            let day = Calendar.current.startOfDay(for: d)
-            let weekday = Calendar.current.component(.weekday, from: day)
-            if [2, 3, 5, 6, 7].contains(weekday) {
-                dict[day] = Double.random(in: 0.4...1)
-            } else {
-                dict[day] = Double.random(in: 0...0.2)
-            }
-        }
-        return dict
-    }()
-
-    static let hrZones: [HRZone] = [
-        .init(zone: "Easy",     minutes: 480),
-        .init(zone: "Fat burn", minutes: 220),
-        .init(zone: "Cardio",   minutes: 95),
-        .init(zone: "Peak",     minutes: 18),
-    ]
-
-    static let stepsByDOW: [DOWBar] = [
-        .init(day: "Mon", steps: 5800),
-        .init(day: "Tue", steps: 7200),
-        .init(day: "Wed", steps: 8900),
-        .init(day: "Thu", steps: 7800),
-        .init(day: "Fri", steps: 9400),
-        .init(day: "Sat", steps: 11200),
-        .init(day: "Sun", steps: 6500),
-    ]
-
-    static let weightTrend: [DailyWeight] = (0..<30).map { i in
-        DailyWeight(day: i, weight: 178.5 - Double(i) * 0.07 + sin(Double(i) / 5) * 0.4)
     }
 }

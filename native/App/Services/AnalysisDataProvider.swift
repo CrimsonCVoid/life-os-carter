@@ -75,6 +75,15 @@ struct AnalysisData {
     let weightTrend: [WeightPoint]
     let weightChange: Double?
 
+    /// Activity-energy and distance trends, plus VO₂ max samples. Each
+    /// is a date-keyed daily series (only days that actually have the
+    /// metric synced appear). Empty arrays => no data => empty-state card.
+    let activeEnergyTrend: [DayPoint]
+    let totalEnergyTrend: [DayPoint]
+    let distanceTrend: [DayPoint]   // miles
+    let vo2MaxTrend: [DayPoint]
+    let stepsTrend: [DayPoint]
+
     /// Cheap zero-value snapshot used as the initial @State seed in
     /// AnalysisView before `refreshData()` populates real values.
     /// Empty arrays render as empty charts (no spinner, no crash).
@@ -104,7 +113,12 @@ struct AnalysisData {
         mostActiveDOW: nil,
         leastActiveDOW: nil,
         weightTrend: [],
-        weightChange: nil
+        weightChange: nil,
+        activeEnergyTrend: [],
+        totalEnergyTrend: [],
+        distanceTrend: [],
+        vo2MaxTrend: [],
+        stepsTrend: []
     )
 
     /// Compute the analysis snapshot off the user's logs. `daysBack`
@@ -227,6 +241,28 @@ struct AnalysisData {
             return weight.last!.weight - weight.first!.weight
         }()
 
+        // ---- Activity energy / distance / VO₂ max / steps trends
+        let activeEnergy: [DayPoint] = orderedDates.compactMap { d in
+            guard let v = byDate[Self.ymd(d)]?.activeEnergyKcal, v > 0 else { return nil }
+            return DayPoint(day: d, value: v)
+        }
+        let totalEnergy: [DayPoint] = orderedDates.compactMap { d in
+            guard let v = byDate[Self.ymd(d)]?.totalCaloriesKcal, v > 0 else { return nil }
+            return DayPoint(day: d, value: v)
+        }
+        let distance: [DayPoint] = orderedDates.compactMap { d in
+            guard let m = byDate[Self.ymd(d)]?.distanceMeters, m > 0 else { return nil }
+            return DayPoint(day: d, value: m / 1609.344)   // → miles
+        }
+        let vo2: [DayPoint] = orderedDates.compactMap { d in
+            guard let v = byDate[Self.ymd(d)]?.vo2Max, v > 0 else { return nil }
+            return DayPoint(day: d, value: v)
+        }
+        let stepsSeries: [DayPoint] = orderedDates.compactMap { d in
+            guard let s = byDate[Self.ymd(d)]?.steps, s > 0 else { return nil }
+            return DayPoint(day: d, value: Double(s))
+        }
+
         // ---- Performance composite (HRV pct of baseline + sleep pct
         // of goal + activity vs steps goal). Sample-grade for now
         // until we have real per-day scoring.
@@ -271,7 +307,12 @@ struct AnalysisData {
             mostActiveDOW: maxDow?.steps == 0 ? nil : maxDow?.day,
             leastActiveDOW: minDow?.day,
             weightTrend: weight,
-            weightChange: weightChange
+            weightChange: weightChange,
+            activeEnergyTrend: activeEnergy,
+            totalEnergyTrend: totalEnergy,
+            distanceTrend: distance,
+            vo2MaxTrend: vo2,
+            stepsTrend: stepsSeries
         )
     }
 
