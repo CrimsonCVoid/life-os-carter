@@ -80,17 +80,21 @@ export async function migrateUserIdAndCollapse(
 ): Promise<{ tables: number }> {
   if (fromUserId === toUserId) return { tables: 0 };
 
-  // Table names come from the fixed allowlist above (not user input);
-  // the ids are escaped and cast to uuid to match the column type.
+  // Table names come from the fixed allowlist above (not user input).
+  // Ids go in as bare (escaped) string literals with no ::uuid cast —
+  // they're type `unknown` and adapt to whichever type the column is.
+  // users.id / user_id are `text` in this DB (schema.ts is the source
+  // of truth); a ::uuid cast here trips "operator does not exist:
+  // text = uuid" (42883).
   const from = fromUserId.replace(/'/g, "''");
   const to = toUserId.replace(/'/g, "''");
   const updates = USER_SCOPED_TABLES.map(
-    (t) => `  UPDATE "${t}" SET user_id = '${to}'::uuid WHERE user_id = '${from}'::uuid;`,
+    (t) => `  UPDATE "${t}" SET user_id = '${to}' WHERE user_id = '${from}';`,
   ).join("\n");
   const doBlock = `DO $migrate$
 BEGIN
 ${updates}
-  DELETE FROM "users" WHERE id = '${from}'::uuid;
+  DELETE FROM "users" WHERE id = '${from}';
 END
 $migrate$;`;
 
