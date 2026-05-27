@@ -53,8 +53,16 @@ function isoStartOf(date: DateStr): string {
   return `${date}T00:00:00`;
 }
 
-function isoEndOf(date: DateStr): string {
-  return `${date}T23:59:59`;
+/**
+ * Day after `date`, as a civil "YYYY-MM-DD". All list filters use a
+ * half-open [start, nextDay(end)) range because the Google Health API
+ * only accepts the `>=` and `<` comparators on time fields — passing
+ * `<=` returns 400 INVALID_DATA_POINT_FILTER_RESTRICTION_COMPARATOR.
+ */
+function nextDay(date: DateStr): DateStr {
+  const d = new Date(`${date}T00:00:00`);
+  d.setDate(d.getDate() + 1);
+  return civilDate(d);
 }
 
 async function callGoogle<T>(
@@ -179,9 +187,9 @@ export async function fetchSleep(opts: {
   endDate: DateStr;
 }): Promise<SyncedDataPoint[]> {
   const params = new URLSearchParams({
-    // The filter language uses snake_case for the field path. Civil times
-    // (no TZ offset) keep us aligned with the user's local "last night".
-    filter: `sleep.interval.civil_end_time >= "${isoStartOf(opts.startDate)}" AND sleep.interval.civil_end_time <= "${isoEndOf(opts.endDate)}"`,
+    // snake_case field path; civil dates keep us on the user's local
+    // "last night" boundaries. Half-open range — the API rejects `<=`.
+    filter: `sleep.interval.civil_end_time >= "${opts.startDate}" AND sleep.interval.civil_end_time < "${nextDay(opts.endDate)}"`,
     pageSize: "200",
   });
   const url = `${GOOGLE_HEALTH_BASE_URL}/users/me/dataTypes/${DATA_TYPES.sleep}/dataPoints?${params.toString()}`;
@@ -389,7 +397,8 @@ export async function fetchRestingHeartRate(opts: {
   endDate: DateStr;
 }): Promise<SyncedDataPoint[]> {
   const params = new URLSearchParams({
-    filter: `daily_resting_heart_rate.civil_date >= "${opts.startDate}" AND daily_resting_heart_rate.civil_date <= "${opts.endDate}"`,
+    // Daily-summary types filter on `.date` (not `.civil_date`); half-open.
+    filter: `daily_resting_heart_rate.date >= "${opts.startDate}" AND daily_resting_heart_rate.date < "${nextDay(opts.endDate)}"`,
     pageSize: "200",
   });
   const url = `${GOOGLE_HEALTH_BASE_URL}/users/me/dataTypes/${DATA_TYPES.restingHeartRate}/dataPoints?${params.toString()}`;
@@ -439,7 +448,9 @@ export async function fetchHeartRateVariability(opts: {
   endDate: DateStr;
 }): Promise<SyncedDataPoint[]> {
   const params = new URLSearchParams({
-    filter: `heart_rate_variability.civil_time >= "${isoStartOf(opts.startDate)}" AND heart_rate_variability.civil_time <= "${isoEndOf(opts.endDate)}"`,
+    // Sample types filter on `sample_time.civil_time` (the bare
+    // `civil_time` path is invalid); half-open range.
+    filter: `heart_rate_variability.sample_time.civil_time >= "${isoStartOf(opts.startDate)}" AND heart_rate_variability.sample_time.civil_time < "${isoStartOf(nextDay(opts.endDate))}"`,
     pageSize: "500",
   });
   const url = `${GOOGLE_HEALTH_BASE_URL}/users/me/dataTypes/${DATA_TYPES.heartRateVariability}/dataPoints?${params.toString()}`;
