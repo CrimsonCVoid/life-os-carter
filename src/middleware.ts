@@ -17,6 +17,13 @@ const PUBLIC_PATHS = [
   // to be reachable mid-OAuth-handshake. The handler itself enforces
   // its own session check.
   "/api/fitbit/callback",
+  // iOS kicks off the Google Health OAuth by opening this in Safari with
+  // the bearer JWT in the query string — Safari can't set an
+  // Authorization header, so the header-based /api/* allowance below
+  // misses it and it gets 307'd to /signin before it can redirect to
+  // Google. The handler verifies the query bearer (or the web session
+  // cookie) itself and 401s if neither is valid.
+  "/api/google-health/auth/start",
   // Vercel's cron scheduler hits this with no session cookie — it has
   // its own bearer-token auth via CRON_SECRET, enforced inside the
   // route handler. Without this whitelist the cron pings get bounced
