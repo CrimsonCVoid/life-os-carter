@@ -49,6 +49,12 @@ function civilDate(d: Date): DateStr {
   return `${y}-${m}-${dd}`;
 }
 
+/** "YYYY-MM-DD" → google.type.Date parts, as the dailyRollUp range wants. */
+function civilDateParts(date: DateStr): { year: number; month: number; day: number } {
+  const [year, month, day] = date.split("-").map(Number);
+  return { year, month, day };
+}
+
 function isoStartOf(date: DateStr): string {
   return `${date}T00:00:00`;
 }
@@ -314,10 +320,19 @@ async function fetchDailyRollUp(opts: {
   endDate: DateStr;
 }): Promise<DailyRollupResponse> {
   const url = `${GOOGLE_HEALTH_BASE_URL}/users/me/dataTypes/${opts.dataType}/dataPoints:dailyRollUp`;
+  // range.start/end take structured google.type.Date + TimeOfDay objects,
+  // not "YYYY-MM-DD"/"HH:MM:SS" strings (those 400 with
+  // "Invalid value at 'range.start.date'").
   const body = {
     range: {
-      start: { date: opts.startDate, time: "00:00:00" },
-      end: { date: opts.endDate, time: "23:59:59" },
+      start: {
+        date: civilDateParts(opts.startDate),
+        time: { hours: 0, minutes: 0, seconds: 0 },
+      },
+      end: {
+        date: civilDateParts(opts.endDate),
+        time: { hours: 23, minutes: 59, seconds: 59 },
+      },
     },
     windowSizeDays: 1,
     pageSize: 200,
