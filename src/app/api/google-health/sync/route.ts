@@ -13,7 +13,6 @@ import {
   fetchSteps,
   fetchWeight,
   mergeByDate,
-  debugRawFetches,
   type SyncedDataPoint,
 } from "@/lib/integrations/google-health/adapter";
 import type { DateStr } from "@/lib/types";
@@ -79,13 +78,6 @@ export async function POST(req: NextRequest) {
 
   const startDate = dateNDaysAgo(days);
   const endDate = today();
-
-  // TEMPORARY: ?debug=raw dumps raw Google responses to diagnose parsing.
-  if (req.nextUrl.searchParams.get("debug") === "raw") {
-    return NextResponse.json(
-      await debugRawFetches({ accessToken, startDate, endDate })
-    );
-  }
 
   // Each fetch is independent so a partial failure (e.g. one metric
   // unavailable) doesn't kill the whole sync.

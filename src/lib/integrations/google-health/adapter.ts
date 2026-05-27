@@ -115,8 +115,8 @@ type RawSleepDataPoint = {
     interval?: {
       startTime?: string;
       endTime?: string;
-      civilStartTime?: string;
-      civilEndTime?: string;
+      civilStartTime?: CivilTimeObj | string;
+      civilEndTime?: CivilTimeObj | string;
     };
     /** Stages may appear as either a summary object or an array of stage
      * intervals. We tolerate both. */
@@ -212,15 +212,16 @@ export async function fetchSleep(opts: {
   for (const p of res.dataPoints ?? []) {
     const interval = p.sleep?.interval;
     if (!interval) continue;
-    const startISO =
-      interval.civilStartTime ?? interval.startTime ?? undefined;
-    const endISO = interval.civilEndTime ?? interval.endTime ?? undefined;
+    // Physical times (RFC3339 strings) drive duration + wake clock-time;
+    // the structured civil end date gives the "last night" label.
+    const startISO = interval.startTime;
+    const endISO = interval.endTime;
     if (!startISO || !endISO) continue;
     const start = new Date(startISO);
     const end = new Date(endISO);
     const dur = end.getTime() - start.getTime();
     if (!Number.isFinite(dur) || dur <= 0) continue;
-    const wakeDate = civilDate(end);
+    const wakeDate = civilDateOf(interval.civilEndTime) ?? civilDate(end);
     const stages = summarizeStages(p) ?? {};
     const cur = byDate.get(wakeDate) ?? {
       totalMs: 0,
@@ -270,41 +271,44 @@ function hasAnyStage(s: SleepStagesMin): boolean {
 // STEPS (daily rollup)
 // ---------------------------------------------------------------------------
 
+/** Google returns civil times as structured objects, not strings:
+ * `{ date: { year, month, day }, time: { hours, minutes, seconds } }`. */
+type CivilDateParts = { year?: number; month?: number; day?: number };
+type CivilTimeObj = { date?: CivilDateParts; time?: unknown };
+
 type DailyRollupResponse = {
-  dailyRollups?: Array<{
-    civilStartTime?: string;
-    civilEndTime?: string;
-    /** API uses a oneof `value` field; each rollup type names its own key. */
-    steps?: { count?: string | number };
-    weight?: {
-      averageKilograms?: number;
-      maxKilograms?: number;
-      minKilograms?: number;
-    };
-    restingHeartRatePersonalRange?: {
-      beatsPerMinuteMin?: number;
-      beatsPerMinuteMax?: number;
-      beatsPerMinuteAverage?: number;
-    };
-    heartRate?: {
-      averageBpm?: number;
-      maxBpm?: number;
-      minBpm?: number;
-    };
-    /** Cardio Load — pre-GA, exact field naming may shift. We try a few
-     * shapes so a Google rename doesn't break the whole thing. */
-    cardioLoad?: { value?: number; score?: number; total?: number };
-    activeZoneMinutes?: { totalMinutes?: number };
+  // The list of daily windows is `rollupDataPoints` (not `dailyRollups`).
+  rollupDataPoints?: Array<{
+    civilStartTime?: CivilTimeObj | string;
+    civilEndTime?: CivilTimeObj | string;
+    // Each rollup type names its own aggregated value field.
+    steps?: { countSum?: string | number };
+    weight?: { weightGramsAvg?: number; weightGramsMin?: number; weightGramsMax?: number };
+    activeZoneMinutes?: { totalMinutes?: number; minutesSum?: number; totalSum?: number };
   }>;
   nextPageToken?: string;
 };
 
-function civilDateFromTime(t?: string): DateStr | undefined {
-  if (!t) return undefined;
-  // Format examples: "2026-05-17T00:00:00" or "2026-05-17"
-  const date = t.slice(0, 10);
-  if (/^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
-  return undefined;
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+/** Civil date "YYYY-MM-DD" from either a string ("2026-05-17[T..]") or the
+ * structured `{ date: { year, month, day } }` / `{ year, month, day }` shape. */
+function civilDateOf(
+  v?: string | CivilTimeObj | CivilDateParts
+): DateStr | undefined {
+  if (!v) return undefined;
+  if (typeof v === "string") {
+    const d = v.slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(d) ? (d as DateStr) : undefined;
+  }
+  const parts: CivilDateParts | undefined =
+    "date" in v && v.date ? v.date : (v as CivilDateParts);
+  if (!parts || parts.year == null || parts.month == null || parts.day == null) {
+    return undefined;
+  }
+  return `${parts.year}-${pad2(parts.month)}-${pad2(parts.day)}` as DateStr;
 }
 
 function parseIntegerish(v: string | number | undefined): number | undefined {
@@ -356,10 +360,10 @@ export async function fetchSteps(opts: {
     endDate: opts.endDate,
   });
   const out: SyncedDataPoint[] = [];
-  for (const r of res.dailyRollups ?? []) {
-    const date = civilDateFromTime(r.civilStartTime);
+  for (const r of res.rollupDataPoints ?? []) {
+    const date = civilDateOf(r.civilStartTime);
     if (!date) continue;
-    const count = parseIntegerish(r.steps?.count);
+    const count = parseIntegerish(r.steps?.countSum);
     if (count == null) continue;
     out.push({ date, fields: { steps: count } });
   }
@@ -384,12 +388,13 @@ export async function fetchWeight(opts: {
     endDate: opts.endDate,
   });
   const out: SyncedDataPoint[] = [];
-  for (const r of res.dailyRollups ?? []) {
-    const date = civilDateFromTime(r.civilStartTime);
+  for (const r of res.rollupDataPoints ?? []) {
+    const date = civilDateOf(r.civilStartTime);
     if (!date) continue;
-    const kg = r.weight?.averageKilograms;
-    if (kg == null || !Number.isFinite(kg)) continue;
-    const lb = +(kg * KG_TO_LB).toFixed(1);
+    // Weight rollup reports grams (weightGramsAvg), not kilograms.
+    const grams = r.weight?.weightGramsAvg;
+    if (grams == null || !Number.isFinite(grams)) continue;
+    const lb = +((grams / 1000) * KG_TO_LB).toFixed(1);
     out.push({ date, fields: { weight: lb } });
   }
   return out;
@@ -401,8 +406,8 @@ export async function fetchWeight(opts: {
 
 type RawDailyDataPoint = {
   dailyRestingHeartRate?: {
-    civilDate?: string;
-    beatsPerMinute?: number;
+    date?: CivilDateParts;
+    beatsPerMinute?: number | string;
   };
 };
 
@@ -422,10 +427,10 @@ export async function fetchRestingHeartRate(opts: {
   });
   const out: SyncedDataPoint[] = [];
   for (const p of res.dataPoints ?? []) {
-    const date = p.dailyRestingHeartRate?.civilDate;
-    const bpm = p.dailyRestingHeartRate?.beatsPerMinute;
+    const date = civilDateOf(p.dailyRestingHeartRate?.date);
+    const bpm = parseIntegerish(p.dailyRestingHeartRate?.beatsPerMinute);
     if (!date || bpm == null) continue;
-    out.push({ date, fields: { restingHeartRate: Math.round(bpm) } });
+    out.push({ date, fields: { restingHeartRate: bpm } });
   }
   return out;
 }
@@ -436,7 +441,8 @@ export async function fetchRestingHeartRate(opts: {
 
 type RawHrvDataPoint = {
   heartRateVariability?: {
-    civilTime?: string;
+    sampleTime?: { civilTime?: CivilTimeObj | string; physicalTime?: string };
+    civilTime?: CivilTimeObj | string;
     intervalMilliseconds?: number;
     /** Alternate field names some API versions use; we try them in order. */
     rmssdMilliseconds?: number;
@@ -476,8 +482,10 @@ export async function fetchHeartRateVariability(opts: {
   // Aggregate by civil date (HRV samples can come multiple times per night).
   const byDate = new Map<DateStr, { sum: number; n: number }>();
   for (const p of res.dataPoints ?? []) {
-    const t = p.heartRateVariability?.civilTime;
-    const date = civilDateFromTime(t);
+    const t =
+      p.heartRateVariability?.sampleTime?.civilTime ??
+      p.heartRateVariability?.civilTime;
+    const date = civilDateOf(t);
     const ms = readHrvMs(p);
     if (!date || ms == null || !Number.isFinite(ms)) continue;
     const cur = byDate.get(date) ?? { sum: 0, n: 0 };
@@ -512,96 +520,16 @@ export async function fetchCardioLoad(opts: {
     endDate: opts.endDate,
   });
   const out: SyncedDataPoint[] = [];
-  for (const r of res.dailyRollups ?? []) {
-    const date = civilDateFromTime(r.civilStartTime);
+  for (const r of res.rollupDataPoints ?? []) {
+    const date = civilDateOf(r.civilStartTime);
     if (!date) continue;
-    // Try the most-likely cardioLoad shapes, then fall back to AZM.
     const raw =
-      r.cardioLoad?.value ??
-      r.cardioLoad?.score ??
-      r.cardioLoad?.total ??
-      r.activeZoneMinutes?.totalMinutes;
+      r.activeZoneMinutes?.totalMinutes ??
+      r.activeZoneMinutes?.minutesSum ??
+      r.activeZoneMinutes?.totalSum;
     if (raw == null || !Number.isFinite(raw)) continue;
     out.push({ date, fields: { cardioLoad: Math.round(raw) } });
   }
-  return out;
-}
-
-// ---------------------------------------------------------------------------
-// TEMPORARY DIAGNOSTIC — remove once parsers are confirmed against real data.
-// Returns the raw Google responses so we can see the actual field shapes.
-// ---------------------------------------------------------------------------
-
-export async function debugRawFetches(opts: {
-  accessToken: string;
-  startDate: DateStr;
-  endDate: DateStr;
-}): Promise<Record<string, unknown>> {
-  const { accessToken, startDate, endDate } = opts;
-  const out: Record<string, unknown> = {};
-  const grab = async (label: string, url: string, init?: RequestInit) => {
-    try {
-      const res = await fetch(url, {
-        ...(init ?? {}),
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-      });
-      const text = await res.text();
-      out[label] = { status: res.status, body: text.slice(0, 1800) };
-    } catch (e) {
-      out[label] = { error: String(e).slice(0, 300) };
-    }
-  };
-  const rollupBody = JSON.stringify({
-    range: {
-      start: { date: civilDateParts(startDate), time: { hours: 0, minutes: 0, seconds: 0 } },
-      end: { date: civilDateParts(endDate), time: { hours: 23, minutes: 59, seconds: 59 } },
-    },
-    windowSizeDays: 1,
-    pageSize: 200,
-  });
-  const base = GOOGLE_HEALTH_BASE_URL;
-  await grab(
-    "steps_rollup",
-    `${base}/users/me/dataTypes/steps/dataPoints:dailyRollUp`,
-    { method: "POST", body: rollupBody }
-  );
-  await grab(
-    "rhr_list",
-    `${base}/users/me/dataTypes/daily-resting-heart-rate/dataPoints?` +
-      new URLSearchParams({
-        filter: `daily_resting_heart_rate.date >= "${startDate}" AND daily_resting_heart_rate.date < "${nextDay(endDate)}"`,
-        pageSize: "5",
-      }).toString()
-  );
-  await grab(
-    "sleep_list",
-    `${base}/users/me/dataTypes/sleep/dataPoints?` +
-      new URLSearchParams({
-        filter: `sleep.interval.civil_end_time >= "${startDate}" AND sleep.interval.civil_end_time < "${nextDay(endDate)}"`,
-        pageSize: "5",
-      }).toString()
-  );
-  await grab(
-    "weight_rollup",
-    `${base}/users/me/dataTypes/weight/dataPoints:dailyRollUp`,
-    { method: "POST", body: rollupBody }
-  );
-  await grab(
-    "azm_rollup",
-    `${base}/users/me/dataTypes/active-zone-minutes/dataPoints:dailyRollUp`,
-    { method: "POST", body: rollupBody }
-  );
-  await grab(
-    "hrv_list",
-    `${base}/users/me/dataTypes/heart-rate-variability/dataPoints?` +
-      new URLSearchParams({
-        filter: `heart_rate_variability.sample_time.civil_time >= "${isoStartOf(startDate)}" AND heart_rate_variability.sample_time.civil_time < "${isoStartOf(nextDay(endDate))}"`,
-        pageSize: "5",
-      }).toString()
-  );
   return out;
 }
 
