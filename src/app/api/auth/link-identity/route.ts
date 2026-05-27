@@ -100,8 +100,8 @@ export async function POST(req: Request) {
 
   // 4. Move every user-scoped row from current.id (db UUID) →
   //    targetDbId. Both sides are UUIDs so the SQL works against the
-  //    uuid-typed user_id columns. Transactional.
-  const moved = await migrateUserIdAndCollapse(current.id, targetDbId);
+  //    uuid-typed user_id columns. Atomic via a single DO block.
+  await migrateUserIdAndCollapse(current.id, targetDbId);
 
   // 5. Mint a new bearer carrying the prefixed external ID. iOS uses
   //    it for provider tagging; the next request will hash back to
@@ -111,7 +111,6 @@ export async function POST(req: Request) {
     token,
     userId: targetExternalId,
     merged: true,
-    rowsMoved: moved.rowsMoved,
   });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

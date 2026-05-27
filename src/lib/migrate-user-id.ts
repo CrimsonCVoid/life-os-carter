@@ -64,32 +64,37 @@ const USER_SCOPED_TABLES: string[] = [
 /**
  * Reassign every row owned by `fromUserId` to `toUserId`, then delete
  * the `fromUserId` users row. If `toUserId` doesn't exist yet, the
- * caller should create it first — this function fails fast if the
- * target is missing because the FK constraint would reject the update.
+ * caller should create it first — the FK constraint rejects the update
+ * otherwise.
+ *
+ * Runs as a single PL/pgSQL DO block. The neon-http driver can't do
+ * interactive `db.transaction()` (it's a stateless HTTP request per
+ * query — "No transactions support in neon-http driver"), but a DO
+ * block is one statement that executes atomically in its own implicit
+ * transaction, so all the moves + the delete either land together or
+ * not at all over a single round trip.
  */
 export async function migrateUserIdAndCollapse(
   fromUserId: string,
   toUserId: string,
-): Promise<{ tables: number; rowsMoved: number }> {
-  if (fromUserId === toUserId) return { tables: 0, rowsMoved: 0 };
+): Promise<{ tables: number }> {
+  if (fromUserId === toUserId) return { tables: 0 };
 
-  let total = 0;
-  await db.transaction(async (tx) => {
-    for (const table of USER_SCOPED_TABLES) {
-      // Drizzle's raw SQL — table name is from a fixed allowlist,
-      // not user input, so the interpolation is safe.
-      const result = await tx.execute(
-        sql.raw(`UPDATE "${table}" SET user_id = '${toUserId.replace(/'/g, "''")}' WHERE user_id = '${fromUserId.replace(/'/g, "''")}'`),
-      );
-      // Postgres returns rowCount on UPDATE — neon-http exposes it as
-      // result.rowCount (number) or 0 if undefined.
-      const moved = (result as unknown as { rowCount?: number }).rowCount ?? 0;
-      total += moved;
-    }
-    await tx.execute(
-      sql.raw(`DELETE FROM "users" WHERE id = '${fromUserId.replace(/'/g, "''")}'`),
-    );
-  });
+  // Table names come from the fixed allowlist above (not user input);
+  // the ids are escaped and cast to uuid to match the column type.
+  const from = fromUserId.replace(/'/g, "''");
+  const to = toUserId.replace(/'/g, "''");
+  const updates = USER_SCOPED_TABLES.map(
+    (t) => `  UPDATE "${t}" SET user_id = '${to}'::uuid WHERE user_id = '${from}'::uuid;`,
+  ).join("\n");
+  const doBlock = `DO $migrate$
+BEGIN
+${updates}
+  DELETE FROM "users" WHERE id = '${from}'::uuid;
+END
+$migrate$;`;
 
-  return { tables: USER_SCOPED_TABLES.length, rowsMoved: total };
+  await db.execute(sql.raw(doBlock));
+
+  return { tables: USER_SCOPED_TABLES.length };
 }
