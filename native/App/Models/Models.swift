@@ -232,6 +232,49 @@ final class MealLog {
     }
 }
 
+/// One row per day of intraday heart-rate samples, pulled on demand
+/// from `/api/google-health/heart-rate`. The per-minute series is
+/// stored as a single JSON blob (`samplesJSON`) rather than thousands
+/// of SwiftData rows — a day can hold up to 1,440 minute buckets and
+/// modeling each as its own row would balloon the store and slow every
+/// fetch. Day-level aggregates (`dayMin/Max/Avg/count`, `restingHr`)
+/// are denormalized so the graph header can render before decoding the
+/// blob. Upserted by HeartRateClient; never synced back to Neon.
+@Model
+final class HRDaySeries {
+    @Attribute(.unique) var date: String   // "YYYY-MM-DD", local tz
+    /// JSON-encoded `[{m,avg,min,max}]` — minute-of-day buckets, only
+    /// minutes with data, sorted ascending. Decoded via
+    /// `HeartRateClient.decodeSamples`.
+    var samplesJSON: String
+    var dayMin: Int
+    var dayMax: Int
+    var dayAvg: Int
+    var count: Int
+    var restingHr: Int?
+    var updatedAt: Date
+
+    init(
+        date: String,
+        samplesJSON: String = "[]",
+        dayMin: Int = 0,
+        dayMax: Int = 0,
+        dayAvg: Int = 0,
+        count: Int = 0,
+        restingHr: Int? = nil,
+        updatedAt: Date = Date()
+    ) {
+        self.date = date
+        self.samplesJSON = samplesJSON
+        self.dayMin = dayMin
+        self.dayMax = dayMax
+        self.dayAvg = dayAvg
+        self.count = count
+        self.restingHr = restingHr
+        self.updatedAt = updatedAt
+    }
+}
+
 /// Completed lift session. Active-in-progress workouts live in a
 /// separate @Observable view model (see `ActiveWorkoutStore`) rather
 /// than SwiftData, since they mutate every second.

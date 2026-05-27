@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 /// Top-level navigation. Custom Liquid Glass tab bar floats above the
 /// content; the tab content lives in a single ZStack so transitions
@@ -6,10 +7,35 @@ import SwiftUI
 /// TabView's hard switch. The AmbientBackground layer behind
 /// everything carries a slow mesh-gradient drift so the screen never
 /// reads as flat black.
+///
+/// First-run gate: a `@Query` on UserSettings drives whether we show
+/// the onboarding flow or the tabs. When OnboardingFlow flips
+/// `hasOnboarded`, SwiftData re-publishes the query and this view
+/// cross-fades into the tab UI without any manual state plumbing.
 struct RootView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query private var settingsRows: [UserSettings]
     @State private var selection: RootTab = .today
 
     var body: some View {
+        Group {
+            if let settings = settingsRows.first, !settings.hasOnboarded {
+                OnboardingFlow(settings: settings)
+                    .transition(.opacity)
+            } else if settingsRows.isEmpty {
+                // First launch before the singleton row materializes —
+                // create it, which re-fires the query into onboarding.
+                Color.clear
+                    .onAppear { _ = UserSettings.loadOrCreate(in: modelContext) }
+            } else {
+                tabs
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.3), value: settingsRows.first?.hasOnboarded)
+    }
+
+    private var tabs: some View {
         ZStack(alignment: .bottom) {
             AmbientBackground()
             content
@@ -54,4 +80,5 @@ struct RootView: View {
 #Preview {
     RootView()
         .preferredColorScheme(.dark)
+        .modelContainer(for: UserSettings.self, inMemory: true)
 }

@@ -60,6 +60,11 @@ final class UserSettings {
     /// on explicit disconnect.
     var googleHealthConnected: Bool = false
 
+    /// False until the user completes the first-run onboarding flow.
+    /// Gates RootView: while false we present OnboardingFlow full-screen
+    /// instead of the tab UI. Flipped true on the final "Start" step.
+    var hasOnboarded: Bool = false
+
     init() {
         self.id = UUID()
     }

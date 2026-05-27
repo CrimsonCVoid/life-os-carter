@@ -50,7 +50,21 @@ struct AnalysisView: View {
                     revealCard(delay: 0.01) { CorrelationsCard() }
                     revealCard(delay: 0.02) { performanceHero }
                     revealCard(delay: 0.04) { sleepArchitectureCard }
-                    revealCard(delay: 0.08) { heartHealthCard }
+                    revealCard(delay: 0.08) {
+                        NavigationLink {
+                            HeartRateGraphView()
+                        } label: {
+                            heartHealthCard
+                        }
+                        .buttonStyle(.plain)
+                        .simultaneousGesture(TapGesture().onEnded { Haptics.tap() })
+                    }
+                    revealCard(delay: 0.10) {
+                        HStack(spacing: 12) {
+                            caloriesCard
+                            distanceCard
+                        }
+                    }
                     revealCard(delay: 0.12) { hrvSleepCorrelation }
                     revealCard(delay: 0.16) { workoutConsistency }
                     revealCard(delay: 0.20) { heartRateZonesCard }
@@ -273,7 +287,16 @@ struct AnalysisView: View {
         analysisCard(
             kicker: "HEART HEALTH",
             title: "Resting HR & HRV — directional indicators",
-            tint: LifeOSColor.Metric.mood
+            tint: LifeOSColor.Metric.mood,
+            accessory: AnyView(
+                HStack(spacing: 3) {
+                    Text("INTRADAY")
+                        .font(.system(size: 9, weight: .bold)).tracking(0.8)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .bold))
+                }
+                .foregroundStyle(LifeOSColor.Metric.mood)
+            )
         ) {
             Chart {
                 ForEach(data.rhrTrend, id: \.day) { item in
@@ -567,6 +590,64 @@ struct AnalysisView: View {
         }
     }
 
+    // MARK: - Calories + Distance (latest synced day)
+
+    /// Most recent DailyEntry value for a keypath, scanning newest-first.
+    private func latestDaily<T>(_ keyPath: KeyPath<DailyEntry, T?>) -> T? {
+        dailies
+            .sorted { $0.date > $1.date }
+            .lazy
+            .compactMap { $0[keyPath: keyPath] }
+            .first
+    }
+
+    private var caloriesCard: some View {
+        let kcal = latestDaily(\.activeEnergyKcal)
+        return miniStatCard(
+            kicker: "ACTIVE ENERGY",
+            value: kcal.map { "\(Int($0.rounded()))" } ?? "—",
+            unit: "kcal",
+            icon: "flame.fill",
+            tint: LifeOSColor.Metric.calories
+        )
+    }
+
+    private var distanceCard: some View {
+        let meters = latestDaily(\.distanceMeters)
+        let miles = meters.map { $0 / 1609.344 }
+        return miniStatCard(
+            kicker: "DISTANCE",
+            value: miles.map { String(format: "%.1f", $0) } ?? "—",
+            unit: "mi",
+            icon: "figure.walk",
+            tint: LifeOSColor.Metric.steps
+        )
+    }
+
+    private func miniStatCard(kicker: String, value: String, unit: String, icon: String, tint: Color) -> some View {
+        Card {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: icon)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(tint)
+                    Text(kicker)
+                        .font(.system(size: 10, weight: .heavy)).tracking(1.2)
+                        .foregroundStyle(tint)
+                }
+                HStack(alignment: .firstTextBaseline, spacing: 3) {
+                    Text(value)
+                        .font(.system(size: 28, weight: .bold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(.white)
+                    Text(unit)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(LifeOSColor.fg3)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
     // MARK: - Patterns / observations
 
     private var patternsCard: some View {
@@ -620,6 +701,7 @@ struct AnalysisView: View {
         kicker: String,
         title: String,
         tint: Color,
+        accessory: AnyView? = nil,
         @ViewBuilder content: () -> Content
     ) -> some View {
         Card {
@@ -629,6 +711,7 @@ struct AnalysisView: View {
                         .font(.system(size: 10, weight: .heavy)).tracking(1.4)
                         .foregroundStyle(tint)
                     Spacer()
+                    if let accessory { accessory }
                 }
                 Text(title)
                     .font(.system(size: 16, weight: .semibold))
