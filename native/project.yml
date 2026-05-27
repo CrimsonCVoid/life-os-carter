@@ -33,7 +33,7 @@ settings:
     # on first build for any signed-into device.
     DEVELOPMENT_TEAM: "6A3B3XQF6G"
     ENABLE_USER_SCRIPT_SANDBOXING: NO
-    MARKETING_VERSION: "1.0"
+    MARKETING_VERSION: "1.1"
     CURRENT_PROJECT_VERSION: "1"
 
 targets:
