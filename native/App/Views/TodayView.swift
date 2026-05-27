@@ -278,24 +278,33 @@ struct TodayView: View {
     // MARK: - Vitals
 
     private var vitalsGrid: some View {
-        VStack(spacing: 10) {
+        // Resting HR / HRV / weight are lagging metrics — today's value
+        // often doesn't exist yet (resting HR is computed post-sleep), so
+        // fall back to the most recent reading and label it "as of …"
+        // instead of showing "—". Steps stays today-only — it's a live
+        // daily counter, and surfacing yesterday's total as today's would
+        // be misleading.
+        let rhr = mostRecentVital { $0.restingHr }
+        let hrv = mostRecentVital { $0.hrvMs }
+        let weight = mostRecentVital { $0.weightLb }
+        return VStack(spacing: 10) {
             SectionLabel("Vitals")
             HStack(spacing: 10) {
                 VitalTile(
                     icon: "heart.fill", label: "Resting HR",
-                    value: todayEntry.restingHr.map { "\(Int($0))" } ?? "—",
+                    value: rhr.map { "\(Int($0.value))" } ?? "—",
                     unit: "bpm",
                     tint: LifeOSColor.Metric.mood,
                     trend: [],
-                    delta: rhrDelta
+                    delta: vitalCaption(rhr, baseline: settings.rhrBaseline)
                 )
                 VitalTile(
                     icon: "waveform.path.ecg", label: "HRV",
-                    value: todayEntry.hrvMs.map { "\(Int($0))" } ?? "—",
+                    value: hrv.map { "\(Int($0.value))" } ?? "—",
                     unit: "ms",
                     tint: LifeOSColor.Metric.sleep,
                     trend: [],
-                    delta: hrvDelta
+                    delta: vitalCaption(hrv, baseline: settings.hrvBaseline)
                 )
             }
             HStack(spacing: 10) {
@@ -308,29 +317,58 @@ struct TodayView: View {
                 )
                 VitalTile(
                     icon: "scalemass.fill", label: "Weight",
-                    value: todayEntry.weightLb.map {
-                        WeightUnit.from(settings.weightUnit).formatted(fromLb: $0)
+                    value: weight.map {
+                        WeightUnit.from(settings.weightUnit).formatted(fromLb: $0.value)
                             .replacingOccurrences(of: " \(settings.weightUnit)", with: "")
                     } ?? "—",
                     unit: settings.weightUnit,
                     tint: LifeOSColor.Metric.weight,
                     trend: [],
-                    delta: "—"
+                    delta: weight.map { $0.isToday ? "—" : asOfCaption($0.date) } ?? "—"
                 )
             }
         }
     }
 
-    private var hrvDelta: String {
-        guard let now = todayEntry.hrvMs, let base = settings.hrvBaseline, base > 0 else { return "no baseline" }
-        let pct = Int(((now - base) / base * 100).rounded())
+    /// A metric value plus where it came from, for the "as of …" fallback.
+    private struct RecentVital { let value: Double; let date: String; let isToday: Bool }
+
+    /// Most recent DailyEntry (by date) with a non-nil value for `pick`.
+    /// "YYYY-MM-DD" strings sort lexicographically == chronologically.
+    private func mostRecentVital(_ pick: (DailyEntry) -> Double?) -> RecentVital? {
+        dailyRows
+            .compactMap { row in
+                pick(row).map { RecentVital(value: $0, date: row.date, isToday: row.date == todayKey) }
+            }
+            .max { $0.date < $1.date }
+    }
+
+    /// Caption under a vital: the vs-baseline delta when the value is
+    /// today's, otherwise an "as of …" staleness note.
+    private func vitalCaption(_ recent: RecentVital?, baseline: Double?) -> String {
+        guard let recent else { return "no data" }
+        if !recent.isToday { return asOfCaption(recent.date) }
+        guard let base = baseline, base > 0 else { return "no baseline" }
+        let pct = Int(((recent.value - base) / base * 100).rounded())
         return "\(pct >= 0 ? "+" : "")\(pct)% vs 14d"
     }
-    private var rhrDelta: String {
-        guard let now = todayEntry.restingHr, let base = settings.rhrBaseline, base > 0 else { return "no baseline" }
-        let pct = Int(((now - base) / base * 100).rounded())
-        return "\(pct >= 0 ? "+" : "")\(pct)% vs 14d"
+
+    private func asOfCaption(_ dateStr: String) -> String {
+        guard let d = Self.ymdFormatter.date(from: dateStr) else { return "earlier" }
+        let cal = Calendar.current
+        if cal.isDateInToday(d) { return "—" }
+        if cal.isDateInYesterday(d) { return "as of yesterday" }
+        let days = cal.dateComponents([.day], from: cal.startOfDay(for: d), to: cal.startOfDay(for: Date())).day ?? 0
+        return "as of \(max(days, 1))d ago"
     }
+
+    private static let ymdFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
     private var stepsDelta: String {
         let goal = settings.stepsGoal
         guard goal > 0, let s = todayEntry.steps else { return "—" }
