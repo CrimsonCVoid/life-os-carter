@@ -534,6 +534,73 @@ export async function fetchCardioLoad(opts: {
 }
 
 // ---------------------------------------------------------------------------
+// TEMPORARY DIAGNOSTIC — capture real shapes for the new metrics, then remove.
+// ---------------------------------------------------------------------------
+
+export async function debugRawFetches(opts: {
+  accessToken: string;
+  startDate: DateStr;
+  endDate: DateStr;
+}): Promise<Record<string, unknown>> {
+  const { accessToken, startDate, endDate } = opts;
+  const out: Record<string, unknown> = {};
+  const grab = async (label: string, url: string, init?: RequestInit) => {
+    try {
+      const res = await fetch(url, {
+        ...(init ?? {}),
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+      });
+      out[label] = { status: res.status, body: (await res.text()).slice(0, 1400) };
+    } catch (e) {
+      out[label] = { error: String(e).slice(0, 200) };
+    }
+  };
+  const rollupBody = JSON.stringify({
+    range: {
+      start: { date: civilDateParts(startDate), time: { hours: 0, minutes: 0, seconds: 0 } },
+      end: { date: civilDateParts(endDate), time: { hours: 23, minutes: 59, seconds: 59 } },
+    },
+    windowSizeDays: 1,
+    pageSize: 200,
+  });
+  const base = GOOGLE_HEALTH_BASE_URL;
+  for (const dt of ["active-energy-burned", "total-calories", "distance", "floors"]) {
+    await grab(dt, `${base}/users/me/dataTypes/${dt}/dataPoints:dailyRollUp`, {
+      method: "POST",
+      body: rollupBody,
+    });
+  }
+  await grab(
+    "vo2-max",
+    `${base}/users/me/dataTypes/vo2-max/dataPoints?` +
+      new URLSearchParams({
+        filter: `vo2_max.sample_time.civil_time >= "${isoStartOf(startDate)}" AND vo2_max.sample_time.civil_time < "${isoStartOf(nextDay(endDate))}"`,
+        pageSize: "3",
+      }).toString()
+  );
+  await grab(
+    "heart-rate",
+    `${base}/users/me/dataTypes/heart-rate/dataPoints?` +
+      new URLSearchParams({
+        filter: `heart_rate.sample_time.civil_time >= "${isoStartOf(endDate)}" AND heart_rate.sample_time.civil_time < "${isoStartOf(nextDay(endDate))}"`,
+        pageSize: "3",
+      }).toString()
+  );
+  await grab(
+    "sleep",
+    `${base}/users/me/dataTypes/sleep/dataPoints?` +
+      new URLSearchParams({
+        filter: `sleep.interval.civil_end_time >= "${startDate}" AND sleep.interval.civil_end_time < "${nextDay(endDate)}"`,
+        pageSize: "3",
+      }).toString()
+  );
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // MERGE
 // ---------------------------------------------------------------------------
 
