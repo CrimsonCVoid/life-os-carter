@@ -71,21 +71,28 @@ struct VitalTile: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 5) {
-                Image(systemName: icon)
-                    .font(.system(size: 11))
-                    .foregroundStyle(tint)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                ZStack {
+                    Circle().fill(tint.opacity(0.16))
+                    Image(systemName: icon)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(tint)
+                }
+                .frame(width: 22, height: 22)
                 Text(label.uppercased())
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.system(size: 9, weight: .heavy))
                     .tracking(1.2)
                     .foregroundStyle(LifeOSColor.fg3)
+                Spacer()
             }
-            HStack(alignment: .firstTextBaseline, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 3) {
                 Text(value)
-                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .font(.system(size: 26, weight: .bold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(.white)
+                    .contentTransition(.numericText())
+                    .animation(.spring(response: 0.4, dampingFraction: 0.85), value: value)
                 if !unit.isEmpty {
                     Text(unit)
                         .font(.system(size: 11, weight: .medium))
@@ -97,12 +104,12 @@ struct VitalTile: View {
             }
             if let delta {
                 Text(delta)
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(LifeOSColor.fg3)
             }
         }
-        .padding(12)
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassCard(cornerRadius: 16)
+        .liquidGlass(cornerRadius: 18, tint: tint, depth: .soft)
     }
 }
