@@ -32,9 +32,10 @@ export const DATA_TYPES = {
   weight: "weight",
   restingHeartRate: "daily-resting-heart-rate",
   heartRateVariability: "heart-rate-variability",
-  /** Cardio Load. The exact id is pre-GA — if Google ships it under
-   * a different identifier (e.g. "active-zone-minutes"), patch here. */
-  cardioLoad: "cardio-load",
+  /** There is no "cardio-load" data type — that id 400s with
+   * "Invalid data type ID". Active Zone Minutes is the real metric
+   * (the dailyRollUp parser reads it via activeZoneMinutes.totalMinutes). */
+  cardioLoad: "active-zone-minutes",
 } as const;
 
 export type DataTypeKey = keyof typeof DATA_TYPES;
