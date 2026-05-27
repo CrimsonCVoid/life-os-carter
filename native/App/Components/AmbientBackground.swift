@@ -52,9 +52,12 @@ struct AmbientBackground: View {
                 .init(0, 1), .init(0.5, 1), .init(1, 1),
             ],
             colors: [
-                Color.black, accent.opacity(0.4), LifeOSColor.Metric.peak.opacity(0.35),
-                LifeOSColor.Metric.sleep.opacity(0.45), accent.opacity(0.55), Color.black,
-                Color.black, LifeOSColor.Metric.peak.opacity(0.18), Color.black,
+                // `base` (adaptive) instead of literal black so the mesh's
+                // anchor color follows light/dark — black anchors would blotch
+                // the page dark in light mode.
+                LifeOSColor.base, accent.opacity(0.4), LifeOSColor.Metric.peak.opacity(0.35),
+                LifeOSColor.Metric.sleep.opacity(0.45), accent.opacity(0.55), LifeOSColor.base,
+                LifeOSColor.base, LifeOSColor.Metric.peak.opacity(0.18), LifeOSColor.base,
             ]
         )
     }
