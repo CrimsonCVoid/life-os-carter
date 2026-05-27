@@ -6,14 +6,18 @@ import {
 } from "@/lib/integrations/google-health/tokens-db";
 import { RefreshFailedError } from "@/lib/integrations/google-health/oauth-server";
 import {
+  fetchActiveEnergy,
   fetchCardioLoad,
+  fetchDistance,
+  fetchFloors,
   fetchHeartRateVariability,
   fetchRestingHeartRate,
   fetchSleep,
   fetchSteps,
+  fetchTotalCalories,
+  fetchVo2Max,
   fetchWeight,
   mergeByDate,
-  debugRawFetches,
   type SyncedDataPoint,
 } from "@/lib/integrations/google-health/adapter";
 import type { DateStr } from "@/lib/types";
@@ -80,13 +84,6 @@ export async function POST(req: NextRequest) {
   const startDate = dateNDaysAgo(days);
   const endDate = today();
 
-  // TEMPORARY: ?debug=raw dumps raw Google responses to diagnose parsing.
-  if (req.nextUrl.searchParams.get("debug") === "raw") {
-    return NextResponse.json(
-      await debugRawFetches({ accessToken, startDate, endDate })
-    );
-  }
-
   // Each fetch is independent so a partial failure (e.g. one metric
   // unavailable) doesn't kill the whole sync.
   const results = await Promise.allSettled([
@@ -96,6 +93,11 @@ export async function POST(req: NextRequest) {
     fetchHeartRateVariability({ accessToken, startDate, endDate }),
     fetchWeight({ accessToken, startDate, endDate }),
     fetchCardioLoad({ accessToken, startDate, endDate }),
+    fetchActiveEnergy({ accessToken, startDate, endDate }),
+    fetchTotalCalories({ accessToken, startDate, endDate }),
+    fetchDistance({ accessToken, startDate, endDate }),
+    fetchFloors({ accessToken, startDate, endDate }),
+    fetchVo2Max({ accessToken, startDate, endDate }),
   ]);
 
   const sources: SyncedDataPoint[][] = [];

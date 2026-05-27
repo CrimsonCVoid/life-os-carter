@@ -33,7 +33,12 @@ export type SyncedFields = {
   weight?: number; // lb (we convert from kg here so the store is consistent)
   restingHeartRate?: number; // bpm
   heartRateVariability?: number; // ms (rMSSD-style)
-  cardioLoad?: number; // Google Health Cardio Load value (daily)
+  cardioLoad?: number; // Active Zone Minutes (daily total)
+  activeEnergyKcal?: number; // active calories burned
+  totalCaloriesKcal?: number; // total calories burned (active + BMR)
+  distanceMeters?: number; // meters
+  floors?: number; // floors climbed
+  vo2Max?: number; // mL/kg/min
 };
 
 export type SyncedDataPoint = {
@@ -285,6 +290,10 @@ type DailyRollupResponse = {
     steps?: { countSum?: string | number };
     weight?: { weightGramsAvg?: number; weightGramsMin?: number; weightGramsMax?: number };
     activeZoneMinutes?: { totalMinutes?: number; minutesSum?: number; totalSum?: number };
+    activeEnergyBurned?: { kcalSum?: number };
+    totalCalories?: { kcalSum?: number };
+    distance?: { millimetersSum?: string | number };
+    floors?: { countSum?: string | number; floorsSum?: string | number };
   }>;
   nextPageToken?: string;
 };
@@ -534,70 +543,147 @@ export async function fetchCardioLoad(opts: {
 }
 
 // ---------------------------------------------------------------------------
-// TEMPORARY DIAGNOSTIC — capture real shapes for the new metrics, then remove.
+// ACTIVE ENERGY / TOTAL CALORIES / DISTANCE / FLOORS (daily rollups)
 // ---------------------------------------------------------------------------
 
-export async function debugRawFetches(opts: {
+export async function fetchActiveEnergy(opts: {
   accessToken: string;
   startDate: DateStr;
   endDate: DateStr;
-}): Promise<Record<string, unknown>> {
-  const { accessToken, startDate, endDate } = opts;
-  const out: Record<string, unknown> = {};
-  const grab = async (label: string, url: string, init?: RequestInit) => {
-    try {
-      const res = await fetch(url, {
-        ...(init ?? {}),
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-      });
-      out[label] = { status: res.status, body: (await res.text()).slice(0, 1400) };
-    } catch (e) {
-      out[label] = { error: String(e).slice(0, 200) };
-    }
-  };
-  const rollupBody = JSON.stringify({
-    range: {
-      start: { date: civilDateParts(startDate), time: { hours: 0, minutes: 0, seconds: 0 } },
-      end: { date: civilDateParts(endDate), time: { hours: 23, minutes: 59, seconds: 59 } },
-    },
-    windowSizeDays: 1,
-    pageSize: 200,
+}): Promise<SyncedDataPoint[]> {
+  const res = await fetchDailyRollUp({
+    accessToken: opts.accessToken,
+    dataType: DATA_TYPES.activeEnergy,
+    startDate: opts.startDate,
+    endDate: opts.endDate,
   });
-  const base = GOOGLE_HEALTH_BASE_URL;
-  for (const dt of ["active-energy-burned", "total-calories", "distance", "floors"]) {
-    await grab(dt, `${base}/users/me/dataTypes/${dt}/dataPoints:dailyRollUp`, {
-      method: "POST",
-      body: rollupBody,
-    });
+  const out: SyncedDataPoint[] = [];
+  for (const r of res.rollupDataPoints ?? []) {
+    const date = civilDateOf(r.civilStartTime);
+    const kcal = r.activeEnergyBurned?.kcalSum;
+    if (!date || kcal == null || !Number.isFinite(kcal)) continue;
+    out.push({ date, fields: { activeEnergyKcal: Math.round(kcal) } });
   }
-  await grab(
-    "vo2-max",
-    `${base}/users/me/dataTypes/vo2-max/dataPoints?` +
-      new URLSearchParams({
-        filter: `vo2_max.sample_time.civil_time >= "${isoStartOf(startDate)}" AND vo2_max.sample_time.civil_time < "${isoStartOf(nextDay(endDate))}"`,
-        pageSize: "3",
-      }).toString()
-  );
-  await grab(
-    "heart-rate",
-    `${base}/users/me/dataTypes/heart-rate/dataPoints?` +
-      new URLSearchParams({
-        filter: `heart_rate.sample_time.civil_time >= "${isoStartOf(endDate)}" AND heart_rate.sample_time.civil_time < "${isoStartOf(nextDay(endDate))}"`,
-        pageSize: "3",
-      }).toString()
-  );
-  await grab(
-    "sleep",
-    `${base}/users/me/dataTypes/sleep/dataPoints?` +
-      new URLSearchParams({
-        filter: `sleep.interval.civil_end_time >= "${startDate}" AND sleep.interval.civil_end_time < "${nextDay(endDate)}"`,
-        pageSize: "3",
-      }).toString()
-  );
   return out;
+}
+
+export async function fetchTotalCalories(opts: {
+  accessToken: string;
+  startDate: DateStr;
+  endDate: DateStr;
+}): Promise<SyncedDataPoint[]> {
+  // total-calories caps the query window at 14 days (the API 400s past
+  // that), so clamp the start independently of the other metrics.
+  const res = await fetchDailyRollUp({
+    accessToken: opts.accessToken,
+    dataType: DATA_TYPES.totalCalories,
+    startDate: clampWindow(opts.startDate, opts.endDate, 14),
+    endDate: opts.endDate,
+  });
+  const out: SyncedDataPoint[] = [];
+  for (const r of res.rollupDataPoints ?? []) {
+    const date = civilDateOf(r.civilStartTime);
+    const kcal = r.totalCalories?.kcalSum;
+    if (!date || kcal == null || !Number.isFinite(kcal)) continue;
+    out.push({ date, fields: { totalCaloriesKcal: Math.round(kcal) } });
+  }
+  return out;
+}
+
+export async function fetchDistance(opts: {
+  accessToken: string;
+  startDate: DateStr;
+  endDate: DateStr;
+}): Promise<SyncedDataPoint[]> {
+  const res = await fetchDailyRollUp({
+    accessToken: opts.accessToken,
+    dataType: DATA_TYPES.distance,
+    startDate: opts.startDate,
+    endDate: opts.endDate,
+  });
+  const out: SyncedDataPoint[] = [];
+  for (const r of res.rollupDataPoints ?? []) {
+    const date = civilDateOf(r.civilStartTime);
+    const mm = parseIntegerish(r.distance?.millimetersSum);
+    if (!date || mm == null) continue;
+    out.push({ date, fields: { distanceMeters: +(mm / 1000).toFixed(2) } });
+  }
+  return out;
+}
+
+export async function fetchFloors(opts: {
+  accessToken: string;
+  startDate: DateStr;
+  endDate: DateStr;
+}): Promise<SyncedDataPoint[]> {
+  const res = await fetchDailyRollUp({
+    accessToken: opts.accessToken,
+    dataType: DATA_TYPES.floors,
+    startDate: opts.startDate,
+    endDate: opts.endDate,
+  });
+  const out: SyncedDataPoint[] = [];
+  for (const r of res.rollupDataPoints ?? []) {
+    const date = civilDateOf(r.civilStartTime);
+    const n = parseIntegerish(r.floors?.countSum ?? r.floors?.floorsSum);
+    if (!date || n == null) continue;
+    out.push({ date, fields: { floors: n } });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// VO2 MAX (sample type — slow-moving; take the most recent reading)
+// ---------------------------------------------------------------------------
+
+type RawVo2DataPoint = {
+  vo2Max?: {
+    sampleTime?: { physicalTime?: string; civilTime?: CivilTimeObj | string };
+    value?: number | string;
+    vo2MaxMlPerKgMin?: number | string;
+    metersPerMinutePerKilogram?: number | string;
+  };
+};
+
+export async function fetchVo2Max(opts: {
+  accessToken: string;
+  startDate: DateStr;
+  endDate: DateStr;
+}): Promise<SyncedDataPoint[]> {
+  const params = new URLSearchParams({
+    filter: `vo2_max.sample_time.civil_time >= "${isoStartOf(opts.startDate)}" AND vo2_max.sample_time.civil_time < "${isoStartOf(nextDay(opts.endDate))}"`,
+    pageSize: "200",
+  });
+  const url = `${GOOGLE_HEALTH_BASE_URL}/users/me/dataTypes/${DATA_TYPES.vo2Max}/dataPoints?${params.toString()}`;
+  const res = await callGoogle<ListResponse<RawVo2DataPoint>>(url, {
+    accessToken: opts.accessToken,
+  });
+  const out: SyncedDataPoint[] = [];
+  for (const p of res.dataPoints ?? []) {
+    const v = p.vo2Max;
+    if (!v) continue;
+    const date = civilDateOf(v.sampleTime?.civilTime);
+    const raw = parseFloatish(v.value ?? v.vo2MaxMlPerKgMin ?? v.metersPerMinutePerKilogram);
+    if (!date || raw == null) continue;
+    out.push({ date, fields: { vo2Max: +raw.toFixed(1) } });
+  }
+  return out;
+}
+
+function parseFloatish(v: string | number | undefined): number | undefined {
+  if (v == null) return undefined;
+  const n = typeof v === "string" ? parseFloat(v) : v;
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/** Clamp the start so [start, end] spans at most `maxDays` (some data
+ * types cap the query window). */
+function clampWindow(startDate: DateStr, endDate: DateStr, maxDays: number): DateStr {
+  const end = new Date(`${endDate}T00:00:00`);
+  const minStart = new Date(end);
+  minStart.setDate(minStart.getDate() - (maxDays - 1));
+  const start = new Date(`${startDate}T00:00:00`);
+  return start > minStart ? startDate : civilDate(minStart);
 }
 
 // ---------------------------------------------------------------------------

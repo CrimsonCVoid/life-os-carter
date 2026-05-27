@@ -36,6 +36,13 @@ export const DATA_TYPES = {
    * "Invalid data type ID". Active Zone Minutes is the real metric
    * (the dailyRollUp parser reads it via activeZoneMinutes.totalMinutes). */
   cardioLoad: "active-zone-minutes",
+  activeEnergy: "active-energy-burned",
+  totalCalories: "total-calories",
+  distance: "distance",
+  floors: "floors",
+  vo2Max: "vo2-max",
+  /** Intraday heart-rate samples (~1 Hz on Fitbit) for the HR analytics graph. */
+  heartRate: "heart-rate",
 } as const;
 
 export type DataTypeKey = keyof typeof DATA_TYPES;
