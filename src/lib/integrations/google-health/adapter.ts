@@ -528,6 +528,66 @@ export async function fetchCardioLoad(opts: {
 }
 
 // ---------------------------------------------------------------------------
+// TEMPORARY DIAGNOSTIC — remove once parsers are confirmed against real data.
+// Returns the raw Google responses so we can see the actual field shapes.
+// ---------------------------------------------------------------------------
+
+export async function debugRawFetches(opts: {
+  accessToken: string;
+  startDate: DateStr;
+  endDate: DateStr;
+}): Promise<Record<string, unknown>> {
+  const { accessToken, startDate, endDate } = opts;
+  const out: Record<string, unknown> = {};
+  const grab = async (label: string, url: string, init?: RequestInit) => {
+    try {
+      const res = await fetch(url, {
+        ...(init ?? {}),
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+      });
+      const text = await res.text();
+      out[label] = { status: res.status, body: text.slice(0, 1800) };
+    } catch (e) {
+      out[label] = { error: String(e).slice(0, 300) };
+    }
+  };
+  const rollupBody = JSON.stringify({
+    range: {
+      start: { date: civilDateParts(startDate), time: { hours: 0, minutes: 0, seconds: 0 } },
+      end: { date: civilDateParts(endDate), time: { hours: 23, minutes: 59, seconds: 59 } },
+    },
+    windowSizeDays: 1,
+    pageSize: 200,
+  });
+  const base = GOOGLE_HEALTH_BASE_URL;
+  await grab(
+    "steps_rollup",
+    `${base}/users/me/dataTypes/steps/dataPoints:dailyRollUp`,
+    { method: "POST", body: rollupBody }
+  );
+  await grab(
+    "rhr_list",
+    `${base}/users/me/dataTypes/daily-resting-heart-rate/dataPoints?` +
+      new URLSearchParams({
+        filter: `daily_resting_heart_rate.date >= "${startDate}" AND daily_resting_heart_rate.date < "${nextDay(endDate)}"`,
+        pageSize: "5",
+      }).toString()
+  );
+  await grab(
+    "sleep_list",
+    `${base}/users/me/dataTypes/sleep/dataPoints?` +
+      new URLSearchParams({
+        filter: `sleep.interval.civil_end_time >= "${startDate}" AND sleep.interval.civil_end_time < "${nextDay(endDate)}"`,
+        pageSize: "5",
+      }).toString()
+  );
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // MERGE
 // ---------------------------------------------------------------------------
 
