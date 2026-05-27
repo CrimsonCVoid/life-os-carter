@@ -41,7 +41,6 @@ struct LifeOSApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
-                .preferredColorScheme(.dark)
                 .tint(LifeOSColor.accent)
                 .environment(workoutStore)
                 .environment(auth)

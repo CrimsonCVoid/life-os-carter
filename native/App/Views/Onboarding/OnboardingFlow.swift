@@ -125,7 +125,6 @@ struct OnboardingFlow: View {
             }
             .padding(.top, 8)
         }
-        .preferredColorScheme(.dark)
         .onAppear(perform: prefillFromSettings)
         .animation(.spring(response: 0.45, dampingFraction: 0.85), value: step)
     }

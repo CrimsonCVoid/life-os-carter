@@ -77,11 +77,15 @@ struct RecoveryStrainHero: View {
 
     private var recoverySublabel: String {
         guard let r = recovery else { return "Wear your watch overnight to score" }
-        // Surface the heaviest-weight component as the explanation.
-        let strongest = r.components
-            .filter { $0.weight >= 0.25 }
-            .min { abs(50 - $0.value) > abs(50 - $1.value) }
-        return strongest?.note ?? "Composite of HRV, RHR, sleep, mood"
+        // Surface whichever component is most responsible for the score —
+        // its weighted distance from neutral (50). This lets a heavy day's
+        // low Prior Strain or fragmented Sleep surface as the explanation,
+        // not just the structurally-heaviest input.
+        func impact(_ c: RecoveryCalculator.Component) -> Double {
+            Double(abs(50 - c.value)) * c.weight
+        }
+        let driver = r.components.max { impact($0) < impact($1) }
+        return driver?.note ?? "Composite of HRV, RHR, sleep, strain"
     }
 
     // MARK: - Strain (right)

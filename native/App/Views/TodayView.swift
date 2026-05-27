@@ -128,26 +128,75 @@ struct TodayView: View {
             daily: todayEntry,
             hrvBaseline: settings.hrvBaseline,
             rhrBaseline: settings.rhrBaseline,
-            sleepGoalHours: settings.sleepGoalHours
+            sleepGoalHours: settings.sleepGoalHours,
+            priorDayStrain: yesterdayStrain?.value
         )
     }
 
     private var strainScore: StrainCalculator.Score {
+        strain(for: Calendar.current.startOfDay(for: Date()))
+    }
+
+    /// Yesterday's strain, used to temper today's recovery. nil when
+    /// yesterday produced no measurable load (calculator still returns a
+    /// near-zero rest score, so this is effectively always non-nil — but
+    /// keep it optional to pass through cleanly).
+    private var yesterdayStrain: StrainCalculator.Score? {
         let cal = Calendar.current
-        let dayStart = cal.startOfDay(for: Date())
-        let todaySessions = allSessions.filter { $0.startedAt >= dayStart }
-        let todayVolume = todaySessions.reduce(0.0) { $0 + $1.totalVolumeLb }
+        guard let yesterday = cal.date(byAdding: .day, value: -1, to: cal.startOfDay(for: Date())) else { return nil }
+        return strain(for: yesterday)
+    }
+
+    /// Strain for the calendar day starting at `dayStart`. Pulls that
+    /// day's lift volume + volume-weighted session RPE from sessions, the
+    /// 7-day rolling max-day volume as the mechanical reference, and that
+    /// day's DailyEntry cardio signals (active energy, steps, distance).
+    private func strain(for dayStart: Date) -> StrainCalculator.Score {
+        let cal = Calendar.current
+        let dayEnd = cal.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
+        let dayKey = ymd(dayStart)
+        let daySessions = allSessions.filter { $0.startedAt >= dayStart && $0.startedAt < dayEnd }
+        let dayVolume = daySessions.reduce(0.0) { $0 + $1.totalVolumeLb }
+        let dayRPE = sessionRPE(for: daySessions)
+
+        // 7-day rolling window ending at this day (inclusive).
         let weekStart = cal.date(byAdding: .day, value: -7, to: dayStart) ?? dayStart
-        let weekSessions = allSessions.filter { $0.startedAt >= weekStart }
+        let weekSessions = allSessions.filter { $0.startedAt >= weekStart && $0.startedAt < dayEnd }
         let weekMaxDayVolume = Dictionary(grouping: weekSessions, by: \.date)
             .values
             .map { $0.reduce(0.0) { $0 + $1.totalVolumeLb } }
             .max() ?? 0
+
+        let daily = dailyRows.first(where: { $0.date == dayKey })
         return StrainCalculator.compute(
-            liftVolumeTodayLb: todayVolume,
+            liftVolumeTodayLb: dayVolume,
             liftVolumeMax7dLb: weekMaxDayVolume,
-            activeEnergyKcal: todayEntry.activeEnergyKcal ?? 0
+            activeEnergyKcal: daily?.activeEnergyKcal ?? 0,
+            sessionRPE: dayRPE,
+            steps: daily?.steps,
+            distanceMeters: daily?.distanceMeters
         )
+    }
+
+    /// Volume-weighted average set RPE across a day's sessions, recovered
+    /// from each session's `detailsJSON` exercise/set blob. Each completed
+    /// set is weighted by its training volume (weight × reps) so heavy
+    /// top sets count more than light back-offs — the validated sRPE
+    /// aggregation. Returns nil when no set carried an RPE.
+    private func sessionRPE(for sessions: [LiftSessionEntry]) -> Double? {
+        var weightedSum = 0.0
+        var totalWeight = 0.0
+        for session in sessions {
+            for exercise in CSVExporter.decodeExercises(session.detailsJSON) {
+                for set in exercise.sets where set.rpe != nil {
+                    let vol = max(1.0, set.weight * Double(set.reps))
+                    weightedSum += (set.rpe ?? 0) * vol
+                    totalWeight += vol
+                }
+            }
+        }
+        guard totalWeight > 0 else { return nil }
+        return weightedSum / totalWeight
     }
 
     private var recoveryAdvice: RecoveryAdvice.Line? {
@@ -237,18 +286,29 @@ struct TodayView: View {
     private var activityRingsCard: some View {
         let steps = todayEntry.steps ?? 0
         let stepsGoal = settings.stepsGoal
+        let sleepMin = Int((todayEntry.sleepHours ?? 0) * 60)
+        let sleepGoalMin = Int(settings.sleepGoalHours * 60)
+        let waterOz = Int(todayEntry.waterOz)
+        let waterGoal = Int(settings.waterGoalOz)
+        // The three rings map to the three metrics labeled beside them —
+        // Steps (outer), Sleep (middle), Water (inner) — each as its real
+        // progress-to-goal ratio. Previously hardcoded to 0.4/0.4/0.4,
+        // which rendered identical placeholder arcs regardless of data.
+        let stepsRatio = stepsGoal > 0 ? Double(steps) / Double(stepsGoal) : 0
+        let sleepRatio = sleepGoalMin > 0 ? Double(sleepMin) / Double(sleepGoalMin) : 0
+        let waterRatio = waterGoal > 0 ? Double(waterOz) / Double(waterGoal) : 0
         return Card {
             HStack(spacing: 18) {
                 ActivityRings(
-                    move: 0.4,
-                    exercise: 0.4,
-                    stand: 0.4
+                    move: stepsRatio,
+                    exercise: sleepRatio,
+                    stand: waterRatio
                 )
                 .frame(width: 110, height: 110)
                 VStack(alignment: .leading, spacing: 10) {
                     ringRow(name: "Steps", have: steps, goal: stepsGoal, unit: "steps", tint: LifeOSColor.Metric.steps)
-                    ringRow(name: "Sleep", have: Int((todayEntry.sleepHours ?? 0) * 60), goal: Int(settings.sleepGoalHours * 60), unit: "min", tint: LifeOSColor.Metric.sleep)
-                    ringRow(name: "Water", have: Int(todayEntry.waterOz), goal: Int(settings.waterGoalOz), unit: "oz", tint: LifeOSColor.Metric.water)
+                    ringRow(name: "Sleep", have: sleepMin, goal: sleepGoalMin, unit: "min", tint: LifeOSColor.Metric.sleep)
+                    ringRow(name: "Water", have: waterOz, goal: waterGoal, unit: "oz", tint: LifeOSColor.Metric.water)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }

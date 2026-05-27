@@ -45,7 +45,6 @@ struct RootView: View {
                 .shadow(color: .black.opacity(0.32), radius: 24, x: 0, y: 14)
         }
         .ignoresSafeArea(.keyboard)
-        .preferredColorScheme(.dark)
     }
 
     @ViewBuilder
@@ -79,6 +78,5 @@ struct RootView: View {
 
 #Preview {
     RootView()
-        .preferredColorScheme(.dark)
         .modelContainer(for: UserSettings.self, inMemory: true)
 }

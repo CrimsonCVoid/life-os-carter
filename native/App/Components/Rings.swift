@@ -1,18 +1,20 @@
 import SwiftUI
 
-/// Apple-Fitness-style three-ring stack — Move / Exercise / Stand.
-/// Each ring's progress is clamped 0-1. Tints come from
+/// Apple-Fitness-style three-ring stack. On Today these map to
+/// Steps (outer) / Sleep (middle) / Water (inner) — the same three
+/// metrics labeled beside the rings — so each ring's tint matches its
+/// metric. Each ring's progress is clamped 0-1. Tints come from
 /// `LifeOSColor.Metric.*` so the brand stays consistent.
 struct ActivityRings: View {
-    let move: Double          // 0-1
-    let exercise: Double      // 0-1
-    let stand: Double         // 0-1
+    let move: Double          // outer — Steps
+    let exercise: Double      // middle — Sleep
+    let stand: Double         // inner — Water
     var lineWidth: CGFloat = 14
 
     var body: some View {
         ZStack {
-            ProgressRing(progress: move,     tint: LifeOSColor.danger,          lineWidth: lineWidth)
-            ProgressRing(progress: exercise, tint: LifeOSColor.Metric.steps,    lineWidth: lineWidth)
+            ProgressRing(progress: move,     tint: LifeOSColor.Metric.steps,    lineWidth: lineWidth)
+            ProgressRing(progress: exercise, tint: LifeOSColor.Metric.sleep,    lineWidth: lineWidth)
                 .padding(lineWidth + 4)
             ProgressRing(progress: stand,    tint: LifeOSColor.Metric.water,    lineWidth: lineWidth)
                 .padding((lineWidth + 4) * 2)
