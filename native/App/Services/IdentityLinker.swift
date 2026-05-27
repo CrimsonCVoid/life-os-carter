@@ -1,5 +1,6 @@
 import Foundation
 import AuthenticationServices
+import CryptoKit
 import UIKit
 
 /// Drives the Apple SIWA and Google OAuth flows from inside the app
@@ -123,18 +124,29 @@ final class IdentityLinker: NSObject {
         let callbackScheme = reversed
         let redirectURI = "\(reversed):/oauth2redirect"
 
-        let nonce = UUID().uuidString
+        // iOS-type OAuth clients only support the authorization-code +
+        // PKCE flow; requesting `response_type=id_token` (implicit) from
+        // one returns `unsupported_response_type`. So we run the code
+        // dance, then exchange the code for tokens. Installed-app clients
+        // are public — the /token call carries no client_secret. The
+        // resulting id_token is audienced to this iOS client ID, which is
+        // exactly what the backend's verifyGoogleIdToken audience check
+        // wants.
+        let verifier = Self.randomCodeVerifier()
+        let challenge = Self.codeChallenge(for: verifier)
+
         var components = URLComponents(string: "https://accounts.google.com/o/oauth2/v2/auth")!
         components.queryItems = [
-            URLQueryItem(name: "client_id",     value: clientID),
-            URLQueryItem(name: "response_type", value: "id_token"),
-            URLQueryItem(name: "scope",         value: "openid email profile"),
-            URLQueryItem(name: "redirect_uri",  value: redirectURI),
-            URLQueryItem(name: "nonce",         value: nonce),
-            URLQueryItem(name: "prompt",        value: "select_account"),
+            URLQueryItem(name: "client_id",            value: clientID),
+            URLQueryItem(name: "response_type",         value: "code"),
+            URLQueryItem(name: "scope",                 value: "openid email profile"),
+            URLQueryItem(name: "redirect_uri",          value: redirectURI),
+            URLQueryItem(name: "code_challenge",        value: challenge),
+            URLQueryItem(name: "code_challenge_method", value: "S256"),
+            URLQueryItem(name: "prompt",                value: "select_account"),
         ]
 
-        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
+        let code: String = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
             let session = ASWebAuthenticationSession(
                 url: components.url!,
                 callbackURLScheme: callbackScheme
@@ -149,23 +161,17 @@ final class IdentityLinker: NSObject {
                     }
                     return
                 }
-                guard let callback else {
+                // Authorization-code flow returns `code` in the query string.
+                guard
+                    let callback,
+                    let comps = URLComponents(url: callback, resolvingAgainstBaseURL: false),
+                    let code = comps.queryItems?.first(where: { $0.name == "code" })?.value,
+                    !code.isEmpty
+                else {
                     continuation.resume(throwing: LinkError.noIdentityToken)
                     return
                 }
-                // id_token lands in the URL fragment, not the query string.
-                let frag = callback.fragment ?? callback.query ?? ""
-                let pairs = frag.split(separator: "&").reduce(into: [String: String]()) { acc, kv in
-                    let parts = kv.split(separator: "=", maxSplits: 1).map(String.init)
-                    if parts.count == 2 {
-                        acc[parts[0]] = parts[1].removingPercentEncoding ?? parts[1]
-                    }
-                }
-                if let token = pairs["id_token"], !token.isEmpty {
-                    continuation.resume(returning: token)
-                } else {
-                    continuation.resume(throwing: LinkError.noIdentityToken)
-                }
+                continuation.resume(returning: code)
             }
             session.presentationContextProvider = GooglePresentationProvider.shared
             session.prefersEphemeralWebBrowserSession = false
@@ -174,6 +180,69 @@ final class IdentityLinker: NSObject {
             }
             self.googleSession = session
         }
+
+        return try await Self.exchangeCodeForIdToken(
+            code: code,
+            verifier: verifier,
+            clientID: clientID,
+            redirectURI: redirectURI
+        )
+    }
+
+    /// Exchanges a PKCE authorization code for Google tokens and returns
+    /// the `id_token`. No client_secret — iOS OAuth clients are public.
+    private static func exchangeCodeForIdToken(
+        code: String,
+        verifier: String,
+        clientID: String,
+        redirectURI: String
+    ) async throws -> String {
+        var req = URLRequest(url: URL(string: "https://oauth2.googleapis.com/token")!)
+        req.httpMethod = "POST"
+        req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        var form = URLComponents()
+        form.queryItems = [
+            URLQueryItem(name: "client_id",     value: clientID),
+            URLQueryItem(name: "code",          value: code),
+            URLQueryItem(name: "code_verifier", value: verifier),
+            URLQueryItem(name: "grant_type",    value: "authorization_code"),
+            URLQueryItem(name: "redirect_uri",  value: redirectURI),
+        ]
+        req.httpBody = form.percentEncodedQuery?.data(using: .utf8)
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw LinkError.backendRejected("Google token exchange failed: \(body)")
+        }
+        struct TokenResponse: Decodable { let idToken: String?
+            enum CodingKeys: String, CodingKey { case idToken = "id_token" }
+        }
+        let decoded = try JSONDecoder().decode(TokenResponse.self, from: data)
+        guard let idToken = decoded.idToken, !idToken.isEmpty else {
+            throw LinkError.noIdentityToken
+        }
+        return idToken
+    }
+
+    // MARK: - PKCE
+
+    private static func randomCodeVerifier() -> String {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        return base64URLEncode(Data(bytes))
+    }
+
+    private static func codeChallenge(for verifier: String) -> String {
+        let hash = SHA256.hash(data: Data(verifier.utf8))
+        return base64URLEncode(Data(hash))
+    }
+
+    private static func base64URLEncode(_ data: Data) -> String {
+        data.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
     }
 
     private var googleSession: ASWebAuthenticationSession?
