@@ -64,6 +64,9 @@ targets:
         UIViewControllerBasedStatusBarAppearance: false
         UIBackgroundModes:
           - remote-notification
+          - fetch
+        BGTaskSchedulerPermittedIdentifiers:
+          - com.hbrady.lifeos.healthrefresh
         NSHealthShareUsageDescription: Life OS reads your activity, heart rate, sleep, and body data from Apple Health to assemble your daily readiness picture.
         NSHealthUpdateUsageDescription: Life OS writes weight, water, and mindful sessions you log here back to Apple Health so the rest of your apps stay in sync.
         NSCameraUsageDescription: Life OS uses the camera to scan barcodes on packaged food and to take meal photos for AI macro estimation.

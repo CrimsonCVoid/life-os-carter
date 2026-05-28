@@ -9,6 +9,13 @@ struct LifeOSApp: App {
     @Environment(\.scenePhase) private var scenePhase
     private let commandConsumer = WorkoutCommandConsumer()
 
+    init() {
+        // BGTaskScheduler.register MUST be called before launch finishes,
+        // hence the explicit init(). The handler reads the shared
+        // container at fire-time, so capturing it here is safe.
+        BackgroundSync.register(modelContainer: sharedModelContainer)
+    }
+
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             DailyEntry.self,
@@ -78,6 +85,10 @@ struct LifeOSApp: App {
                                 in: sharedModelContainer.mainContext
                             )
                         }
+                    } else if phase == .background {
+                        // Queue the next opportunistic health refresh — iOS
+                        // wakes us at its discretion (>= 15 min), best-effort.
+                        BackgroundSync.schedule()
                     }
                 }
                 .onOpenURL { url in
