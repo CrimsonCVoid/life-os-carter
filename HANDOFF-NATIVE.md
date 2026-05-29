@@ -9,328 +9,240 @@ cd ~/Downloads/life-os-hbrady && ./scripts/handoff-native.sh
 
 ---
 
-## State (2026-05-26)
+## State (2026-05-28)
 
-- **Branch:** `native` at `a32ecaf`
+- **Branch:** `native` at `7a344f4`
 - **Working tree:** clean
-- **Pushed to:** origin/native, life-os-dev/native, carter/native:main — all at `a32ecaf`
-- **TestFlight:** 1.0 (1) shipped May 22. 1.1 (2) is bumped in `project.yml` — awaiting Xcode Archive + Upload (no CI yet)
-- **Project version on disk:** MARKETING_VERSION `1.1`, CURRENT_PROJECT_VERSION `2`
+- **Pushed to:** `origin/native`, `life-os-dev/native`, `carter/native:main` — all at `7a344f4`
+- **TestFlight:** 1.1 (2) is bumped in `project.yml`. **Multiple iOS-only changes since the last archive** — needs a re-archive to ship the session's app-side work to TestFlight (background sync, light/dark, charts overhaul, manual calorie targets, onboarding ruler, HR graph, etc.).
+- **Project version on disk:** MARKETING_VERSION `1.1`, CURRENT_PROJECT_VERSION `2`. Bump CURRENT_PROJECT_VERSION before the next archive.
+- **Vercel:** production deploy is the tip of `main` and is healthy.
 
 ---
 
-## Session arcs that landed since 2026-05-22
+## What this session shipped (since 2026-05-26)
 
-This is what's true today on top of the prior state:
+### Auth & Google Health (server) — fully fixed end-to-end
+The full Google login + Google Health connect + sync chain was broken in multiple places. Now working:
 
-**1. Data backbone is real.** Every Today/Analysis chart reads from `DailyEntry` /
-`LiftSessionEntry` / `MealLog` / `HabitEntry` now. The `Sample.*` placeholders are
-gone from the productive paths. `AnalysisDataProvider` is the central snapshot
-function — pure-functional, cached in `@State` and refreshed via `.onChange` on
-range/count keys so chart cards don't re-walk 30 days every body eval.
+| Layer | Bug | Fix |
+|---|---|---|
+| iOS Google login | `unsupported_response_type` on the iOS OAuth client | Auth-code + PKCE in `IdentityLinker` |
+| link-identity | 401 missing audience | `GOOGLE_IOS_CLIENT_ID` env var set on Vercel |
+| link-identity | 500 "No transactions support in neon-http driver" | Atomic PL/pgSQL `DO` block in `migrateUserIdAndCollapse` |
+| link-identity | 42883 `text = uuid` | Bare string literals (no `::uuid` casts), columns adapt |
+| GH connect | middleware 307→/signin (bearer in query, not header) | `/api/google-health/auth/start` added to PUBLIC_PATHS |
+| GH connect | tokens persisted under raw `google:<sub>`, looked up by hashed UUID | `auth/start` now hashes via `externalIdToUuid` |
+| GH sync | 400 `INVALID_DATA_POINT_FILTER_RESTRICTION_COMPARATOR` | Half-open `>=`/`<` ranges (API rejects `<=`) |
+| GH sync | 400 "Invalid value at range.start.date" | Structured `google.type.Date`/`TimeOfDay` in `dailyRollUp` body |
+| GH sync | 400 "Invalid data type ID" for `cardio-load` | Switched to `active-zone-minutes` |
+| GH sync | 200 but `updates:[]` (parsers vs real shapes) | Rewrote parsers — `rollupDataPoints` envelope, structured `civilStartTime`, `steps.countSum`, `weight.weightGramsAvg` (grams!), RHR's `dailyRestingHeartRate.date` object + string bpm |
 
-**2. Recovery + Strain are computed.** `RecoveryCalculator` (0–100, HRV/RHR/sleep/
-mood weighted) and `StrainCalculator` (0–21, lift volume + active energy) feed
-the `RecoveryStrainHero` on Today. `RecoveryAdvice` derives a one-line training
-recommendation that pairs with the hero (green=push, yellow=moderate, red=rest).
+### New metrics (server + iOS)
+- Added to adapter + DailyEntry: **active calories**, **total calories** (14-day window clamp), **distance**, **floors**, **VO₂ max**.
+- Active calories now feed StrainCalculator (was hardcoded 0).
+- Intraday HR endpoint: `POST /api/google-health/heart-rate { date }` pages the ~1 Hz samples and returns per-minute `avg/min/max` buckets + day stats + restingHr.
+- `syncToday` writes **every** synced day to its DailyEntry row (not just today).
 
-**3. HealthKit + Google Health both real.** `HealthKitManager.syncToday(in:)`
-hydrates today's DailyEntry from HK (sleep totals + per-stage breakdown,
-HRV/RHR/steps/weight). `HealthSync` switches between Apple Health / Google
-Health / Manual per `UserSettings.healthDataSource`. **The CPU pegging on tab
-switch was caused by this:** sync ran unconditionally on every appear, rewrote
-SwiftData fields, triggered @Query churn across every screen. Now throttled to
-60s (force-bypass via pull-to-refresh).
+### Onboarding (new, gated)
+- `UserSettings.hasOnboarded` flag; `RootView` gates the tab UI behind `OnboardingFlow` on first launch.
+- 5 steps: welcome → health source (Apple/Google/manual) → biometrics → activity/goal → computed plan.
+- Biometrics step uses the new **`RulerPicker`** — horizontal Canvas-drawn number-line with a haptic tick per unit. Height reads "5 ft 10 in" not raw inches.
 
-**4. Google Health is end-to-end wired for iOS.** Tokens moved out of httpOnly
-cookies (iOS couldn't see them) into the Neon `integrations` table, AES-256-
-GCM encrypted via `lib/db/encryption.ts`. OAuth user attribution via signed
-state JWT (`state-jwt.ts`) — iOS hits `/api/google-health/auth/start?bearer=<JWT>&client=ios`,
-server signs `{userId, nonce}` into the OAuth state, callback (`/api/fitbit/callback`)
-decodes + persists tokens under that user. Returns via `lifeos://google-health/connected`
-deep link. `GoogleHealthClient.handleReturn` + `LifeOSApp.onOpenURL` close the
-loop. Sync decoder matches the real `{ updates: [{date, fields}], syncedAt,
-range, persisted }` server shape — old decoder expected top-level fields that
-never existed.
+### Interactive heart-rate graph (Phase 4 marquee)
+- `HRDaySeries` SwiftData model (per-day JSON blob; registered in `Schema`).
+- `HeartRateClient.loadDay` → upserts the day.
+- `HeartRateGraphView` — full-screen Swift Charts: per-minute line + min/max band, dashed resting-HR rule, HR-zone coloring (220−age), workout-window overlays from `LiftSessionEntry`, **drag-to-scrub with a moving readout + `Haptics.tick()` once per minute crossed**.
+- Reached via tappable Heart Health card on Analysis.
 
-**5. UI overhaul layer 1.** Floating Liquid Glass tab bar replaces stock
-`TabView`; ambient mesh-gradient background (iOS 18+ MeshGradient, iOS 17
-LinearGradient fallback); `LiquidGlassBackground` modifier with depth-aware
-shadow + tint-aware radial glow; `Card` delegates to it; sheen overlay; soft
-halo behind hero rings; cross-fading tab content (220ms ease-in-out); skeleton
-shimmer for async cards (CorrelationsCard / NutritionInsightsCard);
-`HeroSectionLabel` with gradient hairline; `EmptyStateCard` premium empty state;
-`TrendDelta` direction-aware pill (upIsGood vs upIsBad); `VitalTile` upgrade
-with content-transitions + bigger numbers.
+### Smart Strain & Recovery
+- **Strain**: cardio is `max()` of active-energy / steps / distance (no double-count). Mechanical load is volume vs 7-day max **scaled by volume-weighted session RPE** (sRPE; neutral 7.0 when none). RPE recovered from `LiftSessionEntry.detailsJSON` via `CSVExporter.decodeExercises`.
+- **Recovery**: now requires sleep (no sleep → nil → empty state). Sleep component blends hours-vs-goal with a stage-quality sub-score (rewards deep ~13–23% / REM ~20–25%, penalizes awake >20%). New **prior-day-strain damper** as a Component. Reweighted HRV 35 / RHR 20 / Sleep 25 / Mood 8 / Prior Strain 12.
 
-**6. Habits overhaul.** Custom cadence (daily/weekdays/weekends/specific
-days/N-per-week), count-based habits with +/-, categories, archived state,
-30-day heatmap strip, detail view with stats grid, editor sheet, themed seed
-packs. `HabitCore.swift` + `HabitComponents.swift` carry the primitives.
+### Fake-data charts killed (4 found, 4 gone)
+1. Activity rings on Today were `0.4/0.4/0.4` placeholders → wired to real steps/sleep/water progress, recolored per metric.
+2. `Sample.hrZones` donut → replaced with real Calories Burned card.
+3. VO₂ gauge hardcoded `value: 42` → real `vo2MaxTrend` scrubbable card.
+4. Performance contributors `+28/+24/+17/+9` invented → real Sleep/Mood/Energy inputs.
+- The `Sample` placeholder enum was **deleted entirely**.
 
-**7. PR celebration overlay.** Mid-workout: when a completed set beats all-time
-top weight or estimated 1RM, an animated trophy card pops with double haptic.
-Auto-dismisses at 2.4s.
+### Interactive Analysis overhaul
+- New reusable `ScrubbableTrendChart` — generalises the HR graph's `.chartOverlay` + DragGesture + debounced per-day haptic.
+- Drag-to-scrub on Performance / Sleep / Weight / Distance / VO₂ / Calories trends.
+- Tappable drill-in `TrendDetailView` for Performance, Sleep, Weight, Steps (own 7d/30d/90d/1y range + min/avg/max/latest header).
+- New real-data cards: Calories burned (active + total), Distance, VO₂ max — all with empty states.
 
-**8. Workout templates + muscle volume.** Six built-in templates (Push/Pull/
-Legs/Upper/Lower/Full Body) seeded on first launch. Tap Start → picker sheet.
-`MuscleVolumeRollup` aggregates 7-day per-muscle volume (cached in @State for
-perf). Last-performance banner under each exercise in active workout.
+### Today UX
+- Vital tiles fall back to most-recent reading when today's value doesn't exist (e.g. resting HR), with an "as of yesterday" caption. Steps stays today-only (live counter).
+- **Calorie display unified between Today and Nutrition** — both now show TOTAL burned as the headline (Today tile relabeled "Calories", active in the caption). Matches Nutrition's burned ring.
 
-**9. Nutrition: saved meals, quick-add, weekly summary, meal categorization.**
-SavedMeal favorites with usage-count ranking; QuickAddCaloriesSheet for ad-hoc
-logging; meals grouped Breakfast/Lunch/Dinner/Snack via time-of-day derive +
-manual override; WeeklyNutritionSummary screen pushed from toolbar.
+### Manual calorie targets in Settings
+- `GoalsEditor` now has a **Computed / Manual** toggle. Manual gives ruler dials for calories + protein/carbs/fat with a live 4/4/9 macros-vs-calories cross-check, saving sets `nutritionTargetMethod = "manual"`.
+- TDEE wizard preserved as the computed path.
+- **MacroRingsCard wired** to `userSettings.{calories,protein,carbs,fat}Goal` (was hardcoded `2200/180/240/75` with a TODO).
 
-**10. TDEE wizard.** Sex/age/height/weight/activity/goal → Mifflin-St Jeor BMR
-× activity × goal modifier → 40/30/30 (maintain) or 40/40/20 (cut) or 30/45/25
-(bulk) macro split. Writes through to UserSettings.
+### System light/dark mode
+- Every `LifeOSColor` token converted to **adaptive** (dark values unchanged byte-for-byte, new premium light palette: white cards, near-black text, deepened accent/semantic/metric hues for white-bg contrast).
+- All 4 forced `.preferredColorScheme(.dark)` calls removed (LifeOSApp, RootView ×2, OnboardingFlow).
+- `AmbientBackground` mesh anchors use `LifeOSColor.base` instead of literal black so it follows the theme.
+- **Known follow-up:** any view using literal `.white`/`.black` text isn't covered (it's a mechanical sweep; only the most glaring core-chrome bits were handled).
 
-**11. Behavior correlation engine.** New `/api/correlations` route. iOS sends
-30-day daily snapshot + journal flags + workout/meal counts; Gemini returns
-3-5 correlations with effect size, sample sizes, confidence qualifier. Lazy
-loaded from CorrelationsCard on Analysis tab.
+### Background sync (BGAppRefreshTask)
+- New `BackgroundSync.swift`. Registered in `LifeOSApp.init()`, scheduled on `scenePhase == .background` with a 15-min floor.
+- Handler ensures auth, runs `HealthSync.syncToday(force: true)`, completes in iOS's ~30s budget.
+- `project.yml`: `fetch` added to `UIBackgroundModes`, `BGTaskSchedulerPermittedIdentifiers` includes `com.hbrady.lifeos.healthrefresh`.
+- **Realities:** iOS chooses the cadence (typically 30–60 min when used often); doesn't fire on Simulator; user can disable via Settings → Background App Refresh.
 
----
-
-## Architecture decisions made this session
-
-| Decision | Why |
-|---|---|
-| **No CloudKit, stay on Vercel+Neon** | iOS-only target now, but keeping one DB makes future surfaces (web mirror, multi-device read) cheaper. |
-| **Hybrid auth: device-bound default + optional Apple/Google link** | SIWA provisioning was blocking app launch entirely. App now opens with zero friction; Settings has opt-in "Link Apple ID" / "Link Google" that migrates existing data to an identity-bound user. |
-| **JWT subject = prefixed external ID; DB id = hashed UUID** | Live `users.id` was uuid-typed; prefixed strings like `device:<uuid>` 22P02'd. SHA-1-hash the prefixed string into a deterministic UUID at the SQL boundary. iOS keeps the prefix via `AuthStore.identityProvider`. |
-| **Middleware allows bearer-token /api/* through** | Was 307'ing every iOS API call to /signin → surfaced as "Failed to find Server Action" client-side. Cookie-gate now only applies to non-bearer requests on page routes. |
-| **Two Live Activities with relevanceScore stacking** | One card couldn't fit all the elements. iOS doesn't let us prevent LA stacking; we use relevanceScore (Controls=100, Info=50) so the system places Controls on top. Each card has a peek-strip designed for the back-of-stack case. |
-| **Branding scrub: no "Gemini" or "OpenFoodFacts" in UI** | Generic "AI estimate" / "Pulled from the label". Backend route comments still mention providers — not user-visible. |
+### App icon
+- New mark: complete mint→sky→violet gradient ring around a centered open-armed emerald figure on dark navy. All 11 sizes regenerated from a Swift CoreGraphics 1024 master (`/tmp/whole_self_icon.swift`).
 
 ---
 
-## What works end-to-end
+## What works end-to-end (refreshed)
 
 | Feature | Status | Notes |
 |---|---|---|
-| App launches with zero friction | ✅ | Device UUID → JWT auto-mints on first launch via `/api/auth/device-mint` |
-| Settings → Link Apple ID | 🟡 | Backend works (`/api/auth/link-identity` 200s); client-side blocked by SIWA capability on dev account until provisioning is sorted |
-| Settings → Link Google | 🟡 | iOS OAuth client ID lives in `project.yml`; `GOOGLE_IOS_CLIENT_ID` env var must be set on Vercel for audience-check to pass |
-| Workout flow (start → log sets → finish) | ✅ | Drop sets indented + chipped, swipe-to-delete (custom drag in `SetRow.swift` since `.swipeActions` doesn't work outside a List), superset menu, plate calc, RPE drawer |
-| Per-session detail screen with charts | ✅ | Tap any row in Gym → Recent sessions |
-| Live Activity (Info + Controls cards) | ✅ | Controls on top, info peeks, parallel `Activity.update` for ~halved latency, 50ms pulse-clear tick |
-| Lock-screen tap → haptic + button pulse | ✅ | Haptic fires inside intent (main app process), pulse via `lastAction` + `lastActionAt` in `WorkoutContentState` |
-| Nutrition: barcode (camera) | ✅ | VisionKit DataScanner → OpenFoodFacts → servings stepper review sheet (macros read-only) |
-| Nutrition: photo (camera OR library) | ✅ | UIImagePickerController for camera + PhotosPicker for library |
-| Nutrition: voice (hold-to-record) | ✅ | AVAudioRecorder → `/api/voice-meal` |
-| Meal edit + delete | ✅ | Tap row → edit sheet, long-press → context menu |
-| Analysis tab → Overseer coach chat | ✅ | Streams from `/api/overseer`, no provider named in UI |
-| SyncService → Neon | ✅ | lift_sessions, habits, journal_entries, meals (raw-SQL data-layer) |
-| Mock data seeder (Settings → Test Data) | ✅ | Throwaway. Populate generates 30d of realistic data, Wipe nukes the local SwiftData store |
-| Delete PRs (long-press on PR row) | ✅ | Context menu in GymView |
+| Device-bound auto-mint on first launch | ✅ | unchanged |
+| **Onboarding** | ✅ | gated on `hasOnboarded`; ruler dials with haptics; writes calorie + macro targets |
+| Settings → Link Apple ID | 🟡 | SIWA provisioning still on user's TODO |
+| Settings → Link Google | ✅ | fully fixed (PKCE + audience + transaction + cast) |
+| **Connect Google Health + sync** | ✅ | working end-to-end; data flows for steps/RHR/weight/active+total cal/distance (sleep/HRV/floors/VO₂ depend on whether Fitbit has that data) |
+| **Intraday HR graph** | ✅ | scrubbable, zones, workout overlays, haptic per minute |
+| **Background health sync** | ✅ | best-effort iOS schedule, ≥15 min floor; needs device build to test |
+| Strain / Recovery (smart) | ✅ | sRPE + cardio-blend + sleep-stage quality + prior-day damper; sleep required for Recovery |
+| Workout flow (start → log sets → finish) | ✅ | unchanged |
+| Live Activity (Info + Controls) | ✅ | unchanged |
+| Nutrition (barcode / photo / voice / favorites / quick-add / weekly summary) | ✅ | unchanged |
+| **Nutrition rings driven by user goals** | ✅ | fix from the hardcoded `2200/180/240/75` |
+| **Today/Nutrition calorie consistency** | ✅ | both use total burned as headline |
+| **Analysis** | ✅ | scrub-with-haptics on key trends, drill-in detail views, new Calories/Distance/VO₂ cards, **no fake data anywhere** |
+| **Manual calorie/macro targets in Settings** | ✅ | Computed / Manual toggle in GoalsEditor |
+| **System light/dark** | ✅ | follows phone; tokens adaptive; ambient mesh follows theme |
+| Analysis tab → Coach chat | ✅ | streaming `/api/overseer`; **Gemini key still leaked-and-disabled** until you rotate it |
+| SyncService → Neon | ✅ | unchanged |
 
 ---
 
 ## What's still placeholder / unwired
 
 - **Body screen** — not built
-- **Push notifications (APNs)** — entitlement set, no device-token registration code
-- **Recipe builder + searchable food database** — MFP-killer features still missing. Capture is barcode + AI estimate + favorites only
+- **APNs / push** — entitlement set, no device-token registration code
+- **Recipe builder + searchable food database** — MFP-killer features still missing
 - **Sleep coach + auto-detect HK workouts + HR zones** — sleep stages render but no recommended-bedtime / next-day-strain coach yet
 - **Apple Watch companion** — separate target, not started
-- **Xcode Cloud workflow not created.** `ci_scripts/ci_post_clone.sh` is in place (installs xcodegen + regen on each cloud build), but no workflow exists yet to trigger on push. User must `Product → Xcode Cloud → Create Workflow` in Xcode once; see "Xcode Cloud setup" below
-- **Google Health connect flow being verified on device.** Env vars `GOOGLE_HEALTH_CLIENT_ID / SECRET / REDIRECT_URI` need to be set on Vercel (Web OAuth client created in Google Cloud project `778767465909`; redirect URI must be exactly `https://life-os-carter.vercel.app/api/fitbit/callback`). On last test the OAuth was hitting an unrelated "Edge Finder" project — root cause was stale/missing Vercel env. Redeploy after env changes
-
----
-
-## Vercel env vars
-
-Set on **Production / Preview / Development**, then **Deployments → latest → Redeploy**:
-
-| Env var | Required? | What breaks without it |
-|---|---|---|
-| `DATABASE_URL` | YES | Every `/api/*` 500 |
-| `DATABASE_URL_UNPOOLED` | YES (for `db:push`) | drizzle-kit DDL ops |
-| `NEXTAUTH_SECRET` | YES (32+ char random, `openssl rand -base64 32`) | Every bearer JWT 401 |
-| `GEMINI_API_KEY` | YES | Voice/photo/Coach all 500 |
-| `GOOGLE_IOS_CLIENT_ID` | YES (`778767465909-49jj6q2nd2gcn4qocvnlmgvbv8lhknuk.apps.googleusercontent.com`) | Link Google in Settings 401s |
-| `GOOGLE_HEALTH_CLIENT_ID` | YES for Fitbit/Pixel users (`778767465909-8o8pcgqa81j1hp81hef48jkvi4eq3la4.apps.googleusercontent.com`) | Connect Google Health → 500 / "unsupported_response_type" |
-| `GOOGLE_HEALTH_CLIENT_SECRET` | YES for Fitbit/Pixel users | OAuth callback can't exchange code |
-| `GOOGLE_HEALTH_REDIRECT_URI` | YES for Fitbit/Pixel users (must be `https://life-os-carter.vercel.app/api/fitbit/callback` — matches Google Cloud Console registered URI) | OAuth "redirect_uri_mismatch" |
-| `CRON_SECRET`, `VAPID_*`, `AUTH_GOOGLE_*`, `BLOB_READ_WRITE_TOKEN` | Optional | Legacy/web features only — confirmed via grep, no iOS impact |
+- **Xcode Cloud workflow** — `ci_scripts/ci_post_clone.sh` is in place but no workflow yet
+- **Light-mode literal-color sweep** — token-driven surfaces adapt cleanly, but any view using literal `.white`/`.black` for text/iconography hasn't been audited
+- **LiDAR food photo pipeline** — *intentionally not built* (advised against; LiDAR is Pro-iPhone-only, depth-to-volume of irregular food is unreliable, marginal benefit over Gemini's vision guess)
 
 ---
 
 ## Open items (priority order)
 
-1. **Verify Google Health connect flow on device.** Add `GOOGLE_HEALTH_*` env vars on Vercel
-   → redeploy → open iOS app → Settings → Health Source → Google Health → Connect → consent in
-   Safari → returns via `lifeos://` deep link → "synced" shows in Settings. On the last attempt
-   it errored with "unsupported_response_type" from an unrelated "Edge Finder" project —
-   meaning `GOOGLE_HEALTH_CLIENT_ID` on Vercel was stale/wrong. Re-check the saved value.
-2. **Upload 1.1 (2) to TestFlight.** `Product → Archive` in Xcode (destination: Any iOS Device),
-   Organizer → Distribute App → App Store Connect → Upload. ~15 min processing. Or follow
-   "Xcode Cloud setup" below to automate future uploads.
-3. **Rotate three secrets that were pasted in chat.** `NEXTAUTH_SECRET`, `GEMINI_API_KEY`,
-   `GOOGLE_HEALTH_CLIENT_SECRET`. NEXTAUTH_SECRET rotation logs out all iOS users + breaks
-   encrypted Google Health tokens in Neon (the AES key is HKDF-derived from it) — pick a quiet
-   moment, update Vercel + local in lockstep.
-4. **Body screen** — unbuilt. Weight trend, body comp, photos.
-5. **APNs token registration + push** — `UserNotifications` permission,
-   `application(_:didRegisterForRemoteNotificationsWithDeviceToken:)`, POST to
-   `/api/push/register-apns`.
-6. **Recipe builder + searchable food database** — biggest remaining MFP gap.
-7. **Sleep coach + auto-detect HK workouts + HR zones** — biggest remaining Whoop gap.
-8. **Revert raw-SQL bypasses to clean Drizzle** — only safe AFTER confirming the new Neon DB
-   matches `schema.ts` (which it does, post-`db:push`). Files to revert:
-   `src/lib/data/{meals,habits,workouts}.ts`,
-   `src/app/api/auth/{device-mint,native-mint,link-identity}/route.ts`,
-   `src/lib/auth-server.ts`, `src/lib/user-id.ts`.
+1. **Rotate the leaked `GEMINI_API_KEY`.** Google scanner caught it, key is disabled. Create new key at `aistudio.google.com/apikey`; on the user's terminal run `vercel env rm GEMINI_API_KEY production preview` then `vercel env add` (paste at prompt, **not** in chat); redeploy. Every AI feature (Coach, voice/photo capture, correlations, insights) 403s until done.
+2. **Re-archive 1.2 (or 1.1 build 3) for TestFlight.** Big session-side iOS changes need a new build. Bump `CURRENT_PROJECT_VERSION` first. Widget extension's `CFBundleVersion` is still `1` while the app is `2` — bump that too if Xcode complains.
+3. **Verify background sync on a real device.** Won't fire on Simulator. Use the LLDB simulate trick (`e -l objc -- (void)[[BGTaskScheduler sharedScheduler] _simulateLaunchForTaskWithIdentifier:@"com.hbrady.lifeos.healthrefresh"]`).
+4. **Light-mode literal-color sweep** if any screen looks off in light mode (mechanical fixup; user reports the screen, do a quick grep for `Color.white`/`Color.black`/`.white`/`.black` in that file).
+5. **Rotate `NEXTAUTH_SECRET` and `GOOGLE_HEALTH_CLIENT_SECRET`** eventually (other pasted secrets). NEXTAUTH rotation logs out all iOS users **and** breaks encrypted Google-Health tokens in Neon (AES key is HKDF-derived from it) — coordinate carefully.
+6. **Body screen**, **APNs**, **Recipe builder**, **Sleep coach**, **Apple Watch** — open feature work.
+7. **Revert raw-SQL bypasses to clean Drizzle** — only safe after confirming the live Neon DB matches `schema.ts`. Files: `src/lib/data/{meals,habits,workouts}.ts`, `src/app/api/auth/{device-mint,native-mint,link-identity}/route.ts`, `src/lib/auth-server.ts`, `src/lib/user-id.ts`.
 
 ---
 
-## Xcode Cloud setup (one-time, ~10 min)
+## Vercel env vars
 
-Once configured, every push to `carter:main` auto-archives + uploads to TestFlight.
+Set on **Production / Preview / Development**, redeploy after changes:
 
-1. Open `native/LifeOS.xcodeproj` in Xcode
-2. **Product → Xcode Cloud → Create Workflow**
-3. Wizard:
-   - Authorize Apple's GitHub app on `CrimsonCVoid/life-os-carter`
-   - Workflow name: `TestFlight`
-   - Start condition: Branch → `main`
-   - Environment: macOS latest, Xcode latest
-   - Actions: delete default Build → add **Archive** → **Deployment Preparation: Internal Testing** → pick your `test` group
-4. Run manually once from the Xcode Cloud panel to verify `ci_scripts/ci_post_clone.sh`
-   installs xcodegen + regenerates the project (script lives at repo root; auto-discovered)
-5. Before every push, bump `CURRENT_PROJECT_VERSION` in `native/project.yml` — TestFlight
-   rejects duplicate build numbers
+| Env var | Status | Notes |
+|---|---|---|
+| `DATABASE_URL` | ✅ | pooled, runtime |
+| `DATABASE_URL_UNPOOLED` | ✅ | for `db:push` DDL |
+| `NEXTAUTH_SECRET` | ✅ | bearer JWT signing key; also HKDF source for AES of Google Health tokens |
+| `GEMINI_API_KEY` | ❌ **REVOKED/LEAKED** | rotate ASAP, redeploy |
+| `GOOGLE_IOS_CLIENT_ID` | ✅ | `778767465909-49jj6q2nd2gcn4qocvnlmgvbv8lhknuk.apps.googleusercontent.com`; can be Sensitive — read server-side only |
+| `GOOGLE_HEALTH_CLIENT_ID` | ✅ | `778767465909-8o8pcgqa81j1hp81hef48jkvi4eq3la4.apps.googleusercontent.com` |
+| `GOOGLE_HEALTH_CLIENT_SECRET` | ✅ | rotate eventually (pasted in chat earlier) |
+| `GOOGLE_HEALTH_REDIRECT_URI` | ✅ | exactly `https://life-os-carter.vercel.app/api/fitbit/callback` |
+| `CRON_SECRET`, `VAPID_*`, `AUTH_GOOGLE_*`, `BLOB_READ_WRITE_TOKEN` | Optional | Legacy / web — no iOS impact |
+
+OAuth consent screen (GCP project `778767465909`): in **Testing** mode; `williamcbrady00@gmail.com` is a test user. Refresh tokens **expire every 7 days in Testing** — Google Health connection breaks weekly until the app is verified or moved to production (heavyweight for restricted health scopes).
 
 ---
 
 ## Gotchas accumulated this session
 
-1. **`.swipeActions` only works inside `List`** — every SetRow / MealRow / etc. that lives in a
-   `LazyVStack` needs a `.contextMenu` (long-press) or a custom DragGesture instead. `SetRow.swift`
-   has the canonical custom-drag implementation; copy that pattern when you need swipe-to-delete
-   outside a List.
+(In addition to the ones from the prior handoff.)
 
-2. **Drizzle's `.returning()` with no args = `RETURNING *`** which references every schema column —
-   if the live DB is missing one, every insert 500s. Use `.returning({id: table.id})` or raw SQL
-   when you can't fully trust the live schema. With the new Neon DB this should be fine; the raw-SQL
-   bypasses are defensive.
-
-3. **iOS won't unstack two Live Activities for one app.** No API for "render side by side." Best
-   you can do is `relevanceScore` to control which floats on top + peek-strip design on the back
-   card.
-
-4. **LiveActivityIntent runs in the main app process** — so `UIImpactFeedbackGenerator` and
-   `UINotificationFeedbackGenerator` work from inside `perform()`. Fire haptics BEFORE awaiting
-   `Activity.update` so the user feels confirmation before the visual lands.
-
-5. **Push two activities in parallel via `async let`** — each `Activity.update` is a ~50-100ms IPC.
-   Awaiting serially doubles per-tap latency.
-
-6. **`vercel env pull` defaults to `development` environment** which only has `VERCEL_OIDC_TOKEN`.
-   Use `--environment=production` for the real env vars.
-
-7. **Next.js middleware was bouncing every bearer-bearing /api/* to /signin** until the fix in
-   `src/middleware.ts`. If you add new public-ish routes, mind the matcher there.
-
-8. **The Neon `users.id` column type is `text`** in the new DB — `schema.ts` is the source of
-   truth. The `externalIdToUuid` hashing is defensive code in case it ever goes back to uuid.
-
-9. **iOS Live Activity height cap** — ~220pt on pre-26 devices, ~260pt on iPhone 17 + iOS 26. The
-   current twin-card layout uses ~140pt per card. Don't add more rows.
-
-10. **SwiftData `@Query` only re-runs when the predicate changes** — if you toggle a `@State` flag
-    inside a row's button handler expecting the list to refresh, it won't unless you also dirty the
-    underlying model. `try? modelContext.save()` after every mutation is the safe path.
+1. **Google Health API filter language only supports `>=` and `<`** on time fields. Passing `<=` returns 400 `INVALID_DATA_POINT_FILTER_RESTRICTION_COMPARATOR`. Always use half-open `[start, nextDay(end))` ranges.
+2. **`dailyRollUp` request body wants structured `google.type.Date` + `TimeOfDay` objects**, not "YYYY-MM-DD"/"HH:MM:SS" strings.
+3. **Civil times in GH responses are structured objects** (`{date:{year,month,day}, time:{hours?,minutes?,seconds?}}`), not strings. Time components are **omitted when zero**.
+4. **`total-calories` queries cap at a 14-day window.** Other types are 30+. We clamp `fetchTotalCalories` independently.
+5. **`cardio-load` isn't a real data type.** Use `active-zone-minutes` (the AZM parser path).
+6. **Weight rollup reports `weightGramsAvg` in grams**, not `averageKilograms`. Divide by 1000 first.
+7. **`heart-rate` samples are ~1 Hz on Fitbit.** A full day = ~86k points; the intraday endpoint pages with `nextPageToken` and buckets to per-minute.
+8. **Neon-http driver can't do `db.transaction()`.** "No transactions support in neon-http driver." Use a PL/pgSQL `DO $$ BEGIN ... END $$` block as one statement for atomic multi-statement work.
+9. **Live Neon users.id / user_id columns are `text`**, not uuid. Use bare string literals (`unknown` type adapts) — `::uuid` casts trip `text = uuid` (42883).
+10. **`auth/start` for OAuth flows opened in Safari** needs both: a middleware whitelist (no `Authorization` header possible) and to **hash the bearer's prefixed external id to UUID** before signing into the state JWT, so the callback persists tokens under the same key `status`/`sync` look them up by.
+11. **`BGTaskScheduler.register` MUST run before `application(_:didFinishLaunchingWithOptions:)` returns.** Do it in `LifeOSApp.init()`. Identifier must also be in `BGTaskSchedulerPermittedIdentifiers` in Info.plist.
+12. **Background tasks never fire in the iOS Simulator.** Test on device, or use the LLDB `_simulateLaunchForTaskWithIdentifier:` trick.
+13. **SwiftData models referenced in a Schema must include every `@Model` you `ctx.insert`** — inserting an unregistered model crashes hard (not a catchable error). `HRDaySeries.self` is now in the Schema; add new models there too.
+14. **`scrollPosition(id:)` + `.viewAligned`** doesn't always update continuously during drag — for true per-tick haptic feedback (e.g. the RulerPicker), use a custom `DragGesture` with manual position tracking and Canvas drawing.
+15. **`abs(Int) * Double`** can stall the Swift type-checker with "compiler unable to type-check in reasonable time" — explicit `Double(...)` conversion fixes it.
 
 ---
 
-## File map — `native/`
+## File map — `native/` (new/changed this session)
 
 ```
 native/
-├── project.yml                         # XcodeGen source. DEVELOPMENT_TEAM empty (line 28)
+├── project.yml                                # +BGTaskScheduler permitted ids, +fetch UIBackgroundMode
 ├── App/
-│   ├── LifeOSApp.swift                 # @main, no auth gate, ensureSignedIn() on appear
+│   ├── LifeOSApp.swift                        # init() registers BackgroundSync; HRDaySeries in Schema; no forced .dark
+│   ├── Components/
+│   │   ├── AmbientBackground.swift            # mesh anchored on adaptive base
+│   │   └── RulerPicker.swift                  # NEW — Canvas number-line, haptic per unit
+│   ├── Models/
+│   │   ├── Models.swift                       # +activeEnergyKcal, +totalCaloriesKcal, +distanceMeters, +floors, +vo2Max on DailyEntry; +HRDaySeries
+│   │   └── UserSettings.swift                 # +hasOnboarded
+│   ├── Root/RootView.swift                    # onboarding gate; no forced .dark
 │   ├── Services/
-│   │   ├── APIClient.swift             # bearer auth + GET/POST + stream + uploadJPEG + uploadAudio
-│   │   ├── AuthStore.swift             # device-bound auto-mint + identityProvider
-│   │   ├── IdentityLinker.swift        # Apple SIWA + Google OAuth via ASWebAuthenticationSession
-│   │   ├── Keychain.swift              # SecItem wrapper
-│   │   ├── SyncService.swift           # SwiftData → Neon: lift_sessions, habits, journal, meals
-│   │   ├── MockDataSeeder.swift        # Throwaway test-data populator (DELETE BEFORE PUBLIC)
-│   │   ├── HealthKitManager.swift
-│   │   ├── LiveActivityManager.swift   # Two activities (Info + Controls) with relevanceScore
-│   │   ├── WorkoutCommandConsumer.swift
-│   │   ├── PersonalRecordsService.swift
-│   │   ├── CSVExporter.swift
-│   │   └── Haptics.swift
-│   ├── Views/
-│   │   ├── TodayView.swift             # placeholder data
-│   │   ├── NutritionView.swift         # quick-capture chips launch directly; + opens manual sheet
-│   │   ├── HabitsView.swift            # SwiftData + drain SyncService on toggle
-│   │   ├── GymView.swift               # freeform start, NO splits, PR delete via long-press
-│   │   ├── AnalysisView.swift          # 10 insight cards + Coach chat at top
-│   │   ├── SettingsView.swift          # ACCOUNT (linking) + INTEGRATIONS + TEST DATA
-│   │   ├── AddMealSheet.swift          # Manual entry + edit existing meal
-│   │   ├── Analysis/
-│   │   │   └── CoachChatView.swift     # Streaming chat against /api/overseer
-│   │   ├── Nutrition/
-│   │   │   ├── BarcodeScannerView.swift
-│   │   │   ├── MealCaptureDTO.swift
-│   │   │   ├── MealReviewSheet.swift   # Servings stepper for barcode, editable form for AI
-│   │   │   ├── OpenFoodFactsClient.swift
-│   │   │   ├── PhotoMealSheet.swift    # Camera OR library
-│   │   │   └── VoiceRecorderSheet.swift
-│   │   └── Workout/
-│   │       ├── ActiveWorkoutView.swift # Supersets, history-seeded sets, content-shape add-exercise
-│   │       ├── ExercisePickerView.swift # No "Recent" section (dropped per user feedback)
-│   │       ├── ExerciseHistoryView.swift
-│   │       ├── PlateCalculator.swift
-│   │       ├── RPEDrawer.swift
-│   │       ├── SetRow.swift            # Custom DragGesture swipe-to-delete + drop-set chip
-│   │       └── WorkoutDetailView.swift # Per-session breakdown with charts
-│   └── Models/
-│       ├── Models.swift                # @Models with needsSync + serverID flags
-│       ├── ActiveWorkout.swift
-│       ├── ExerciseLibrary.swift
-│       └── PersonalRecord.swift
-└── WidgetExtension/
-    ├── WidgetBundle.swift              # Registers WorkoutActivityWidget + WorkoutControlsWidget
-    ├── TodaySnapshotWidget.swift
-    ├── WorkoutActivityWidget.swift     # INFO card — header + hero (timer/last-set/next-up)
-    ├── WorkoutControlsWidget.swift     # CONTROLS card — three pulse buttons + peek strip
-    └── WorkoutLiveActivityIntents.swift # Haptic + parallel async-let dual update
+│   │   ├── BackgroundSync.swift               # NEW — BGAppRefreshTask
+│   │   ├── GoogleHealthClient.swift           # PKCE not relevant (this is GH); decodes new fields; writes all days
+│   │   ├── HeartRateClient.swift              # NEW — calls /api/google-health/heart-rate
+│   │   ├── IdentityLinker.swift               # iOS Google login: auth-code + PKCE (not implicit)
+│   │   ├── RecoveryCalculator.swift           # +sleep-stage quality, +prior-day-strain; sleep required (now also contains StrainCalculator)
+│   │   └── …
+│   ├── Theme/LifeOSColor.swift                # FULLY ADAPTIVE light/dark
+│   └── Views/
+│       ├── AnalysisView.swift                 # scrubbable trends, drill-ins, real Calories/Distance/VO2 cards; Sample.* deleted
+│       ├── Analysis/
+│       │   ├── HeartRateGraphView.swift       # NEW — scrubbable HR + zones + workout overlays + haptic per minute
+│       │   ├── ScrubbableTrendChart.swift     # NEW — reusable
+│       │   └── TrendDetailView.swift          # NEW — drill-in detail
+│       ├── Habits/HabitComponents.swift       # HabitHeatmapStrip shrinks to fit width
+│       ├── NutritionView.swift                # macroSummary wired to user goals + today's burned
+│       ├── Onboarding/OnboardingFlow.swift    # NEW — 5-step onboarding with ruler dials
+│       ├── Settings/GoalsEditor.swift         # Computed/Manual toggle, ruler-based manual editor
+│       ├── Today/RecoveryStrainHero.swift     # sublabel surfaces driving Component
+│       └── TodayView.swift                    # activity rings real data, calories unified to total, vital-tile most-recent fallback
+└── App/Assets.xcassets/AppIcon.appiconset/    # all 11 sizes regenerated
 ```
 
 ---
 
-## File map — `src/` (Vercel backend)
+## File map — `src/` (new/changed this session)
 
 ```
 src/
-├── middleware.ts                       # Bearer-token /api/* whitelist
-├── lib/
-│   ├── auth-server.ts                  # getCurrentUser: bearer OR cookie, hashes prefix → UUID
-│   ├── native-jwt.ts                   # HS256 mint/verify, 180d TTL, key from NEXTAUTH_SECRET
-│   ├── apple-token-verify.ts           # SIWA JWKS verify
-│   ├── google-token-verify.ts          # Google JWKS verify, audience-checked
-│   ├── user-id.ts                      # externalIdToUuid (SHA-1 → UUID format)
-│   ├── migrate-user-id.ts              # Transactional FK migration across 45 tables
-│   ├── api-helpers.ts                  # withUser / withUserRequest chokepoints
-│   ├── data/                           # createMeal/createHabit/createLiftSession use raw SQL
-│   └── db/schema.ts                    # Source of truth, matches new Neon DB exactly
+├── middleware.ts                              # /api/google-health/auth/start in PUBLIC_PATHS
+├── lib/integrations/google-health/
+│   ├── adapter.ts                             # parsers rewritten to real shapes; new fetchActiveEnergy/TotalCalories/Distance/Floors/Vo2Max/IntradayHeartRate
+│   └── config.ts                              # +activeEnergy/totalCalories/distance/floors/vo2Max/heartRate ids; cardioLoad -> active-zone-minutes
+├── lib/migrate-user-id.ts                     # atomic DO block, bare literals (no ::uuid)
 └── app/api/
-    ├── auth/
-    │   ├── device-mint/route.ts        # Anonymous per-device JWT, raw SQL upsert
-    │   ├── native-mint/route.ts        # SIWA → JWT, raw SQL
-    │   └── link-identity/route.ts      # Upgrade device user to Apple/Google
-    ├── data/                           # ~30 existing routes, work as-is
-    ├── food-photo/route.ts             # Multipart JPEG → AI → macros
-    ├── voice-meal/route.ts             # Multipart audio → AI → meal macros
-    ├── voice-journal/route.ts          # Multipart audio → AI → journal entry
-    └── overseer/route.ts               # Streaming chat, empty-context-tolerant
+    ├── auth/link-identity/route.ts            # response no longer includes rowsMoved
+    ├── google-health/auth/start/route.ts      # hashes external id to UUID before signing state
+    ├── google-health/heart-rate/route.ts      # NEW — POST { date } -> per-minute buckets
+    └── google-health/sync/route.ts            # parallel-fetches all 11 metric types
 ```
 
 ---
@@ -348,19 +260,17 @@ xcodebuild -project native/LifeOS.xcodeproj -scheme LifeOS \
 
 # Web build (TypeScript check)
 npm run build
+npx tsc --noEmit          # faster typecheck
 
 # Push to three refs. carter:main is the production deploy.
-# Do NOT also push to carter:native — both branches resolve to the
-# same Vercel project and you end up with a Production build PLUS a
-# queued Preview build for the same SHA, doubling deploy time.
 git push origin native && \
   git push life-os-dev native && \
   git push carter native:main
 
-# Database migrations against the new Neon project
-npm run db:push          # uses DATABASE_URL_UNPOOLED from .env.local
+# Force-run the background sync (lldb on real device, app paused)
+e -l objc -- (void)[[BGTaskScheduler sharedScheduler] _simulateLaunchForTaskWithIdentifier:@"com.hbrady.lifeos.healthrefresh"]
 
-# Pull production env vars from Vercel (after vercel link)
+# Pull production env vars from Vercel
 vercel env pull .env.local --environment=production
 ```
 
@@ -370,15 +280,15 @@ vercel env pull .env.local --environment=production
 
 - Match existing patterns before inventing new ones
 - Commit after every major change; never amend unless asked
-- Push to three refs (origin/native, life-os-dev/native, carter/native:main) — skip carter/native to avoid duplicate Vercel build
-- Run `xcodebuild` sanity-build before committing big changes
-- No inline hex — use `LifeOSColor.*` tokens
-- Use existing primitives (`Card`, `SectionLabel`, `PillarTile`, `.cascadeReveal`, `.pressable`)
+- Push to three refs (`origin/native`, `life-os-dev/native`, `carter/native:main`) — skip `carter/native` to avoid duplicate Vercel build
+- Run `xcodebuild` sanity-build before committing significant Swift changes
+- No inline hex — `LifeOSColor.*` tokens (now adaptive)
+- Reuse existing primitives (`Card`, `RulerPicker`, `ScrubbableTrendChart`, `VitalTile`, `Haptics.*`)
 - No emojis in code/commit messages unless asked
 - `.swipeActions` doesn't work in `VStack` — use `.contextMenu` or custom `DragGesture`
 - Drizzle `.returning()` defaults to `RETURNING *` — explicit column projection or raw SQL
-- iOS will stack Live Activities; design for it, can't prevent it
 - Never commit `.env*` files
+- New SwiftData `@Model`s MUST be added to the `Schema([...])` in `LifeOSApp.swift`
 
 ---
 
@@ -388,8 +298,9 @@ vercel env pull .env.local --environment=production
 - `git push --force` to `main` of any remote (use `--force-with-lease`)
 - Delete `ios/` (Capacitor v1 preserved there)
 - `--no-verify` on commits
-- Rotate `NEXTAUTH_SECRET` on Vercel (logs everyone out)
+- Rotate `NEXTAUTH_SECRET` on Vercel (logs everyone out + breaks encrypted GH tokens)
 - Anything that costs money
+- Add LiDAR pipeline to Nutrition (user advised against by recommendation)
 
 ---
 
@@ -399,7 +310,7 @@ vercel env pull .env.local --environment=production
 cd ~/Downloads/life-os-hbrady
 git status                          # clean tree
 git branch --show-current           # 'native'
-git log -3 --format='%h %s'         # tip ≥ dcf339b
+git log -3 --format='%h %s'         # tip >= 7a344f4
 git fetch --all                     # see if anything pushed since
 
 cd native && xcodegen generate
@@ -415,10 +326,6 @@ curl -sX POST https://life-os-carter.vercel.app/api/auth/device-mint \
   -w '\nHTTP %{http_code}\n' | tail -3
 # expect: 200 with {"token":"...","userId":"device:..."}
 ```
-
-If device-mint returns 500 with `password authentication failed`, Vercel's DATABASE_URL still
-points at the old (broken) Neon project — update `DATABASE_URL` + `DATABASE_URL_UNPOOLED` env vars
-to the new project and redeploy.
 
 ---
 
