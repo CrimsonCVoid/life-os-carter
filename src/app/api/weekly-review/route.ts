@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { resolveGeminiApiKey, GEMINI_KEY_NAMES } from "@/lib/gemini-key";
-import { geminiErrorJsonResponse } from "@/lib/gemini-error";
+import { geminiErrorJsonResponse, withGeminiRetry } from "@/lib/gemini-error";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -115,7 +115,7 @@ export async function POST(req: Request) {
 
   let rawText = "";
   try {
-    const result = (await ai.models.generateContent({
+    const result = (await withGeminiRetry(() => ai.models.generateContent({
       model: MODEL,
       contents: [
         {
@@ -131,7 +131,7 @@ export async function POST(req: Request) {
         responseMimeType: "application/json",
         abortSignal: controller.signal,
       },
-    })) as unknown as {
+    }))) as unknown as {
       text?: string;
       candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
     };

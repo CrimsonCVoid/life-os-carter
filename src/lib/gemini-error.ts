@@ -26,6 +26,17 @@ export function classifyGeminiError(err: unknown): GeminiErrorKind {
   return "upstream";
 }
 
+/** Transient server-side errors that usually clear within a second or two —
+ * Gemini's 503 UNAVAILABLE ("model is experiencing high demand") and 500
+ * INTERNAL. These are worth retrying; a 400/permission/quota error is not. */
+export function isTransientGeminiError(err: unknown): boolean {
+  const raw = err instanceof Error ? err.message : "";
+  return (
+    /"code":50[0-9]/.test(raw) ||
+    /UNAVAILABLE|INTERNAL|overloaded|high demand/i.test(raw)
+  );
+}
+
 export function geminiErrorPlainResponse(
   err: unknown,
   failureTag: string
@@ -114,14 +125,24 @@ export function geminiUserMessage(
 
 export async function withGeminiRetry<T>(
   fn: () => Promise<T>,
-  options?: { backoffMs?: number }
+  options?: { backoffMs?: number; attempts?: number }
 ): Promise<T> {
-  try {
-    return await fn();
-  } catch (err) {
-    const kind = classifyGeminiError(err);
-    if (kind === "quota_exceeded" || kind === "timeout") throw err;
-    await new Promise((r) => setTimeout(r, options?.backoffMs ?? 200));
-    return await fn();
+  const maxAttempts = Math.max(1, options?.attempts ?? 3);
+  const base = options?.backoffMs ?? 400;
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await fn();
+    } catch (err) {
+      const kind = classifyGeminiError(err);
+      // Quota won't recover on retry; timeout's abort signal is one-shot —
+      // both bail immediately. Everything else (incl. 503 high-demand) is
+      // retried with a short escalating backoff.
+      if (kind === "quota_exceeded" || kind === "timeout") throw err;
+      lastErr = err;
+      if (attempt === maxAttempts) break;
+      await new Promise((r) => setTimeout(r, base * attempt));
+    }
   }
+  throw lastErr;
 }

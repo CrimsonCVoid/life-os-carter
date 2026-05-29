@@ -10,7 +10,7 @@
 
 import { GoogleGenAI } from "@google/genai";
 import { resolveGeminiApiKey } from "@/lib/gemini-key";
-import { geminiErrorJsonResponse } from "@/lib/gemini-error";
+import { geminiErrorJsonResponse, withGeminiRetry } from "@/lib/gemini-error";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -174,7 +174,7 @@ export async function POST(req: Request) {
   const t = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const resp = (await ai.models.generateContent({
+    const resp = (await withGeminiRetry(() => ai.models.generateContent({
       model: MODEL,
       contents: [
         {
@@ -191,7 +191,7 @@ export async function POST(req: Request) {
         responseMimeType: "application/json",
         abortSignal: controller.signal,
       },
-    })) as unknown as {
+    }))) as unknown as {
       text?: string;
       candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
     };
