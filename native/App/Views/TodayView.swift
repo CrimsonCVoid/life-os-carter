@@ -20,11 +20,15 @@ struct TodayView: View {
     @State private var syncing = false
     @State private var showRecoveryDetail = false
     @State private var showSleepDetail = false
+    /// The day the screen is showing. Defaults to actual today; the day
+    /// navigator walks it backwards/forwards. Future days are disallowed.
+    @State private var selectedDate = Calendar.current.startOfDay(for: Date())
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 16) {
+                    dayNavigator.cascadeReveal(index: 0, visible: revealed)
                     greeting.cascadeReveal(index: 0, visible: revealed)
                     RecoveryStrainHero(
                         recovery: recoveryScore,
@@ -39,22 +43,28 @@ struct TodayView: View {
                     activityRingsCard.cascadeReveal(index: 2, visible: revealed)
                     vitalsGrid.cascadeReveal(index: 3, visible: revealed)
                     caloriesCard.cascadeReveal(index: 4, visible: revealed)
-                    JournalPromptStrip(
-                        daily: todayEntry,
-                        onChange: persist
-                    )
-                    .cascadeReveal(index: 5, visible: revealed)
+                    // Journal prompts bind to a concrete row, so only show
+                    // them when one exists (today always has one; past days
+                    // only once logged) — avoids materializing empty rows
+                    // just by browsing back.
+                    if isViewingToday || existingEntry != nil {
+                        JournalPromptStrip(
+                            daily: ensureEntry(),
+                            onChange: persist
+                        )
+                        .cascadeReveal(index: 5, visible: revealed)
+                    }
                     MoodEnergyCard(
-                        mood: todayEntry.moodScore,
-                        energy: todayEntry.energyScore,
+                        mood: displayEntry.moodScore,
+                        energy: displayEntry.energyScore,
                         moodTrend: moodTrend7d,
                         energyTrend: energyTrend7d,
                         onLogMood: { v in
-                            todayEntry.moodScore = v
+                            ensureEntry().moodScore = v
                             persist()
                         },
                         onLogEnergy: { v in
-                            todayEntry.energyScore = v
+                            ensureEntry().energyScore = v
                             persist()
                         }
                     )
@@ -62,12 +72,17 @@ struct TodayView: View {
                     workoutsSummary.cascadeReveal(index: 7, visible: revealed)
                     sleepCard.cascadeReveal(index: 8, visible: revealed)
                     HydrationCard(
-                        currentOz: todayEntry.waterOz,
+                        currentOz: displayEntry.waterOz,
                         goalOz: settings.waterGoalOz,
                         onLog: { delta in
-                            todayEntry.waterOz = max(0, todayEntry.waterOz + delta)
+                            let e = ensureEntry()
+                            e.waterOz = max(0, e.waterOz + delta)
                             persist()
-                            Task { await HealthKitManager.shared.writeWater(ounces: max(0, delta)) }
+                            // Only mirror to HealthKit for today — a back-dated
+                            // log would otherwise write water as of "now".
+                            if isViewingToday {
+                                Task { await HealthKitManager.shared.writeWater(ounces: max(0, delta)) }
+                            }
                         }
                     )
                     .cascadeReveal(index: 9, visible: revealed)
@@ -81,6 +96,16 @@ struct TodayView: View {
             .refreshable {
                 await forceSync()
             }
+            .simultaneousGesture(
+                // Horizontal swipe to walk days — guarded on horizontal
+                // dominance so it never fights the vertical ScrollView.
+                DragGesture(minimumDistance: 24)
+                    .onEnded { v in
+                        guard abs(v.translation.width) > 70,
+                              abs(v.translation.width) > abs(v.translation.height) else { return }
+                        step(v.translation.width > 0 ? -1 : 1)
+                    }
+            )
             .navigationTitle("Today")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
@@ -98,7 +123,7 @@ struct TodayView: View {
                 Task { await sync() }
             }
             .navigationDestination(isPresented: $showSleepDetail) {
-                SleepHypnogramView(date: todayKey)
+                SleepHypnogramView(date: selectedKey)
             }
             .sheet(isPresented: $showRecoveryDetail) {
                 if let r = recoveryScore {
@@ -110,21 +135,54 @@ struct TodayView: View {
 
     // MARK: - Singletons
 
-    private var todayKey: String {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.locale = Locale(identifier: "en_US_POSIX")
-        return f.string(from: Date())
+    /// "YYYY-MM-DD" for the day being viewed.
+    private var selectedKey: String { ymd(selectedDate) }
+
+    private var isViewingToday: Bool {
+        Calendar.current.isDate(selectedDate, inSameDayAs: Date())
     }
 
-    private var todayEntry: DailyEntry {
-        if let existing = dailyRows.first(where: { $0.date == todayKey }) {
-            return existing
-        }
-        let fresh = DailyEntry(date: todayKey)
+    /// The persisted row for the viewed day, if one exists. nil for a day
+    /// the user has never logged — browsing must NOT create empty rows, so
+    /// reads go through `displayEntry` and writes through `ensureEntry()`.
+    private var existingEntry: DailyEntry? {
+        dailyRows.first { $0.date == selectedKey }
+    }
+
+    /// Read-only view of the viewed day: the real row, or a transient empty
+    /// entry (never inserted) so cards render zeros/dashes for untouched days.
+    private var displayEntry: DailyEntry {
+        existingEntry ?? DailyEntry(date: selectedKey)
+    }
+
+    /// Fetch-or-create the row for the viewed day. Called only from edit
+    /// closures (logging water/mood/etc.), so a row is materialized the
+    /// moment the user actually writes to that day — today or backfilled.
+    @discardableResult
+    private func ensureEntry() -> DailyEntry {
+        if let existing = existingEntry { return existing }
+        let fresh = DailyEntry(date: selectedKey)
         modelContext.insert(fresh)
         try? modelContext.save()
         return fresh
+    }
+
+    private func step(_ days: Int) {
+        let cal = Calendar.current
+        guard let next = cal.date(byAdding: .day, value: days, to: selectedDate) else { return }
+        // No future days — planning isn't part of this screen.
+        if next > cal.startOfDay(for: Date()) { return }
+        Haptics.tick()
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            selectedDate = cal.startOfDay(for: next)
+        }
+    }
+
+    private func jumpToToday() {
+        Haptics.tap()
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            selectedDate = Calendar.current.startOfDay(for: Date())
+        }
     }
 
     private var settings: UserSettings {
@@ -135,32 +193,30 @@ struct TodayView: View {
     // MARK: - Derived
 
     private var recoveryScore: RecoveryResult? {
-        // Baselines are learned from history now, not stored — pass the
-        // trailing window (most-recent first, today excluded, 30 cap).
+        // Baselines are learned from history — the trailing window is the
+        // days strictly before the VIEWED day, most-recent first, 30 cap.
         let history = dailyRows
-            .filter { $0.date != todayKey }
+            .filter { $0.date < selectedKey }
             .sorted { $0.date > $1.date }
             .prefix(30)
         return RecoveryEngine.compute(
-            today: todayEntry,
+            today: displayEntry,
             history: Array(history),
-            priorStrain: yesterdayStrain?.value,
+            priorStrain: priorStrain?.value,
             sleepGoalHours: settings.sleepGoalHours
         )
     }
 
     private var strainScore: StrainCalculator.Score {
-        strain(for: Calendar.current.startOfDay(for: Date()))
+        strain(for: selectedDate)
     }
 
-    /// Yesterday's strain, used to temper today's recovery. nil when
-    /// yesterday produced no measurable load (calculator still returns a
-    /// near-zero rest score, so this is effectively always non-nil — but
-    /// keep it optional to pass through cleanly).
-    private var yesterdayStrain: StrainCalculator.Score? {
+    /// Strain for the day before the viewed day, used to temper the viewed
+    /// day's recovery. Optional purely to pass through cleanly.
+    private var priorStrain: StrainCalculator.Score? {
         let cal = Calendar.current
-        guard let yesterday = cal.date(byAdding: .day, value: -1, to: cal.startOfDay(for: Date())) else { return nil }
-        return strain(for: yesterday)
+        guard let prior = cal.date(byAdding: .day, value: -1, to: selectedDate) else { return nil }
+        return strain(for: prior)
     }
 
     /// Strain for the calendar day starting at `dayStart`. Pulls that
@@ -268,6 +324,57 @@ struct TodayView: View {
         return f.string(from: d)
     }
 
+    // MARK: - Day navigator
+
+    private var dayNavigator: some View {
+        HStack(spacing: 8) {
+            Button { step(-1) } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(LifeOSColor.fg2)
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+            Spacer()
+            Button { jumpToToday() } label: {
+                HStack(spacing: 6) {
+                    if !isViewingToday {
+                        Image(systemName: "arrow.uturn.left")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(LifeOSColor.accent)
+                    }
+                    VStack(spacing: 1) {
+                        Text(isViewingToday ? "Today" : relativeDayLabel)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(LifeOSColor.fg)
+                        Text(selectedDate.formatted(.dateTime.weekday(.abbreviated).month().day()))
+                            .font(.system(size: 11))
+                            .foregroundStyle(LifeOSColor.fg3)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+            .disabled(isViewingToday)
+            Spacer()
+            Button { step(1) } label: {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(isViewingToday ? LifeOSColor.fg3.opacity(0.4) : LifeOSColor.fg2)
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+            .disabled(isViewingToday)
+        }
+        .padding(.horizontal, 4)
+    }
+
+    private var relativeDayLabel: String {
+        let cal = Calendar.current
+        if cal.isDateInYesterday(selectedDate) { return "Yesterday" }
+        let days = cal.dateComponents([.day], from: selectedDate, to: cal.startOfDay(for: Date())).day ?? 0
+        return "\(days) days ago"
+    }
+
     // MARK: - Greeting
 
     private var greeting: some View {
@@ -300,11 +407,12 @@ struct TodayView: View {
     // MARK: - Activity rings (real-ish: tied to HealthKit aggregates)
 
     private var activityRingsCard: some View {
-        let steps = todayEntry.steps ?? 0
+        let e = displayEntry
+        let steps = e.steps ?? 0
         let stepsGoal = settings.stepsGoal
-        let sleepMin = Int((todayEntry.sleepHours ?? 0) * 60)
+        let sleepMin = Int((e.sleepHours ?? 0) * 60)
         let sleepGoalMin = Int(settings.sleepGoalHours * 60)
-        let waterOz = Int(todayEntry.waterOz)
+        let waterOz = Int(e.waterOz)
         let waterGoal = Int(settings.waterGoalOz)
         // The three rings map to the three metrics labeled beside them —
         // Steps (outer), Sleep (middle), Water (inner) — each as its real
@@ -382,7 +490,7 @@ struct TodayView: View {
             HStack(spacing: 10) {
                 VitalTile(
                     icon: "figure.walk", label: "Steps",
-                    value: formatSteps(todayEntry.steps ?? 0),
+                    value: formatSteps(displayEntry.steps ?? 0),
                     tint: LifeOSColor.Metric.steps,
                     trend: [],
                     delta: stepsDelta
@@ -402,7 +510,7 @@ struct TodayView: View {
             HStack(spacing: 10) {
                 VitalTile(
                     icon: "flame.fill", label: "Calories",
-                    value: (todayEntry.totalCaloriesKcal ?? todayEntry.activeEnergyKcal)
+                    value: (displayEntry.totalCaloriesKcal ?? displayEntry.activeEnergyKcal)
                         .map { "\(Int($0))" } ?? "—",
                     unit: "kcal",
                     tint: LifeOSColor.Metric.calories,
@@ -411,7 +519,7 @@ struct TodayView: View {
                 )
                 VitalTile(
                     icon: "point.topleft.down.curvedto.point.bottomright.up", label: "Distance",
-                    value: todayEntry.distanceMeters.map { String(format: "%.2f", $0 / 1609.34) } ?? "—",
+                    value: displayEntry.distanceMeters.map { String(format: "%.2f", $0 / 1609.34) } ?? "—",
                     unit: "mi",
                     tint: LifeOSColor.Metric.energy,
                     trend: [],
@@ -425,19 +533,21 @@ struct TodayView: View {
     /// (active + resting) so it matches the Nutrition tab's "burned" ring;
     /// the caption breaks out the active (movement) portion.
     private var caloriesDelta: String {
-        guard let active = todayEntry.activeEnergyKcal else { return "—" }
+        guard let active = displayEntry.activeEnergyKcal else { return "—" }
         return "\(Int(active)) active"
     }
 
     /// A metric value plus where it came from, for the "as of …" fallback.
     private struct RecentVital { let value: Double; let date: String; let isToday: Bool }
 
-    /// Most recent DailyEntry (by date) with a non-nil value for `pick`.
-    /// "YYYY-MM-DD" strings sort lexicographically == chronologically.
+    /// Most recent DailyEntry on or before the VIEWED day with a non-nil
+    /// value for `pick`. "YYYY-MM-DD" strings sort lexicographically ==
+    /// chronologically. `isToday` here means "is the viewed day".
     private func mostRecentVital(_ pick: (DailyEntry) -> Double?) -> RecentVital? {
         dailyRows
+            .filter { $0.date <= selectedKey }
             .compactMap { row in
-                pick(row).map { RecentVital(value: $0, date: row.date, isToday: row.date == todayKey) }
+                pick(row).map { RecentVital(value: $0, date: row.date, isToday: row.date == selectedKey) }
             }
             .max { $0.date < $1.date }
     }
@@ -455,10 +565,12 @@ struct TodayView: View {
     private func asOfCaption(_ dateStr: String) -> String {
         guard let d = Self.ymdFormatter.date(from: dateStr) else { return "earlier" }
         let cal = Calendar.current
-        if cal.isDateInToday(d) { return "—" }
-        if cal.isDateInYesterday(d) { return "as of yesterday" }
-        let days = cal.dateComponents([.day], from: cal.startOfDay(for: d), to: cal.startOfDay(for: Date())).day ?? 0
-        return "as of \(max(days, 1))d ago"
+        let ref = cal.startOfDay(for: selectedDate)
+        let dd = cal.startOfDay(for: d)
+        if dd == ref { return "—" }
+        let days = cal.dateComponents([.day], from: dd, to: ref).day ?? 0
+        if days == 1 { return "as of prior day" }
+        return "as of \(max(days, 1))d earlier"
     }
 
     private static let ymdFormatter: DateFormatter = {
@@ -470,7 +582,7 @@ struct TodayView: View {
 
     private var stepsDelta: String {
         let goal = settings.stepsGoal
-        guard goal > 0, let s = todayEntry.steps else { return "—" }
+        guard goal > 0, let s = displayEntry.steps else { return "—" }
         return "\(Int(Double(s) / Double(goal) * 100))% of goal"
     }
 
@@ -483,8 +595,7 @@ struct TodayView: View {
     // MARK: - Calories
 
     private var caloriesCard: some View {
-        let today = ISO8601DateFormatter.dateOnly.string(from: Date())
-        let mealsToday = allMeals.filter { $0.date == today }
+        let mealsToday = allMeals.filter { $0.date == selectedKey }
         let kcal = mealsToday.reduce(0.0) { $0 + $1.calories }
         let p = mealsToday.reduce(0.0) { $0 + $1.proteinG }
         let c = mealsToday.reduce(0.0) { $0 + $1.carbsG }
@@ -503,7 +614,7 @@ struct TodayView: View {
                 // Total burned (active + resting), matching the Nutrition
                 // tab's burned ring. Previously hardcoded 0, which made
                 // Today's "calories left" math disagree with Nutrition.
-                caloriesBurned: todayEntry.totalCaloriesKcal ?? todayEntry.activeEnergyKcal ?? 0,
+                caloriesBurned: displayEntry.totalCaloriesKcal ?? displayEntry.activeEnergyKcal ?? 0,
                 caloriesGoal: Double(settings.caloriesGoal)
             )
         }
@@ -512,8 +623,7 @@ struct TodayView: View {
     // MARK: - Workouts summary
 
     private var workoutsSummary: some View {
-        let today = ISO8601DateFormatter.dateOnly.string(from: Date())
-        let todayWorkouts = allSessions.filter { $0.date == today }
+        let todayWorkouts = allSessions.filter { $0.date == selectedKey }
         let latest = todayWorkouts.first
         return VStack(spacing: 10) {
             SectionLabel("Workouts") {
@@ -567,10 +677,10 @@ struct TodayView: View {
 
     @ViewBuilder
     private var sleepCard: some View {
-        if let totalHours = todayEntry.sleepHours {
+        if let totalHours = displayEntry.sleepHours {
             // Whoop-style breakdown when stages came back from HealthKit;
             // otherwise just totals.
-            let stages = makeStages(from: todayEntry)
+            let stages = makeStages(from: displayEntry)
             SleepCard(
                 totalHours: totalHours,
                 bedtime: bedtimeApprox(for: totalHours),
@@ -631,9 +741,9 @@ struct TodayView: View {
     // MARK: - Habits roll-up
 
     private var habitsRoll: some View {
-        let todayKeyLocal = todayKey
+        let todayKeyLocal = selectedKey
         let cal = Calendar.current
-        let weekday = cal.component(.weekday, from: Date())
+        let weekday = cal.component(.weekday, from: selectedDate)
         let dueToday = habits.filter { $0.cadence.isDueOn(weekday: weekday) }
         let done = dueToday.filter { $0.isCompleted(on: todayKeyLocal) }.count
         let total = dueToday.count
@@ -696,6 +806,9 @@ struct TodayView: View {
     /// SwiftData rewrite, which was the root cause of the cascading
     /// @Query re-emit storm that pegged CPU.
     private func sync() async {
+        // Passive HealthKit pull only makes sense for the live day; past
+        // days are already persisted and immutable from the sensor side.
+        guard isViewingToday else { return }
         syncing = true
         await HealthSync.syncToday(in: modelContext)
         syncing = false
@@ -705,6 +818,7 @@ struct TodayView: View {
     /// explicitly asked for fresh data so respect that even within
     /// the 60s window.
     private func forceSync() async {
+        guard isViewingToday else { return }
         syncing = true
         await HealthSync.syncToday(in: modelContext, force: true)
         syncing = false
