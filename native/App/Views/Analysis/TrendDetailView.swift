@@ -23,6 +23,21 @@ struct TrendDetailView: View {
     /// "higher is better" drives the delta-pill tint direction.
     var higherIsBetter: Bool = true
 
+    // MARK: New, opt-in params (defaults preserve every existing call site).
+
+    /// Shade a learned-baseline band (mean ± 1 SD computed from the
+    /// visible points) behind the line. Great for HRV/RHR where "is this
+    /// reading inside my normal range" is the real question. Off by
+    /// default; needs ≥ 4 points to be statistically meaningful.
+    var showBaselineBand: Bool = false
+    /// Draw a solid baseline rule at the series mean (distinct from the
+    /// dashed average). Pairs with the band. Off by default.
+    var showBaselineRule: Bool = false
+    /// Show a "+8% vs start" caption above the chart. Off by default.
+    var showDeltaCaption: Bool = false
+    /// Animate the line drawing in when the chart appears. Off by default.
+    var animateChart: Bool = false
+
     @Query private var dailies: [DailyEntry]
     @Query private var sessions: [LiftSessionEntry]
 
@@ -35,6 +50,19 @@ struct TrendDetailView: View {
     private var average: Double? {
         guard !points.isEmpty else { return nil }
         return points.map(\.value).reduce(0, +) / Double(points.count)
+    }
+
+    /// mean ± 1 standard deviation over the visible window — the
+    /// "normal range" zone. nil when there's too little data to be
+    /// meaningful (fewer than 4 points) so the band doesn't mislead.
+    private var baselineBand: (low: Double, high: Double)? {
+        guard showBaselineBand else { return nil }
+        let values = points.map(\.value)
+        guard values.count >= 4, let mean = average else { return nil }
+        let variance = values.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Double(values.count)
+        let sd = variance.squareRoot()
+        guard sd > 0 else { return nil }
+        return (mean - sd, mean + sd)
     }
 
     /// Last value vs the mean of the prior points — same definition the
@@ -164,6 +192,11 @@ struct TrendDetailView: View {
                     valueFormat: valueFormat,
                     yAxisFormat: yAxisFormat,
                     yDomain: yDomain,
+                    band: baselineBand,
+                    baseline: (showBaselineRule ? average : nil),
+                    deltaCaption: showDeltaCaption,
+                    deltaHigherIsBetter: higherIsBetter,
+                    animateOnAppear: animateChart,
                     onScrub: { scrubbed = $0 }
                 )
                 .frame(height: 240)

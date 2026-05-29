@@ -14,7 +14,7 @@ enum RecoveryAdvice {
     }
 
     static func generate(
-        recovery: RecoveryCalculator.Score?,
+        recovery: RecoveryResult?,
         strainToday: StrainCalculator.Score,
         consecutiveTrainingDays: Int
     ) -> Line? {
@@ -46,7 +46,7 @@ enum RecoveryAdvice {
             }
             return Line(
                 title: "Green light — push it today",
-                detail: "Recovery is \(r.value). Hard intervals, a heavy compound, or a long run all in play.",
+                detail: "Recovery is \(r.score). Hard intervals, a heavy compound, or a long run all in play.",
                 tint: LifeOSColor.success,
                 icon: "bolt.fill"
             )
@@ -55,7 +55,7 @@ enum RecoveryAdvice {
         if r.band == .medium {
             return Line(
                 title: "Yellow — keep it moderate",
-                detail: "Recovery is \(r.value). Stick to your normal volume; skip the heaviest top sets and intervals.",
+                detail: "Recovery is \(r.score). Stick to your normal volume; skip the heaviest top sets and intervals.",
                 tint: LifeOSColor.warning,
                 icon: "equal.circle.fill"
             )
@@ -63,7 +63,7 @@ enum RecoveryAdvice {
         // Low recovery → take it easy
         return Line(
             title: "Red — recover today",
-            detail: "Recovery is \(r.value). A walk, mobility, or full rest pays back tomorrow more than forcing a session does.",
+            detail: "Recovery is \(r.score). A walk, mobility, or full rest pays back tomorrow more than forcing a session does.",
             tint: LifeOSColor.danger,
             icon: "moon.zzz.fill"
         )
@@ -88,7 +88,7 @@ struct RecoveryAdviceCard: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(line.title)
                         .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(LifeOSColor.fg)
                         .fixedSize(horizontal: false, vertical: true)
                     Text(line.detail)
                         .font(.system(size: 11))

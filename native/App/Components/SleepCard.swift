@@ -18,10 +18,43 @@ struct SleepCard: View {
     let wake: Date
     let stages: [Stage]
     let weekAverageHours: Double
+    /// Optional tap handler — the host passes a closure that presents
+    /// the full-screen hypnogram. nil (the default) keeps the existing
+    /// call site compiling and renders the card as non-interactive.
+    var onTap: (() -> Void)?
+
+    init(
+        totalHours: Double,
+        bedtime: Date,
+        wake: Date,
+        stages: [Stage],
+        weekAverageHours: Double,
+        onTap: (() -> Void)? = nil
+    ) {
+        self.totalHours = totalHours
+        self.bedtime = bedtime
+        self.wake = wake
+        self.stages = stages
+        self.weekAverageHours = weekAverageHours
+        self.onTap = onTap
+    }
 
     private let order: [Stage.Kind] = [.awake, .rem, .core, .deep]
 
     var body: some View {
+        if let onTap {
+            Button {
+                Haptics.tap()
+                onTap()
+            } label: { cardBody }
+            .buttonStyle(.plain)
+            .pressable()
+        } else {
+            cardBody
+        }
+    }
+
+    private var cardBody: some View {
         Card {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
@@ -49,6 +82,12 @@ struct SleepCard: View {
                         Text(formatHours(weekAverageHours))
                             .font(.system(size: 16, weight: .semibold).monospacedDigit())
                             .foregroundStyle(LifeOSColor.fg2)
+                    }
+                    if onTap != nil {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(LifeOSColor.fg3)
+                            .padding(.leading, 2)
                     }
                 }
 
@@ -123,10 +162,12 @@ struct SleepCard: View {
 
     private func color(for kind: Stage.Kind) -> Color {
         switch kind {
-        case .awake: return Color(hex: 0xF43F5E)
-        case .rem:   return Color(hex: 0xA78BFA)
-        case .core:  return Color(hex: 0x60A5FA)
-        case .deep:  return Color(hex: 0x1E40AF)
+        case .awake: return LifeOSColor.SleepStage.awake
+        case .rem:   return LifeOSColor.SleepStage.rem
+        // "Core" is Apple's name for the light stage — same token so
+        // Today, Analysis, and the hypnogram all read identically.
+        case .core:  return LifeOSColor.SleepStage.light
+        case .deep:  return LifeOSColor.SleepStage.deep
         }
     }
 

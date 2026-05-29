@@ -1,21 +1,33 @@
 import SwiftUI
 
-/// Replaces the placeholder Peak State hero with a Whoop-style
-/// recovery + strain split. Recovery is a 0–100 ring on the left,
-/// strain is a 0–21 ring on the right, with a band-tinted chip
-/// below each. Both numbers come from the calculators, which fall
-/// back gracefully when data is sparse instead of showing "—".
+/// Whoop-style recovery + strain split hero. Recovery is a 0–100 ring on the
+/// left (tinted by band), strain a 0–21 ring on the right. The recovery side
+/// is tappable — `onTapRecovery` presents the full driver breakdown. A subtle
+/// "partial" marker appears when baselines are still learning or inputs were
+/// missing, so the user knows the score is honest-but-incomplete.
 struct RecoveryStrainHero: View {
-    let recovery: RecoveryCalculator.Score?
+    let recovery: RecoveryResult?
     let strain: StrainCalculator.Score
+    var onTapRecovery: () -> Void = {}
 
     var body: some View {
-        Card(tint: tintForBand) {
+        Card(tint: recoveryTint) {
             HStack(spacing: 14) {
-                recoverySide
+                Button {
+                    guard recovery != nil else { return }
+                    Haptics.tap()
+                    onTapRecovery()
+                } label: {
+                    recoverySide
+                }
+                .buttonStyle(.plain)
+                .disabled(recovery == nil)
+                .pressable()
+
                 Divider()
                     .overlay(LifeOSColor.stroke)
-                    .frame(height: 90)
+                    .frame(height: 96)
+
                 strainSide
             }
         }
@@ -26,28 +38,32 @@ struct RecoveryStrainHero: View {
     private var recoverySide: some View {
         VStack(spacing: 8) {
             ZStack {
-                // Soft halo behind the ring — matches the recovery
-                // band's tint so a low score reads as red atmosphere
-                // and a high score reads as a green glow.
                 Circle()
                     .fill(recoveryTint.opacity(0.32))
                     .frame(width: 96, height: 96)
                     .blur(radius: 28)
                 ScoreRing(
-                    progress: Double(recovery?.value ?? 0) / 100.0,
-                    value: recovery.map { "\($0.value)" } ?? "—",
+                    progress: Double(recovery?.score ?? 0) / 100.0,
+                    value: recovery.map { "\($0.score)" } ?? "—",
                     label: "RECOVERY",
                     tint: recoveryTint,
                     size: 96
                 )
                 .contentTransition(.numericText())
-                .animation(.spring(response: 0.4, dampingFraction: 0.8), value: recovery?.value)
+                .animation(.spring(response: 0.4, dampingFraction: 0.8), value: recovery?.score)
             }
-            Text(recoveryBandLabel)
-                .font(.system(size: 10, weight: .heavy)).tracking(0.8)
-                .foregroundStyle(recoveryTint)
-                .padding(.horizontal, 8).padding(.vertical, 3)
-                .background(Capsule().fill(recoveryTint.opacity(0.15)))
+            HStack(spacing: 4) {
+                Text(recoveryBandLabel)
+                    .font(.system(size: 10, weight: .heavy)).tracking(0.8)
+                if isPartial {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .font(.system(size: 9, weight: .bold))
+                }
+            }
+            .foregroundStyle(recoveryTint)
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .background(Capsule().fill(recoveryTint.opacity(0.15)))
+
             Text(recoverySublabel)
                 .font(.system(size: 10))
                 .foregroundStyle(LifeOSColor.fg3)
@@ -58,34 +74,28 @@ struct RecoveryStrainHero: View {
     }
 
     private var recoveryTint: Color {
-        switch recovery?.band {
-        case .low:    return LifeOSColor.danger
-        case .medium: return LifeOSColor.warning
-        case .high:   return LifeOSColor.success
-        case nil:     return LifeOSColor.fg3
-        }
+        guard let r = recovery else { return LifeOSColor.fg3 }
+        return LifeOSColor.recovery(r.score)
     }
 
     private var recoveryBandLabel: String {
         switch recovery?.band {
-        case .low:    return "TAKE IT EASY"
+        case .low:    return "RECOVER"
         case .medium: return "MAINTAIN"
-        case .high:   return "PUSH IT"
+        case .high:   return "PUSH"
         case nil:     return "NO DATA"
         }
     }
 
+    private var isPartial: Bool {
+        guard let r = recovery else { return false }
+        return !r.baselineReady || !r.missingInputs.isEmpty
+    }
+
     private var recoverySublabel: String {
         guard let r = recovery else { return "Wear your watch overnight to score" }
-        // Surface whichever component is most responsible for the score —
-        // its weighted distance from neutral (50). This lets a heavy day's
-        // low Prior Strain or fragmented Sleep surface as the explanation,
-        // not just the structurally-heaviest input.
-        func impact(_ c: RecoveryCalculator.Component) -> Double {
-            Double(abs(50 - c.value)) * c.weight
-        }
-        let driver = r.components.max { impact($0) < impact($1) }
-        return driver?.note ?? "Composite of HRV, RHR, sleep, strain"
+        if !r.baselineReady { return "learning your baseline" }
+        return r.headline
     }
 
     // MARK: - Strain (right)
@@ -94,14 +104,14 @@ struct RecoveryStrainHero: View {
         VStack(spacing: 8) {
             ZStack {
                 Circle()
-                    .fill(strainTint.opacity(0.28))
+                    .fill(LifeOSColor.Metric.strain.opacity(0.28))
                     .frame(width: 96, height: 96)
                     .blur(radius: 28)
                 ScoreRing(
                     progress: strain.value / 21.0,
                     value: String(format: "%.1f", strain.value),
                     label: "STRAIN",
-                    tint: strainTint,
+                    tint: LifeOSColor.Metric.strain,
                     size: 96
                 )
                 .contentTransition(.numericText())
@@ -109,9 +119,9 @@ struct RecoveryStrainHero: View {
             }
             Text(strainBandLabel)
                 .font(.system(size: 10, weight: .heavy)).tracking(0.8)
-                .foregroundStyle(strainTint)
+                .foregroundStyle(LifeOSColor.Metric.strain)
                 .padding(.horizontal, 8).padding(.vertical, 3)
-                .background(Capsule().fill(strainTint.opacity(0.15)))
+                .background(Capsule().fill(LifeOSColor.Metric.strain.opacity(0.15)))
             Text(strain.breakdown.isEmpty ? "Nothing logged yet" : strain.breakdown)
                 .font(.system(size: 10))
                 .foregroundStyle(LifeOSColor.fg3)
@@ -119,16 +129,6 @@ struct RecoveryStrainHero: View {
                 .lineLimit(2)
         }
         .frame(maxWidth: .infinity)
-    }
-
-    private var strainTint: Color {
-        switch strain.band {
-        case .rest:     return LifeOSColor.fg3
-        case .light:    return LifeOSColor.Metric.water
-        case .moderate: return LifeOSColor.Metric.sleep
-        case .hard:     return LifeOSColor.warning
-        case .allOut:   return LifeOSColor.danger
-        }
     }
 
     private var strainBandLabel: String {
@@ -139,9 +139,5 @@ struct RecoveryStrainHero: View {
         case .hard:     return "HARD"
         case .allOut:   return "ALL OUT"
         }
-    }
-
-    private var tintForBand: Color {
-        recoveryTint
     }
 }

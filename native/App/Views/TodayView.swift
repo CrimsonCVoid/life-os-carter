@@ -18,6 +18,8 @@ struct TodayView: View {
 
     @State private var revealed = false
     @State private var syncing = false
+    @State private var showRecoveryDetail = false
+    @State private var showSleepDetail = false
 
     var body: some View {
         NavigationStack {
@@ -26,7 +28,8 @@ struct TodayView: View {
                     greeting.cascadeReveal(index: 0, visible: revealed)
                     RecoveryStrainHero(
                         recovery: recoveryScore,
-                        strain: strainScore
+                        strain: strainScore,
+                        onTapRecovery: { showRecoveryDetail = true }
                     )
                     .cascadeReveal(index: 1, visible: revealed)
                     if let advice = recoveryAdvice {
@@ -94,6 +97,14 @@ struct TodayView: View {
                 if !revealed { revealed = true }
                 Task { await sync() }
             }
+            .navigationDestination(isPresented: $showSleepDetail) {
+                SleepHypnogramView(date: todayKey)
+            }
+            .sheet(isPresented: $showRecoveryDetail) {
+                if let r = recoveryScore {
+                    RecoveryDetailView(result: r)
+                }
+            }
         }
     }
 
@@ -123,13 +134,18 @@ struct TodayView: View {
 
     // MARK: - Derived
 
-    private var recoveryScore: RecoveryCalculator.Score? {
-        RecoveryCalculator.compute(
-            daily: todayEntry,
-            hrvBaseline: settings.hrvBaseline,
-            rhrBaseline: settings.rhrBaseline,
-            sleepGoalHours: settings.sleepGoalHours,
-            priorDayStrain: yesterdayStrain?.value
+    private var recoveryScore: RecoveryResult? {
+        // Baselines are learned from history now, not stored — pass the
+        // trailing window (most-recent first, today excluded, 30 cap).
+        let history = dailyRows
+            .filter { $0.date != todayKey }
+            .sorted { $0.date > $1.date }
+            .prefix(30)
+        return RecoveryEngine.compute(
+            today: todayEntry,
+            history: Array(history),
+            priorStrain: yesterdayStrain?.value,
+            sleepGoalHours: settings.sleepGoalHours
         )
     }
 
@@ -484,7 +500,10 @@ struct TodayView: View {
                 carbsG: c, carbsGoalG: Double(settings.carbsGoal),
                 fatG: f, fatGoalG: Double(settings.fatGoal),
                 caloriesEaten: kcal,
-                caloriesBurned: 0,
+                // Total burned (active + resting), matching the Nutrition
+                // tab's burned ring. Previously hardcoded 0, which made
+                // Today's "calories left" math disagree with Nutrition.
+                caloriesBurned: todayEntry.totalCaloriesKcal ?? todayEntry.activeEnergyKcal ?? 0,
                 caloriesGoal: Double(settings.caloriesGoal)
             )
         }
@@ -557,7 +576,8 @@ struct TodayView: View {
                 bedtime: bedtimeApprox(for: totalHours),
                 wake: wakeApprox(),
                 stages: stages,
-                weekAverageHours: sleepAvg7d
+                weekAverageHours: sleepAvg7d,
+                onTap: { showSleepDetail = true }
             )
         } else {
             Card {

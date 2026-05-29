@@ -16,6 +16,7 @@ struct SettingsView: View {
             VStack(spacing: 14) {
                 accountCard
                 goalsLinkCard
+                appearanceLinkCard
                 healthSourceCard
                 integrationsCard
                 testDataCard
@@ -54,6 +55,38 @@ struct SettingsView: View {
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(LifeOSColor.fg)
                         Text("\(settings.caloriesGoal) kcal · \(settings.proteinGoal)p · \(Int(settings.sleepGoalHours))h sleep · \(settings.stepsGoal) steps")
+                            .font(.system(size: 11))
+                            .foregroundStyle(LifeOSColor.fg3)
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11))
+                        .foregroundStyle(LifeOSColor.fg3)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var appearanceLinkCard: some View {
+        NavigationLink {
+            BackgroundPicker()
+        } label: {
+            Card {
+                HStack(spacing: 14) {
+                    ZStack {
+                        Circle().fill(LifeOSColor.accent.opacity(0.16))
+                        Image(systemName: "photo.on.rectangle.angled")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(LifeOSColor.accent)
+                    }
+                    .frame(width: 44, height: 44)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Appearance")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(LifeOSColor.fg)
+                        Text(settings.backgroundStyle == "photo" ? "Photo background" : "Animated background")
                             .font(.system(size: 11))
                             .foregroundStyle(LifeOSColor.fg3)
                             .lineLimit(1)

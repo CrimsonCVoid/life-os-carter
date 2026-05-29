@@ -39,10 +39,37 @@ struct ScrubbableTrendChart: View {
     var yAxisFormat: (Double) -> String = { "\(Int($0.rounded()))" }
     /// Explicit y-domain; nil = auto-pad off the data.
     var yDomain: ClosedRange<Double>?
+
+    // MARK: New, opt-in params (all default to inert values so existing
+    // call sites compile + behave identically when left unset).
+
+    /// Shade a horizontal "normal range" zone (e.g. a learned baseline
+    /// band: mean ± SD). nil hides it. When set, the y-domain auto-pad
+    /// also widens to keep the whole band on screen.
+    var band: (low: Double, high: Double)? = nil
+    /// A solid horizontal reference rule distinct from the dashed
+    /// `average` (e.g. a baseline mean). nil hides it. Drawn in `tint`.
+    var baseline: Double? = nil
+    /// Show a small "+8% vs start" delta caption above the plot,
+    /// comparing the last point to the first. Off by default.
+    var deltaCaption: Bool = false
+    /// "higher is better" tints the delta caption (green vs red). For
+    /// metrics like RHR pass false so a drop reads as good.
+    var deltaHigherIsBetter: Bool = true
+    /// Animate the line/area drawing in on appear (trim 0→1). Reduce-
+    /// motion users get the final state instantly. Off by default so
+    /// existing static call sites don't suddenly animate.
+    var animateOnAppear: Bool = false
+
+    /// Reports the currently-scrubbed point (nil on release) so a host
+    /// can echo the value into its stats header.
     var onScrub: ((TrendPoint?) -> Void)?
 
     @State private var scrubDay: Date?
     @State private var lastHapticDay: Date?
+    @State private var drawProgress: CGFloat = 1
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var selected: TrendPoint? {
         guard let scrubDay else { return nil }
@@ -51,7 +78,9 @@ struct ScrubbableTrendChart: View {
 
     private var resolvedYDomain: ClosedRange<Double> {
         if let yDomain { return yDomain }
-        let values = points.map(\.value)
+        var values = points.map(\.value)
+        // Fold the band edges in so a shaded zone never spills off-axis.
+        if let band { values.append(band.low); values.append(band.high) }
         guard let lo = values.min(), let hi = values.max() else { return 0...1 }
         if lo == hi { return (lo - 1)...(hi + 1) }
         let pad = (hi - lo) * 0.12
@@ -60,8 +89,55 @@ struct ScrubbableTrendChart: View {
 
     private var fill: Color { fillTint ?? tint }
 
+    /// last-vs-first percentage change driving the optional caption.
+    private var deltaPct: Double? {
+        guard deltaCaption, points.count >= 2,
+              let first = points.first?.value, let last = points.last?.value,
+              first != 0 else { return nil }
+        return (last - first) / abs(first) * 100
+    }
+
     var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let pct = deltaPct {
+                deltaCaptionView(pct)
+            }
+            chart
+        }
+        .onAppear {
+            guard animateOnAppear, !reduceMotion else { drawProgress = 1; return }
+            drawProgress = 0
+            withAnimation(.easeOut(duration: 0.7)) { drawProgress = 1 }
+        }
+    }
+
+    @ViewBuilder
+    private func deltaCaptionView(_ pct: Double) -> some View {
+        let good = deltaHigherIsBetter ? pct >= 0 : pct <= 0
+        let c = abs(pct) < 0.5 ? LifeOSColor.fg2 : (good ? LifeOSColor.success : LifeOSColor.danger)
+        HStack(spacing: 3) {
+            if abs(pct) >= 0.5 {
+                Image(systemName: pct >= 0 ? "arrow.up.right" : "arrow.down.right")
+                    .font(.system(size: 10, weight: .bold))
+            }
+            Text("\(pct >= 0 ? "+" : "−")\(String(format: "%.0f", abs(pct)))% vs start")
+                .font(.system(size: 11, weight: .semibold).monospacedDigit())
+        }
+        .foregroundStyle(c)
+    }
+
+    private var chart: some View {
         Chart {
+            if let band {
+                // A filled band across the full x-range marking the
+                // baseline zone, drawn first so the line sits on top.
+                RectangleMark(
+                    yStart: .value("Low", band.low),
+                    yEnd: .value("High", band.high)
+                )
+                .foregroundStyle(tint.opacity(0.10))
+            }
+
             if showArea {
                 ForEach(points) { p in
                     AreaMark(
@@ -108,6 +184,17 @@ struct ScrubbableTrendChart: View {
                     }
             }
 
+            if let baseline {
+                RuleMark(y: .value("Baseline", baseline))
+                    .foregroundStyle(tint.opacity(0.55))
+                    .lineStyle(StrokeStyle(lineWidth: 1))
+                    .annotation(position: .bottomTrailing, alignment: .trailing, spacing: 2) {
+                        Text("base \(yAxisFormat(baseline))")
+                            .font(.system(size: 9))
+                            .foregroundStyle(tint.opacity(0.8))
+                    }
+            }
+
             if let p = selected {
                 RuleMark(x: .value("Day", p.day))
                     .foregroundStyle(LifeOSColor.fg2.opacity(0.5))
@@ -132,6 +219,15 @@ struct ScrubbableTrendChart: View {
             }
         }
         .chartXAxis(.hidden)
+        .mask(alignment: .leading) {
+            // Left-to-right reveal for the draw-on-appear effect. Sits
+            // under .chartOverlay so the scrub gesture + readout are never
+            // masked. When animateOnAppear is off, drawProgress stays 1
+            // and this is a full-coverage (no-op) mask.
+            GeometryReader { geo in
+                Color.black.frame(width: geo.size.width * drawProgress)
+            }
+        }
         .chartOverlay { proxy in
             GeometryReader { geo in
                 Rectangle().fill(.clear).contentShape(Rectangle())

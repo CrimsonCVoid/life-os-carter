@@ -244,6 +244,33 @@ struct AnalysisView: View {
             yAxisFormat: { [self] in stepsFmt($0) }
         )
     }
+    private var hrvDetail: some View {
+        TrendDetailView(
+            title: "Heart Rate Variability",
+            kicker: "HRV (rMSSD)",
+            tint: LifeOSColor.Metric.hrv,
+            unit: "ms",
+            series: { $0.hrvTrend.map { TrendPoint(day: $0.day, value: $0.value) } },
+            higherIsBetter: true,
+            showBaselineBand: true,
+            showBaselineRule: true,
+            showDeltaCaption: true,
+            animateChart: true
+        )
+    }
+    private var rhrDetail: some View {
+        TrendDetailView(
+            title: "Resting Heart Rate",
+            kicker: "Resting HR",
+            tint: LifeOSColor.Metric.rhr,
+            unit: "bpm",
+            series: { $0.rhrTrend.map { TrendPoint(day: $0.day, value: $0.value) } },
+            higherIsBetter: false,
+            showBaselineBand: true,
+            showDeltaCaption: true,
+            animateChart: true
+        )
+    }
 
     // MARK: - Range selector
 
@@ -439,7 +466,7 @@ struct AnalysisView: View {
             tint: LifeOSColor.Metric.mood,
             accessory: AnyView(
                 HStack(spacing: 3) {
-                    Text("INTRADAY")
+                    Text("TAP A METRIC")
                         .font(.system(size: 9, weight: .bold)).tracking(0.8)
                     Image(systemName: "chevron.right")
                         .font(.system(size: 10, weight: .bold))
@@ -455,7 +482,7 @@ struct AnalysisView: View {
                         series: .value("Metric", "RHR")
                     )
                     .interpolationMethod(.catmullRom)
-                    .foregroundStyle(LifeOSColor.Metric.mood)
+                    .foregroundStyle(LifeOSColor.Metric.rhr)
                     .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round))
                 }
                 ForEach(data.hrvTrend, id: \.day) { item in
@@ -465,7 +492,7 @@ struct AnalysisView: View {
                         series: .value("Metric", "HRV")
                     )
                     .interpolationMethod(.catmullRom)
-                    .foregroundStyle(LifeOSColor.Metric.sleep)
+                    .foregroundStyle(LifeOSColor.Metric.hrv)
                     .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round))
                 }
             }
@@ -479,20 +506,24 @@ struct AnalysisView: View {
             .frame(height: 140)
 
             HStack(spacing: 12) {
-                metricBig(
-                    label: "Resting HR",
-                    value: data.rhrLatest.map { "\(Int($0.rounded()))" } ?? "—",
-                    unit: "bpm",
-                    delta: signedDelta(data.rhrDelta, suffix: " vs prior"),
-                    tint: LifeOSColor.Metric.mood
-                )
-                metricBig(
-                    label: "HRV (rMSSD)",
-                    value: data.hrvLatest.map { "\(Int($0.rounded()))" } ?? "—",
-                    unit: "ms",
-                    delta: signedDelta(data.hrvDelta, suffix: " vs prior"),
-                    tint: LifeOSColor.Metric.sleep
-                )
+                drillIn(destination: rhrDetail) {
+                    metricBig(
+                        label: "Resting HR",
+                        value: data.rhrLatest.map { "\(Int($0.rounded()))" } ?? "—",
+                        unit: "bpm",
+                        delta: signedDelta(data.rhrDelta, suffix: " vs prior"),
+                        tint: LifeOSColor.Metric.rhr
+                    )
+                }
+                drillIn(destination: hrvDetail) {
+                    metricBig(
+                        label: "HRV (rMSSD)",
+                        value: data.hrvLatest.map { "\(Int($0.rounded()))" } ?? "—",
+                        unit: "ms",
+                        delta: signedDelta(data.hrvDelta, suffix: " vs prior"),
+                        tint: LifeOSColor.Metric.hrv
+                    )
+                }
             }
         }
     }
