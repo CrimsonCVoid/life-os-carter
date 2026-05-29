@@ -60,6 +60,16 @@ final class UserSettings {
     /// on explicit disconnect.
     var googleHealthConnected: Bool = false
 
+    /// App background treatment. "mesh" = the default animated gradient;
+    /// "photo" = a user-picked image rendered behind a heavy blur + scrim.
+    /// The image bytes live on disk (Application Support) keyed by
+    /// `backgroundImageFilename` — large blobs don't belong in SwiftData.
+    var backgroundStyle: String = "mesh"
+    var backgroundImageFilename: String?
+    /// 0...1 user-tuned blur/scrim intensity for the photo background.
+    /// Higher = blurrier + darker scrim (more legible foreground).
+    var backgroundIntensity: Double = 0.85
+
     /// False until the user completes the first-run onboarding flow.
     /// Gates RootView: while false we present OnboardingFlow full-screen
     /// instead of the tab UI. Flipped true on the final "Start" step.

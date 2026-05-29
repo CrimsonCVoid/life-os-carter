@@ -275,6 +275,53 @@ final class HRDaySeries {
     }
 }
 
+/// One row per night of timed sleep-stage segments, pulled on demand
+/// from `/api/google-health/sleep`. Like `HRDaySeries`, the segment
+/// list is a single JSON blob rather than a row-per-segment — a night
+/// can hold dozens of transitions and modeling each as its own row
+/// would bloat the store. `date` is the civil WAKE date (what the UI
+/// labels "last night"). `inBedStartMs` / `wakeEndMs` (epoch ms) anchor
+/// the hypnogram's time axis; the per-stage minutes are denormalized so
+/// the header renders before the blob decodes. Upserted by SleepClient;
+/// never synced back to Neon.
+@Model
+final class SleepNight {
+    @Attribute(.unique) var date: String   // wake date "YYYY-MM-DD", local tz
+    /// JSON-encoded `[{s,a,b}]` — `s` = stage code (0 awake, 1 light,
+    /// 2 deep, 3 rem), `a` = start epoch-ms, `b` = end epoch-ms. Sorted
+    /// ascending by start. Decoded via `SleepClient.decodeSegments`.
+    var segmentsJSON: String
+    var inBedStartMs: Double
+    var wakeEndMs: Double
+    var deepMin: Int
+    var remMin: Int
+    var lightMin: Int
+    var awakeMin: Int
+    var updatedAt: Date
+
+    init(
+        date: String,
+        segmentsJSON: String = "[]",
+        inBedStartMs: Double = 0,
+        wakeEndMs: Double = 0,
+        deepMin: Int = 0,
+        remMin: Int = 0,
+        lightMin: Int = 0,
+        awakeMin: Int = 0,
+        updatedAt: Date = Date()
+    ) {
+        self.date = date
+        self.segmentsJSON = segmentsJSON
+        self.inBedStartMs = inBedStartMs
+        self.wakeEndMs = wakeEndMs
+        self.deepMin = deepMin
+        self.remMin = remMin
+        self.lightMin = lightMin
+        self.awakeMin = awakeMin
+        self.updatedAt = updatedAt
+    }
+}
+
 /// Completed lift session. Active-in-progress workouts live in a
 /// separate @Observable view model (see `ActiveWorkoutStore`) rather
 /// than SwiftData, since they mutate every second.

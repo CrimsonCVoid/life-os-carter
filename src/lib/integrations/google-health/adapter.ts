@@ -254,6 +254,93 @@ export async function fetchSleep(opts: {
   return out;
 }
 
+export type SleepSegment = {
+  stage: "AWAKE" | "LIGHT" | "DEEP" | "REM";
+  startMs: number;
+  endMs: number;
+};
+
+export type SleepSegmentsResult = {
+  date: DateStr;
+  segments: SleepSegment[];
+  inBedStartMs: number;
+  wakeEndMs: number;
+  deepMin: number;
+  remMin: number;
+  lightMin: number;
+  awakeMin: number;
+};
+
+/** Fetch the timed sleep-stage segments for the night whose civil wake
+ * date is `date`. Unlike `fetchSleep` (which collapses to per-stage
+ * minutes), this preserves the chronological stage timeline the
+ * hypnogram renders. Sessions sharing the same wake date are merged
+ * into one ascending timeline. Returns null when no staged segment data
+ * exists (e.g. a tracker that reports only total hours). */
+export async function fetchSleepSegments(opts: {
+  accessToken: string;
+  date: DateStr;
+}): Promise<SleepSegmentsResult | null> {
+  const params = new URLSearchParams({
+    filter: `sleep.interval.civil_end_time >= "${opts.date}" AND sleep.interval.civil_end_time < "${nextDay(opts.date)}"`,
+    pageSize: "200",
+  });
+  const url = `${GOOGLE_HEALTH_BASE_URL}/users/me/dataTypes/${DATA_TYPES.sleep}/dataPoints?${params.toString()}`;
+  const res = await callGoogle<ListResponse<RawSleepDataPoint>>(url, {
+    accessToken: opts.accessToken,
+  });
+
+  const segments: SleepSegment[] = [];
+  for (const p of res.dataPoints ?? []) {
+    const stages = p.sleep?.stages;
+    if (!Array.isArray(stages)) continue;
+    for (const seg of stages) {
+      const start = seg.interval?.startTime;
+      const end = seg.interval?.endTime;
+      if (!start || !end) continue;
+      const startMs = new Date(start).getTime();
+      const endMs = new Date(end).getTime();
+      if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs)
+        continue;
+      const raw = seg.stage ?? "LIGHT";
+      const norm: SleepSegment["stage"] =
+        raw === "DEEP"
+          ? "DEEP"
+          : raw === "REM"
+            ? "REM"
+            : raw === "WAKE" || raw === "AWAKE"
+              ? "AWAKE"
+              : "LIGHT"; // LIGHT + UNKNOWN both fold into LIGHT
+      segments.push({ stage: norm, startMs, endMs });
+    }
+  }
+  if (segments.length === 0) return null;
+  segments.sort((a, b) => a.startMs - b.startMs);
+
+  let deep = 0;
+  let rem = 0;
+  let light = 0;
+  let awake = 0;
+  for (const s of segments) {
+    const min = (s.endMs - s.startMs) / 60000;
+    if (s.stage === "DEEP") deep += min;
+    else if (s.stage === "REM") rem += min;
+    else if (s.stage === "AWAKE") awake += min;
+    else light += min;
+  }
+
+  return {
+    date: opts.date,
+    segments,
+    inBedStartMs: segments[0].startMs,
+    wakeEndMs: segments[segments.length - 1].endMs,
+    deepMin: Math.round(deep),
+    remMin: Math.round(rem),
+    lightMin: Math.round(light),
+    awakeMin: Math.round(awake),
+  };
+}
+
 function mergeStages(a: SleepStagesMin, b: SleepStagesMin): SleepStagesMin {
   return {
     lightMin: sumOpt(a.lightMin, b.lightMin),

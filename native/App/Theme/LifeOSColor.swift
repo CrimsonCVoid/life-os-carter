@@ -57,6 +57,30 @@ enum LifeOSColor {
         static let steps    = dyn(light: 0x65A30D, dark: 0x84CC16)
         static let strain   = dyn(light: 0xF43F5E, dark: 0xFDA4AF)
         static let peak     = dyn(light: 0x0D9488, dark: 0x5EEAD4)
+        static let hrv      = dyn(light: 0x6366F1, dark: 0x818CF8)
+        static let rhr      = dyn(light: 0xDC2626, dark: 0xF87171)
+    }
+
+    /// Sleep-stage palette — shared by SleepCard, the Analysis sleep
+    /// architecture chart, and the night-timeline hypnogram so the four
+    /// stages read identically everywhere. Deep is the deepest indigo,
+    /// REM violet, light a mid blue, awake rose.
+    enum SleepStage {
+        static let deep  = dyn(light: 0x4338CA, dark: 0x4F46E5)
+        static let rem   = dyn(light: 0x7C5CFA, dark: 0xA78BFA)
+        static let light = dyn(light: 0x2563EB, dark: 0x60A5FA)
+        static let awake = dyn(light: 0xE11D48, dark: 0xFB7185)
+    }
+
+    /// Recovery band color — green (high) / amber (medium) / red (low),
+    /// keyed off a 0...100 recovery percentage. Centralizes the mapping
+    /// so the hero ring, detail sheet, and any ambient tint agree.
+    static func recovery(_ pct: Int) -> Color {
+        switch pct {
+        case ..<34:  return danger
+        case 34..<67: return warning
+        default:     return success
+        }
     }
 
     /// Resolve a Color per the current `userInterfaceStyle`. Light/dark
