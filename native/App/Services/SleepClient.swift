@@ -131,12 +131,18 @@ final class SleepClient {
 
     // MARK: - Fetch + persist
 
-    /// POST the contract for `date` (a wake date), decode, upsert the
-    /// `SleepNight` row, and save. Returns the decoded `Night` on success
-    /// or nil on failure. Tolerates an empty `segments` array (writes a
-    /// zeroed row so the view shows a real "no stage data" state).
+    /// Load the night's timed stage segments from whichever health source
+    /// the user is on, upsert the `SleepNight` row, and return the decoded
+    /// `Night`. Apple Health users read HealthKit's `.sleepAnalysis` samples
+    /// locally (no server, no auth); Google Health (Fitbit/Pixel) users hit
+    /// the sync endpoint. "manual" has no stage source, so returns nil.
     @discardableResult
     func loadNight(_ date: String, in ctx: ModelContext) async -> Night? {
+        let source = UserSettings.loadOrCreate(in: ctx).healthDataSource
+        if source == "apple_health" {
+            return await loadNightFromHealthKit(date, in: ctx)
+        }
+        guard source == "google_health" else { return nil }
         guard AuthStore.shared.token != nil else { return nil }
 
         let response: Response
@@ -186,6 +192,76 @@ final class SleepClient {
             awakeMin: response.awakeMin
         )
     }
+
+    /// Build the night from Apple HealthKit's timed `.sleepAnalysis`
+    /// samples for the night ending on `date`, upsert, and return it. An
+    /// empty result still writes a zeroed row so the view shows a real
+    /// "no stage data" state rather than spinning (e.g. iPhone-only users
+    /// who have in-bed time but no Apple Watch stage breakdown).
+    private func loadNightFromHealthKit(_ date: String, in ctx: ModelContext) async -> Night? {
+        guard let day = Self.dateOnly.date(from: date) else { return nil }
+        let samples = await HealthKitManager.shared.fetchSleepSegments(forNightEnding: day)
+
+        let segments: [Segment] = samples.map {
+            Segment(
+                stage: Stage(rawValue: $0.stageCode) ?? .light,
+                start: $0.start,
+                end: $0.end
+            )
+        }
+
+        var deep = 0.0, rem = 0.0, light = 0.0, awake = 0.0
+        for s in segments {
+            switch s.stage {
+            case .deep:  deep += s.durationMin
+            case .rem:   rem += s.durationMin
+            case .light: light += s.durationMin
+            case .awake: awake += s.durationMin
+            }
+        }
+        let inBedMs = (segments.first?.start.timeIntervalSince1970 ?? 0) * 1000
+        let wakeMs = (segments.last?.end.timeIntervalSince1970 ?? 0) * 1000
+
+        let stored = segments.map {
+            StoredSeg(
+                s: $0.stage.rawValue,
+                a: $0.start.timeIntervalSince1970 * 1000,
+                b: $0.end.timeIntervalSince1970 * 1000
+            )
+        }
+        let segmentsJSON = (try? JSONEncoder().encode(stored))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+
+        upsert(
+            date: date,
+            segmentsJSON: segmentsJSON,
+            inBedStartMs: inBedMs,
+            wakeEndMs: wakeMs,
+            deepMin: Int(deep),
+            remMin: Int(rem),
+            lightMin: Int(light),
+            awakeMin: Int(awake),
+            in: ctx
+        )
+
+        return night(
+            date: date,
+            segments: segments,
+            inBedStartMs: inBedMs,
+            wakeEndMs: wakeMs,
+            deepMin: Int(deep),
+            remMin: Int(rem),
+            lightMin: Int(light),
+            awakeMin: Int(awake)
+        )
+    }
+
+    private static let dateOnly: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
 
     /// Read a previously-persisted night back out of SwiftData so the
     /// view can render instantly before the network refresh. Returns nil

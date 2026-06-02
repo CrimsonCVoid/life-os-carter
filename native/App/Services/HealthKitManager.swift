@@ -226,6 +226,58 @@ final class HealthKitManager {
         }
     }
 
+    /// One timed sleep-stage segment as HealthKit recorded it. `stageCode`
+    /// matches `SleepClient.Stage.rawValue` (0 awake, 1 light, 2 deep,
+    /// 3 rem) so the hypnogram can render lanes without a second mapping.
+    struct SleepSegmentSample {
+        let stageCode: Int
+        let start: Date
+        let end: Date
+    }
+
+    /// Timed stage segments for the night that ended on `date` — the same
+    /// `.sleepAnalysis` samples `fetchSleepBreakdown` reads, but preserving
+    /// each sample's interval so the hypnogram can draw the night timeline.
+    /// `inBed` samples are skipped (they overlap the real stages on Apple
+    /// Watch and would double-draw); iPhone-only "in bed" data therefore
+    /// yields an empty result, which is correct — there are no stages to show.
+    func fetchSleepSegments(forNightEnding date: Date) async -> [SleepSegmentSample] {
+        guard let type = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) else { return [] }
+        let cal = Calendar.current
+        let dayStart = cal.startOfDay(for: date)
+        let start = cal.date(byAdding: .hour, value: -6, to: dayStart) ?? dayStart
+        let end = cal.date(byAdding: .hour, value: 12, to: dayStart) ?? dayStart
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: [])
+        return await withCheckedContinuation { (cont: CheckedContinuation<[SleepSegmentSample], Never>) in
+            let q = HKSampleQuery(
+                sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit,
+                sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)]
+            ) { _, samples, _ in
+                var out: [SleepSegmentSample] = []
+                for s in (samples as? [HKCategorySample] ?? []) {
+                    let code: Int
+                    switch s.value {
+                    case HKCategoryValueSleepAnalysis.awake.rawValue:
+                        code = 0
+                    case HKCategoryValueSleepAnalysis.asleepCore.rawValue,
+                         HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue:
+                        code = 1
+                    case HKCategoryValueSleepAnalysis.asleepDeep.rawValue:
+                        code = 2
+                    case HKCategoryValueSleepAnalysis.asleepREM.rawValue:
+                        code = 3
+                    default:
+                        continue // inBed and any unknown value
+                    }
+                    guard s.endDate > s.startDate else { continue }
+                    out.append(SleepSegmentSample(stageCode: code, start: s.startDate, end: s.endDate))
+                }
+                cont.resume(returning: out.sorted { $0.start < $1.start })
+            }
+            self.store.execute(q)
+        }
+    }
+
     /// Backwards-compatible total-hours-only call, used by the
     /// recovery calculator's baseline math.
     func fetchSleepHours(forNightEnding date: Date) async -> Double? {
