@@ -132,6 +132,11 @@ type RawSleepDataPoint = {
       wakeMs?: string | number;
     };
     stages?: Array<{
+      // Live Fitbit/Google shape (June 2026): `type` + top-level start/end.
+      type?: "LIGHT" | "DEEP" | "REM" | "WAKE" | "AWAKE" | "UNKNOWN";
+      startTime?: string;
+      endTime?: string;
+      // Legacy shape some API versions used — kept as a fallback.
       stage?: "LIGHT" | "DEEP" | "REM" | "WAKE" | "AWAKE" | "UNKNOWN";
       interval?: {
         startTime?: string;
@@ -171,13 +176,13 @@ function summarizeStages(point: RawSleepDataPoint): SleepStagesMin | undefined {
   if (Array.isArray(s.stages) && s.stages.length > 0) {
     const totals: Record<string, number> = { LIGHT: 0, DEEP: 0, REM: 0, WAKE: 0 };
     for (const stage of s.stages) {
-      const start = stage.interval?.startTime;
-      const end = stage.interval?.endTime;
+      const start = stage.startTime ?? stage.interval?.startTime;
+      const end = stage.endTime ?? stage.interval?.endTime;
       if (!start || !end) continue;
       const dur = new Date(end).getTime() - new Date(start).getTime();
       if (!Number.isFinite(dur) || dur <= 0) continue;
-      const key =
-        stage.stage === "AWAKE" ? "WAKE" : stage.stage ?? "LIGHT";
+      const raw = stage.type ?? stage.stage ?? "LIGHT";
+      const key = raw === "AWAKE" ? "WAKE" : raw;
       if (totals[key] == null) totals[key] = 0;
       totals[key] += dur;
     }
@@ -295,14 +300,14 @@ export async function fetchSleepSegments(opts: {
     const stages = p.sleep?.stages;
     if (!Array.isArray(stages)) continue;
     for (const seg of stages) {
-      const start = seg.interval?.startTime;
-      const end = seg.interval?.endTime;
+      const start = seg.startTime ?? seg.interval?.startTime;
+      const end = seg.endTime ?? seg.interval?.endTime;
       if (!start || !end) continue;
       const startMs = new Date(start).getTime();
       const endMs = new Date(end).getTime();
       if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs)
         continue;
-      const raw = seg.stage ?? "LIGHT";
+      const raw = seg.type ?? seg.stage ?? "LIGHT";
       const norm: SleepSegment["stage"] =
         raw === "DEEP"
           ? "DEEP"
@@ -338,37 +343,6 @@ export async function fetchSleepSegments(opts: {
     remMin: Math.round(rem),
     lightMin: Math.round(light),
     awakeMin: Math.round(awake),
-  };
-}
-
-/** TEMP DEBUG (remove): return the first raw sleep dataPoint so the sync
- * route can log it as its final line — the `vercel logs` snapshot only keeps
- * the most recent few entries, so this guarantees the shape is captured. */
-export async function debugRawSleep(opts: {
-  accessToken: string;
-  startDate: DateStr;
-  endDate: DateStr;
-}): Promise<unknown> {
-  const params = new URLSearchParams({
-    filter: `sleep.interval.civil_end_time >= "${opts.startDate}" AND sleep.interval.civil_end_time < "${nextDay(opts.endDate)}"`,
-    pageSize: "10",
-  });
-  const url = `${GOOGLE_HEALTH_BASE_URL}/users/me/dataTypes/${DATA_TYPES.sleep}/dataPoints?${params.toString()}`;
-  const res = await callGoogle<ListResponse<unknown>>(url, {
-    accessToken: opts.accessToken,
-  });
-  // Find the first session that actually carries stage data so we see the
-  // real stage shape, not a stage-less nap.
-  const pts = (res.dataPoints ?? []) as Array<Record<string, unknown>>;
-  const withStages = pts.find((p) => {
-    const s = (p?.sleep ?? {}) as Record<string, unknown>;
-    return s.stages != null || s.stagesSummary != null || s.levels != null;
-  });
-  return {
-    count: pts.length,
-    sampleKeys: pts[0]?.sleep ? Object.keys(pts[0].sleep as object) : null,
-    withStages: withStages ?? null,
-    first: pts[0] ?? null,
   };
 }
 

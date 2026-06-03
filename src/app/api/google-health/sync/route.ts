@@ -17,7 +17,6 @@ import {
   fetchTotalCalories,
   fetchVo2Max,
   fetchWeight,
-  debugRawSleep,
   mergeByDate,
   type SyncedDataPoint,
 } from "@/lib/integrations/google-health/adapter";
@@ -179,15 +178,6 @@ export async function POST(req: NextRequest) {
     await setLastSyncedAt(user.id, syncedAtDate);
   } catch {
     // intentional: stamping is metadata-only
-  }
-
-  // TEMP DEBUG (remove): log the raw sleep shape as the final line so the
-  // small `vercel logs` snapshot reliably captures it.
-  try {
-    const shape = await debugRawSleep({ accessToken, startDate, endDate });
-    console.log("[gh-sleepshape]", JSON.stringify(shape).slice(0, 2400));
-  } catch (e) {
-    console.error("[gh-sleepshape] err", String(e).slice(0, 500));
   }
 
   return NextResponse.json({
