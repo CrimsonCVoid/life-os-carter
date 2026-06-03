@@ -32,6 +32,7 @@ struct HabitsView: View {
                         seedState.cascadeReveal(index: 0, visible: revealed)
                     } else {
                         heroCard.cascadeReveal(index: 0, visible: revealed)
+                        BehaviorInsightsCard().cascadeReveal(index: 1, visible: revealed)
                         if !categoriesInUse.isEmpty {
                             categoryFilter.cascadeReveal(index: 1, visible: revealed)
                         }

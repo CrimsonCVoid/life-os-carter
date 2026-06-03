@@ -70,6 +70,7 @@ struct NutritionView: View {
                             fat: userSettings.fatGoal
                         )
                     )
+                    NutritionIntelligenceCard()
                     if let err = lookupError {
                         lookupErrorCard(err)
                     }

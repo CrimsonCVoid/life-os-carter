@@ -27,23 +27,21 @@ struct InsightsView: View {
     private var neutral: [DataInsight]  { insights.filter { $0.sentiment == .neutral } }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                LazyVStack(spacing: 14) {
-                    if insights.isEmpty {
-                        emptyState
-                    } else {
-                        feed
-                    }
-                    Spacer(minLength: 80)
+        ScrollView {
+            LazyVStack(spacing: 14) {
+                if insights.isEmpty {
+                    emptyState
+                } else {
+                    feed
                 }
-                .padding(.horizontal, 14)
-                .padding(.top, 8)
+                Spacer(minLength: 80)
             }
-            .background(AmbientBackground().ignoresSafeArea())
-            .navigationTitle("Insights")
-            .navigationBarTitleDisplayMode(.large)
+            .padding(.horizontal, 14)
+            .padding(.top, 8)
         }
+        .background(AmbientBackground().ignoresSafeArea())
+        .navigationTitle("Insights")
+        .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             recompute()
             if !cardsVisible {

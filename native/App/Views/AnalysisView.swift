@@ -11,6 +11,7 @@ import Charts
 struct AnalysisView: View {
     @Query private var dailies: [DailyEntry]
     @Query private var sessions: [LiftSessionEntry]
+    @Query private var settingsRows: [UserSettings]
     @State private var range: TimeRange = .month
     @State private var cardsVisible = false
 
@@ -26,6 +27,50 @@ struct AnalysisView: View {
     /// a full 30-day walk per chart per redraw. Cache here, refresh
     /// via .task on appear + .onChange of range / counts.
     @State private var data: AnalysisData = .empty
+
+    // Inputs for the on-device SleepQualityCard + the Insights teaser.
+    private static let ymdFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+    private var sleepGoalHours: Double { settingsRows.first?.sleepGoalHours ?? 8 }
+    /// Today's row, or the most recent logged day if today isn't logged yet.
+    private var sleepFocusDay: DailyEntry? {
+        let today = Self.ymdFmt.string(from: Date())
+        return dailies.first { $0.date == today } ?? dailies.max { $0.date < $1.date }
+    }
+    private var sleepHistory: [DailyEntry] {
+        let focus = sleepFocusDay?.date ?? Self.ymdFmt.string(from: Date())
+        return Array(dailies.filter { $0.date < focus }.sorted { $0.date > $1.date }.prefix(30))
+    }
+    private var insightsTeaserCard: some View {
+        Card(tint: LifeOSColor.accent) {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle().fill(LifeOSColor.accent.opacity(0.16))
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(LifeOSColor.accent)
+                }
+                .frame(width: 44, height: 44)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Insights")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(LifeOSColor.fg)
+                    Text("Instant on-device pattern detection across sleep, recovery, mood, and your habits.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(LifeOSColor.fg2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12))
+                    .foregroundStyle(LifeOSColor.fg3)
+            }
+        }
+    }
 
     enum TimeRange: String, CaseIterable, Identifiable {
         case week    = "7d"
@@ -52,12 +97,23 @@ struct AnalysisView: View {
                 LazyVStack(spacing: 16) {
                     rangeSelector
                     revealCard(delay: 0.00) { CoachChatView() }
+                    revealCard(delay: 0.005) { WeeklyReviewCard() }
                     revealCard(delay: 0.01) { CorrelationsCard() }
+                    revealCard(delay: 0.015) {
+                        drillIn(destination: InsightsView()) { insightsTeaserCard }
+                    }
                     revealCard(delay: 0.02) {
                         drillIn(destination: performanceDetail) { performanceHero }
                     }
                     revealCard(delay: 0.04) {
                         drillIn(destination: sleepDetail) { sleepArchitectureCard }
+                    }
+                    revealCard(delay: 0.05) {
+                        SleepQualityCard(
+                            daily: sleepFocusDay,
+                            history: sleepHistory,
+                            goalHours: sleepGoalHours
+                        )
                     }
                     revealCard(delay: 0.08) {
                         NavigationLink {
