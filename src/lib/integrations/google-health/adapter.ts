@@ -346,17 +346,30 @@ export async function fetchSleepSegments(opts: {
  * the most recent few entries, so this guarantees the shape is captured. */
 export async function debugRawSleep(opts: {
   accessToken: string;
-  date: DateStr;
+  startDate: DateStr;
+  endDate: DateStr;
 }): Promise<unknown> {
   const params = new URLSearchParams({
-    filter: `sleep.interval.civil_end_time >= "${opts.date}" AND sleep.interval.civil_end_time < "${nextDay(opts.date)}"`,
-    pageSize: "5",
+    filter: `sleep.interval.civil_end_time >= "${opts.startDate}" AND sleep.interval.civil_end_time < "${nextDay(opts.endDate)}"`,
+    pageSize: "10",
   });
   const url = `${GOOGLE_HEALTH_BASE_URL}/users/me/dataTypes/${DATA_TYPES.sleep}/dataPoints?${params.toString()}`;
   const res = await callGoogle<ListResponse<unknown>>(url, {
     accessToken: opts.accessToken,
   });
-  return { count: (res.dataPoints ?? []).length, first: (res.dataPoints ?? [])[0] ?? null };
+  // Find the first session that actually carries stage data so we see the
+  // real stage shape, not a stage-less nap.
+  const pts = (res.dataPoints ?? []) as Array<Record<string, unknown>>;
+  const withStages = pts.find((p) => {
+    const s = (p?.sleep ?? {}) as Record<string, unknown>;
+    return s.stages != null || s.stagesSummary != null || s.levels != null;
+  });
+  return {
+    count: pts.length,
+    sampleKeys: pts[0]?.sleep ? Object.keys(pts[0].sleep as object) : null,
+    withStages: withStages ?? null,
+    first: pts[0] ?? null,
+  };
 }
 
 function mergeStages(a: SleepStagesMin, b: SleepStagesMin): SleepStagesMin {

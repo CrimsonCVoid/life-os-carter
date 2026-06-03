@@ -184,8 +184,8 @@ export async function POST(req: NextRequest) {
   // TEMP DEBUG (remove): log the raw sleep shape as the final line so the
   // small `vercel logs` snapshot reliably captures it.
   try {
-    const shape = await debugRawSleep({ accessToken, date: endDate });
-    console.log("[gh-sleepshape]", JSON.stringify(shape).slice(0, 1900));
+    const shape = await debugRawSleep({ accessToken, startDate, endDate });
+    console.log("[gh-sleepshape]", JSON.stringify(shape).slice(0, 2400));
   } catch (e) {
     console.error("[gh-sleepshape] err", String(e).slice(0, 500));
   }
