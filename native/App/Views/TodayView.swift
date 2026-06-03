@@ -112,8 +112,18 @@ struct TodayView: View {
                 if !revealed { revealed = true }
                 Task { await sync() }
             }
-            .navigationDestination(isPresented: $showSleepDetail) {
-                SleepHypnogramView(date: selectedKey)
+            .fullScreenCover(isPresented: $showSleepDetail) {
+                // Presented as a cover, not a NavigationStack push: the push
+                // transition was hanging half-open (gesture-gate timeout,
+                // pronounced on iPad). A cover sidesteps the push entirely.
+                NavigationStack {
+                    SleepHypnogramView(date: selectedKey)
+                        .toolbar {
+                            ToolbarItem(placement: .topBarTrailing) {
+                                Button("Done") { showSleepDetail = false }
+                            }
+                        }
+                }
             }
             .sheet(isPresented: $showRecoveryDetail) {
                 if let r = recoveryScore {
