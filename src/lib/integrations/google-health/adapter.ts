@@ -208,6 +208,18 @@ export async function fetchSleep(opts: {
     accessToken: opts.accessToken,
   });
 
+  // TEMP DEBUG (remove next deploy): surface the real Fitbit sleep shape so
+  // we can fix stage extraction. Logs count + the first raw dataPoint.
+  {
+    const pts = res.dataPoints ?? [];
+    console.log(
+      "[gh-debug] sleep count=",
+      pts.length,
+      "first=",
+      JSON.stringify(pts[0] ?? null).slice(0, 1500)
+    );
+  }
+
   // Group sessions by civil wake date. If multiple sessions land on the
   // same date (e.g. nap + main sleep), sum hours and merge stages.
   const byDate = new Map<
@@ -574,6 +586,17 @@ export async function fetchHeartRateVariability(opts: {
   const res = await callGoogle<ListResponse<RawHrvDataPoint>>(url, {
     accessToken: opts.accessToken,
   });
+
+  // TEMP DEBUG (remove next deploy): surface the real Fitbit HRV shape.
+  {
+    const pts = res.dataPoints ?? [];
+    console.log(
+      "[gh-debug] hrv count=",
+      pts.length,
+      "first=",
+      JSON.stringify(pts[0] ?? null).slice(0, 1000)
+    );
+  }
 
   // Aggregate by civil date (HRV samples can come multiple times per night).
   const byDate = new Map<DateStr, { sum: number; n: number }>();
