@@ -208,18 +208,6 @@ export async function fetchSleep(opts: {
     accessToken: opts.accessToken,
   });
 
-  // TEMP DEBUG (remove next deploy): surface the real Fitbit sleep shape so
-  // we can fix stage extraction. Logs count + the first raw dataPoint.
-  {
-    const pts = res.dataPoints ?? [];
-    console.log(
-      "[gh-debug] sleep count=",
-      pts.length,
-      "first=",
-      JSON.stringify(pts[0] ?? null).slice(0, 1500)
-    );
-  }
-
   // Group sessions by civil wake date. If multiple sessions land on the
   // same date (e.g. nap + main sleep), sum hours and merge stages.
   const byDate = new Map<
@@ -351,6 +339,24 @@ export async function fetchSleepSegments(opts: {
     lightMin: Math.round(light),
     awakeMin: Math.round(awake),
   };
+}
+
+/** TEMP DEBUG (remove): return the first raw sleep dataPoint so the sync
+ * route can log it as its final line — the `vercel logs` snapshot only keeps
+ * the most recent few entries, so this guarantees the shape is captured. */
+export async function debugRawSleep(opts: {
+  accessToken: string;
+  date: DateStr;
+}): Promise<unknown> {
+  const params = new URLSearchParams({
+    filter: `sleep.interval.civil_end_time >= "${opts.date}" AND sleep.interval.civil_end_time < "${nextDay(opts.date)}"`,
+    pageSize: "5",
+  });
+  const url = `${GOOGLE_HEALTH_BASE_URL}/users/me/dataTypes/${DATA_TYPES.sleep}/dataPoints?${params.toString()}`;
+  const res = await callGoogle<ListResponse<unknown>>(url, {
+    accessToken: opts.accessToken,
+  });
+  return { count: (res.dataPoints ?? []).length, first: (res.dataPoints ?? [])[0] ?? null };
 }
 
 function mergeStages(a: SleepStagesMin, b: SleepStagesMin): SleepStagesMin {
@@ -589,17 +595,6 @@ export async function fetchHeartRateVariability(opts: {
   const res = await callGoogle<ListResponse<RawHrvDataPoint>>(url, {
     accessToken: opts.accessToken,
   });
-
-  // TEMP DEBUG (remove next deploy): surface the real Fitbit HRV shape.
-  {
-    const pts = res.dataPoints ?? [];
-    console.log(
-      "[gh-debug] hrv count=",
-      pts.length,
-      "first=",
-      JSON.stringify(pts[0] ?? null).slice(0, 1000)
-    );
-  }
 
   // Aggregate by civil date (HRV samples can come multiple times per night).
   const byDate = new Map<DateStr, { sum: number; n: number }>();
