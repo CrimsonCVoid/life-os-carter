@@ -63,8 +63,17 @@ enum RecoveryEngine {
         var contributors: [Contributor] = []
         var missing: [String] = []
 
+        // HRV/RHR are sparse on a calendar-day basis — Apple Watch logs SDNN
+        // irregularly, so a given night often has no reading even when recent
+        // ones exist. Fall back to the most recent value within 2 days so a
+        // gap night doesn't drop the dominant autonomic signal entirely.
+        let hrvToday = today.hrvMs
+            ?? recentValue(history, asOf: today.date, within: 2) { $0.hrvMs }
+        let rhrToday = today.restingHr
+            ?? recentValue(history, asOf: today.date, within: 2) { $0.restingHr }
+
         // HRV — dominant signal (target 0.42). Higher than baseline = recovered.
-        if let hrv = today.hrvMs {
+        if let hrv = hrvToday {
             let q = hrvQuality(hrv, stats: hrvStats)
             contributors.append(Contributor(
                 label: "HRV",
@@ -78,7 +87,7 @@ enum RecoveryEngine {
         }
 
         // Resting HR — inverted (target 0.20). Lower than baseline = recovered.
-        if let rhr = today.restingHr {
+        if let rhr = rhrToday {
             let q = rhrQuality(rhr, stats: rhrStats)
             contributors.append(Contributor(
                 label: "Resting HR",
@@ -272,6 +281,40 @@ enum RecoveryEngine {
     }
 
     // MARK: - Stats / helpers
+
+    private static let ymd: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
+    /// Most recent non-nil value from `history` (sorted most-recent first)
+    /// whose date is within `within` days of `asOf`. Used to carry a sparse
+    /// signal (HRV/RHR) forward over a gap night rather than dropping it.
+    private static func recentValue(
+        _ history: [DailyEntry],
+        asOf todayDate: String,
+        within days: Int,
+        _ pick: (DailyEntry) -> Double?
+    ) -> Double? {
+        let ref = ymd.date(from: todayDate)
+        let cal = Calendar.current
+        for row in history {
+            guard let v = pick(row) else { continue }
+            // First non-nil is the most recent; accept only if recent enough.
+            guard let ref,
+                  let d = ymd.date(from: row.date),
+                  let diff = cal.dateComponents(
+                    [.day],
+                    from: cal.startOfDay(for: d),
+                    to: cal.startOfDay(for: ref)
+                  ).day
+            else { return v }
+            return diff <= days ? v : nil
+        }
+        return nil
+    }
 
     private struct Stats { let mean: Double; let sd: Double }
 
