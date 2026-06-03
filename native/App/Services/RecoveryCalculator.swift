@@ -387,10 +387,28 @@ enum StrainCalculator {
         let value: Double        // 0–21
         let band: Band
         let breakdown: String    // one-line user-facing detail
+        /// Cardio vs mechanical contributors on the same 0...21 scale, with
+        /// each one's share of the combined load. Empty for older callers /
+        /// rest days; populated by `compute` so the detail sheet can render
+        /// "what's driving it" without re-deriving the math. Additive — does
+        /// not affect existing callers reading value/band/breakdown.
+        let components: [StrainComponent]
     }
 
     enum Band {
         case rest, light, moderate, hard, allOut
+    }
+
+    /// One driver of the day's strain (cardio or mechanical), surfaced for
+    /// the detail breakdown. `value` is on the 0...21 scale, `share` is its
+    /// fraction of the combined load (0...1).
+    struct StrainComponent: Identifiable {
+        let id = UUID()
+        let label: String
+        let value: Double      // 0...21-ish
+        let share: Double      // 0...1 fraction of combined load
+        let tint: Color
+        let detail: String
     }
 
     /// - Parameters:
@@ -454,7 +472,127 @@ enum StrainCalculator {
             }()
             return [liftPart, kcalPart, stepPart].compactMap { $0 }.joined(separator: " · ")
         }()
-        return Score(value: value, band: band, breakdown: breakdown)
+
+        // Share each contributor by its squared magnitude — matches the
+        // quadrature soft-combine above, so the proportions reflect how the
+        // two loads actually fold into the final value rather than a naive
+        // linear split.
+        let cw = cardio * cardio
+        let mw = mechanical * mechanical
+        let denom = cw + mw
+        var components: [StrainComponent] = []
+        if denom > 0 {
+            let cardioDetail: String = {
+                let kcalStr = activeEnergyKcal > 0 ? "\(Int(activeEnergyKcal)) kcal active" : nil
+                let stepStr = steps.map { "\($0) steps" }
+                let miStr = distanceMeters.map { String(format: "%.1f mi", $0 / 1609.34) }
+                let parts = [kcalStr, stepStr, miStr].compactMap { $0 }
+                return parts.isEmpty ? "no cardio logged" : parts.joined(separator: " · ")
+            }()
+            let mechDetail: String = {
+                guard liftVolumeTodayLb > 0 else { return "no lifting logged" }
+                let base = "\(Int(liftVolumeTodayLb)) lb"
+                guard let rpe = sessionRPE else { return "\(base) volume" }
+                let rpeStr = rpe.truncatingRemainder(dividingBy: 1) == 0
+                    ? "\(Int(rpe))" : String(format: "%.1f", rpe)
+                return "\(base) @ RPE \(rpeStr)"
+            }()
+            components = [
+                StrainComponent(
+                    label: "Cardio load",
+                    value: cardio,
+                    share: cw / denom,
+                    tint: LifeOSColor.Metric.steps,
+                    detail: cardioDetail
+                ),
+                StrainComponent(
+                    label: "Mechanical load",
+                    value: mechanical,
+                    share: mw / denom,
+                    tint: LifeOSColor.Metric.strain,
+                    detail: mechDetail
+                ),
+            ]
+        }
+
+        return Score(value: value, band: band, breakdown: breakdown, components: components)
+    }
+
+    private static let ymd: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
+    /// Per-day strain over the trailing `days`-day window ending at `asOf`,
+    /// chronological. Replicates TodayView's `strain(for:)`: each day's lift
+    /// volume + volume-weighted set RPE (decoded from `detailsJSON`), the
+    /// 7-day rolling max-day volume as the mechanical reference, and that
+    /// day's DailyEntry cardio signals. Days with no inputs surface as 0 so
+    /// the line reads as a continuous load history. `@MainActor` because
+    /// `CSVExporter.decodeExercises` is main-actor isolated.
+    @MainActor
+    static func daySeries(
+        sessions: [LiftSessionEntry],
+        dailies: [DailyEntry],
+        days: Int,
+        asOf: Date
+    ) -> [TrendPoint] {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: asOf)
+        let dailyByKey = Dictionary(dailies.map { ($0.date, $0) }, uniquingKeysWith: { a, _ in a })
+
+        var points: [TrendPoint] = []
+        for offset in (0..<max(1, days)).reversed() {
+            guard let dayStart = cal.date(byAdding: .day, value: -offset, to: today),
+                  let dayEnd = cal.date(byAdding: .day, value: 1, to: dayStart) else { continue }
+            let dayKey = ymd.string(from: dayStart)
+
+            let daySessions = sessions.filter { $0.startedAt >= dayStart && $0.startedAt < dayEnd }
+            let dayVolume = daySessions.reduce(0.0) { $0 + $1.totalVolumeLb }
+            let dayRPE = volumeWeightedRPE(for: daySessions)
+
+            // 7-day rolling window ending at this day (inclusive).
+            let weekStart = cal.date(byAdding: .day, value: -7, to: dayStart) ?? dayStart
+            let weekSessions = sessions.filter { $0.startedAt >= weekStart && $0.startedAt < dayEnd }
+            let weekMaxDayVolume = Dictionary(grouping: weekSessions, by: \.date)
+                .values
+                .map { $0.reduce(0.0) { $0 + $1.totalVolumeLb } }
+                .max() ?? 0
+
+            let daily = dailyByKey[dayKey]
+            let score = compute(
+                liftVolumeTodayLb: dayVolume,
+                liftVolumeMax7dLb: weekMaxDayVolume,
+                activeEnergyKcal: daily?.activeEnergyKcal ?? 0,
+                sessionRPE: dayRPE,
+                steps: daily?.steps,
+                distanceMeters: daily?.distanceMeters
+            )
+            points.append(TrendPoint(day: dayStart, value: score.value))
+        }
+        return points
+    }
+
+    /// Volume-weighted average set RPE across a day's sessions — heavy top
+    /// sets count more than light back-offs. nil when no set carried an RPE.
+    /// Mirrors TodayView.sessionRPE so daySeries matches the live number.
+    @MainActor
+    private static func volumeWeightedRPE(for sessions: [LiftSessionEntry]) -> Double? {
+        var weightedSum = 0.0
+        var totalWeight = 0.0
+        for session in sessions {
+            for exercise in CSVExporter.decodeExercises(session.detailsJSON) {
+                for set in exercise.sets where set.rpe != nil {
+                    let vol = max(1.0, set.weight * Double(set.reps))
+                    weightedSum += (set.rpe ?? 0) * vol
+                    totalWeight += vol
+                }
+            }
+        }
+        guard totalWeight > 0 else { return nil }
+        return weightedSum / totalWeight
     }
 }
 

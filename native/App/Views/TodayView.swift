@@ -19,6 +19,7 @@ struct TodayView: View {
     @State private var revealed = false
     @State private var syncing = false
     @State private var showRecoveryDetail = false
+    @State private var showStrainDetail = false
     @State private var showSleepDetail = false
     /// The day the screen is showing. Defaults to actual today; the day
     /// navigator walks it backwards/forwards. Future days are disallowed.
@@ -33,7 +34,8 @@ struct TodayView: View {
                     RecoveryStrainHero(
                         recovery: recoveryScore,
                         strain: strainScore,
-                        onTapRecovery: { showRecoveryDetail = true }
+                        onTapRecovery: { showRecoveryDetail = true },
+                        onTapStrain: { showStrainDetail = true }
                     )
                     .cascadeReveal(index: 1, visible: revealed)
                     if let advice = recoveryAdvice {
@@ -134,6 +136,13 @@ struct TodayView: View {
                         sleepGoalHours: settings.sleepGoalHours
                     )
                 }
+            }
+            .sheet(isPresented: $showStrainDetail) {
+                StrainDetailView(
+                    strain: strainScore,
+                    sessions: allSessions,
+                    dailies: dailyRows
+                )
             }
         }
     }

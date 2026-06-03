@@ -9,6 +9,7 @@ struct RecoveryStrainHero: View {
     let recovery: RecoveryResult?
     let strain: StrainCalculator.Score
     var onTapRecovery: () -> Void = {}
+    var onTapStrain: () -> Void = {}
 
     var body: some View {
         Card(tint: recoveryTint) {
@@ -28,7 +29,14 @@ struct RecoveryStrainHero: View {
                     .overlay(LifeOSColor.stroke)
                     .frame(height: 96)
 
-                strainSide
+                Button {
+                    Haptics.tap()
+                    onTapStrain()
+                } label: {
+                    strainSide
+                }
+                .buttonStyle(.plain)
+                .pressable()
             }
         }
     }
@@ -53,7 +61,7 @@ struct RecoveryStrainHero: View {
                 .animation(.spring(response: 0.4, dampingFraction: 0.8), value: recovery?.score)
             }
             HStack(spacing: 4) {
-                Text(recoveryBandLabel)
+                Text("RECOVERY")
                     .font(.system(size: 10, weight: .heavy)).tracking(0.8)
                 if isPartial {
                     Image(systemName: "exclamationmark.circle.fill")
@@ -117,7 +125,7 @@ struct RecoveryStrainHero: View {
                 .contentTransition(.numericText())
                 .animation(.spring(response: 0.4, dampingFraction: 0.8), value: strain.value)
             }
-            Text(strainBandLabel)
+            Text("STRAIN")
                 .font(.system(size: 10, weight: .heavy)).tracking(0.8)
                 .foregroundStyle(LifeOSColor.Metric.strain)
                 .padding(.horizontal, 8).padding(.vertical, 3)
