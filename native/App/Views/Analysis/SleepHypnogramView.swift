@@ -176,8 +176,13 @@ struct SleepHypnogramView: View {
                     .font(.system(size: 12))
                     .foregroundStyle(LifeOSColor.fg2)
 
-                chart
-                    .frame(height: 220)
+                HStack(alignment: .top, spacing: 8) {
+                    laneGutter
+                    VStack(spacing: 6) {
+                        hypnogram.frame(height: 200)
+                        hourAxis
+                    }
+                }
 
                 stageLegend
             }
@@ -199,138 +204,111 @@ struct SleepHypnogramView: View {
         return lo...hi
     }
 
-    /// Lane order top→bottom: awake(0), rem(1), light(2), deep(3). We
-    /// invert the numeric lane so deep sits at the visual bottom under
-    /// `.chartYScale(domain: .reversed)` semantics handled via plotting
-    /// lane directly with a reversed y-scale.
-    private var chart: some View {
-        Chart {
-            ForEach(segments) { seg in
-                // Each stage as a thick horizontal bar in its lane,
-                // spanning its real clock duration.
-                RectangleMark(
-                    xStart: .value("Start", seg.start),
-                    xEnd: .value("End", seg.end),
-                    y: .value("Lane", seg.stage.lane)
-                )
-                .foregroundStyle(stageColor(seg.stage))
-                .cornerRadius(3)
-            }
+    // X-axis is real clock time; these cache the window bounds in epoch
+    // seconds so the per-segment pixel math stays cheap.
+    private var xLo: TimeInterval { xDomain.lowerBound.timeIntervalSince1970 }
+    private var xHi: TimeInterval { xDomain.upperBound.timeIntervalSince1970 }
+    private var xSpan: TimeInterval { max(1, xHi - xLo) }
 
-            // Stepped connector line tracing the stage transitions, the
-            // classic hypnogram silhouette over the bars.
-            ForEach(stepPoints) { p in
-                LineMark(
-                    x: .value("Time", p.time),
-                    y: .value("Lane", p.lane),
-                    series: .value("Series", "step")
-                )
-                .interpolationMethod(.stepEnd)
-                .foregroundStyle(LifeOSColor.fg2.opacity(0.35))
-                .lineStyle(StrokeStyle(lineWidth: 1))
-            }
+    private func xPixel(_ t: Date, width: CGFloat) -> CGFloat {
+        CGFloat((t.timeIntervalSince1970 - xLo) / xSpan) * width
+    }
 
-            if let d = scrubDate {
-                RuleMark(x: .value("Time", d))
-                    .foregroundStyle(LifeOSColor.fg2.opacity(0.55))
-                    .lineStyle(StrokeStyle(lineWidth: 1))
-                if let seg = segment(at: d) {
-                    PointMark(
-                        x: .value("Time", d),
-                        y: .value("Lane", seg.stage.lane)
-                    )
-                    .foregroundStyle(stageColor(seg.stage))
-                    .symbolSize(120)
-                }
+    /// Left stage labels, one per lane, vertically aligned to the canvas
+    /// lanes (awake on top → deep at the bottom).
+    private var laneGutter: some View {
+        VStack(spacing: 0) {
+            ForEach([0, 1, 2, 3], id: \.self) { lane in
+                Text(Self.laneLabel(lane))
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(LifeOSColor.fg3)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
             }
         }
-        .chartXScale(domain: xDomain)
-        // Lanes 0...3 reversed so awake(0) renders at the top and
-        // deep(3) at the bottom — the standard hypnogram ordering.
-        .chartYScale(domain: [3, 2, 1, 0])
-        .chartYAxis {
-            AxisMarks(position: .leading, values: [0, 1, 2, 3]) { value in
-                AxisValueLabel {
-                    if let lane = value.as(Int.self) {
-                        Text(Self.laneLabel(lane))
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(LifeOSColor.fg3)
+        .frame(width: 38, height: 200)
+    }
+
+    /// Canvas-drawn night timeline. Swift Charts' ordinal-Y + mixed
+    /// Rectangle/Line marks hung the main thread on this data, so the
+    /// hypnogram is drawn directly: each stage segment is a rounded bar in
+    /// its lane spanning its real clock duration, awake(0) at the top down
+    /// to deep(3) at the bottom. Scrubbing maps drag-x → clock time with a
+    /// haptic tick per stage boundary crossed.
+    private var hypnogram: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let laneH = geo.size.height / 4
+
+            Canvas { ctx, size in
+                for l in 0...4 {
+                    let y = CGFloat(l) * laneH
+                    var sep = Path()
+                    sep.move(to: CGPoint(x: 0, y: y))
+                    sep.addLine(to: CGPoint(x: size.width, y: y))
+                    ctx.stroke(sep, with: .color(LifeOSColor.stroke.opacity(0.45)), lineWidth: 0.5)
+                }
+
+                for seg in segments {
+                    let x0 = xPixel(seg.start, width: w)
+                    let x1 = xPixel(seg.end, width: w)
+                    let lane = CGFloat(seg.stage.lane)
+                    let rect = CGRect(
+                        x: x0,
+                        y: lane * laneH + laneH * 0.2,
+                        width: max(2, x1 - x0),
+                        height: laneH * 0.6
+                    )
+                    ctx.fill(
+                        Path(roundedRect: rect, cornerRadius: 3),
+                        with: .color(stageColor(seg.stage))
+                    )
+                }
+
+                if let d = scrubDate {
+                    let x = xPixel(d, width: w)
+                    var line = Path()
+                    line.move(to: CGPoint(x: x, y: 0))
+                    line.addLine(to: CGPoint(x: x, y: size.height))
+                    ctx.stroke(line, with: .color(LifeOSColor.fg2.opacity(0.6)), lineWidth: 1)
+                    if let seg = segment(at: d) {
+                        let cy = CGFloat(seg.stage.lane) * laneH + laneH * 0.5
+                        ctx.fill(
+                            Path(ellipseIn: CGRect(x: x - 5, y: cy - 5, width: 10, height: 10)),
+                            with: .color(stageColor(seg.stage))
+                        )
                     }
                 }
-                AxisGridLine().foregroundStyle(LifeOSColor.stroke)
             }
-        }
-        .chartXAxis {
-            AxisMarks(values: .stride(by: .hour, count: xAxisStrideHours)) { value in
-                AxisGridLine().foregroundStyle(LifeOSColor.stroke)
-                AxisValueLabel {
-                    if let d = value.as(Date.self) {
-                        Text(Self.axisFormatter.string(from: d))
-                            .foregroundStyle(LifeOSColor.fg3)
-                    }
-                }
-            }
-        }
-        .chartOverlay { proxy in
-            GeometryReader { geo in
-                Rectangle().fill(.clear).contentShape(Rectangle())
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { value in handleScrub(value.location, proxy: proxy, geo: geo) }
-                            .onEnded { _ in endScrub() }
-                    )
-            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { v in scrub(toX: v.location.x, width: w) }
+                    .onEnded { _ in endScrub() }
+            )
         }
     }
 
-    /// Pick a sensible hour tick spacing so a short nap and a long night
-    /// both get a readable axis.
-    private var xAxisStrideHours: Int {
-        let hours = xDomain.upperBound.timeIntervalSince(xDomain.lowerBound) / 3600
-        switch hours {
-        case ..<3:  return 1
-        case ..<7:  return 1
-        default:    return 2
+    /// Start/end clock labels under the timeline. The precise scrubbed
+    /// time surfaces in the header; the header also shows the full window.
+    private var hourAxis: some View {
+        HStack {
+            Text(Self.axisFormatter.string(from: xDomain.lowerBound))
+            Spacer()
+            Text(Self.axisFormatter.string(from: xDomain.upperBound))
         }
-    }
-
-    // MARK: - Stepped silhouette points
-
-    private struct StepPoint: Identifiable {
-        let id = UUID()
-        let time: Date
-        let lane: Int
-    }
-
-    /// Two points per segment (start + end) so `.stepEnd` draws a flat
-    /// run at the stage's lane then jumps to the next — the connecting
-    /// line that reads as a classic hypnogram.
-    private var stepPoints: [StepPoint] {
-        segments.flatMap { [
-            StepPoint(time: $0.start, lane: $0.stage.lane),
-            StepPoint(time: $0.end, lane: $0.stage.lane),
-        ] }
+        .font(.system(size: 10, weight: .medium).monospacedDigit())
+        .foregroundStyle(LifeOSColor.fg3)
     }
 
     // MARK: - Scrubbing
 
-    /// Map drag x to a clock instant inside the sleep window, move the
-    /// readout, and fire one haptic per stage-segment boundary crossed.
-    private func handleScrub(_ location: CGPoint, proxy: ChartProxy, geo: GeometryProxy) {
-        guard !segments.isEmpty else { return }
-        guard let plotAnchor = proxy.plotFrame else { return }
-        let origin = geo[plotAnchor].origin
-        let xInPlot = location.x - origin.x
-        guard let raw: Date = proxy.value(atX: xInPlot) else { return }
-
-        let lo = xDomain.lowerBound, hi = xDomain.upperBound
-        let clamped = min(hi, max(lo, raw))
-
-        scrubDate = clamped
-
-        // One tick per distinct stage segment — drags within the same
-        // segment don't refire.
-        if let idx = segmentIndex(at: clamped), lastHapticSegment != idx {
+    private func scrub(toX x: CGFloat, width: CGFloat) {
+        guard !segments.isEmpty, width > 0 else { return }
+        let frac = max(0, min(1, Double(x / width)))
+        let d = Date(timeIntervalSince1970: xLo + frac * xSpan)
+        scrubDate = d
+        // One tick per distinct stage segment — drags within one don't refire.
+        if let idx = segmentIndex(at: d), lastHapticSegment != idx {
             lastHapticSegment = idx
             Haptics.tick()
         }
