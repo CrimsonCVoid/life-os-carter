@@ -248,6 +248,32 @@ struct SleepHypnogramView: View {
                     ctx.stroke(sep, with: .color(LifeOSColor.stroke.opacity(0.45)), lineWidth: 0.5)
                 }
 
+                // Connecting verticals at each stage transition — a thin
+                // gradient line from one lane's center to the next, the
+                // classic hypnogram silhouette. Drawn before the bars so it
+                // tucks under them and only the inter-lane bridge shows.
+                if segments.count > 1 {
+                    for i in 0..<(segments.count - 1) {
+                        let a = segments[i], b = segments[i + 1]
+                        guard a.stage.lane != b.stage.lane else { continue }
+                        let x = xPixel(b.start, width: w)
+                        let yA = CGFloat(a.stage.lane) * laneH + laneH * 0.5
+                        let yB = CGFloat(b.stage.lane) * laneH + laneH * 0.5
+                        var link = Path()
+                        link.move(to: CGPoint(x: x, y: yA))
+                        link.addLine(to: CGPoint(x: x, y: yB))
+                        ctx.stroke(
+                            link,
+                            with: .linearGradient(
+                                Gradient(colors: [stageColor(a.stage), stageColor(b.stage)]),
+                                startPoint: CGPoint(x: x, y: yA),
+                                endPoint: CGPoint(x: x, y: yB)
+                            ),
+                            lineWidth: 1.5
+                        )
+                    }
+                }
+
                 for seg in segments {
                     let x0 = xPixel(seg.start, width: w)
                     let x1 = xPixel(seg.end, width: w)
