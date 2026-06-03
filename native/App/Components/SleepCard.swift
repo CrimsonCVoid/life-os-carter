@@ -43,12 +43,16 @@ struct SleepCard: View {
 
     var body: some View {
         if let onTap {
+            // NB: no `.pressable()` here. Its DragGesture(minimumDistance: 0)
+            // competes with the NavigationStack push's interactive-pop gate
+            // and hangs the transition half-open ("System gesture gate timed
+            // out"). A plain content-shaped tap navigates cleanly.
             Button {
                 Haptics.tap()
                 onTap()
             } label: { cardBody }
             .buttonStyle(.plain)
-            .pressable()
+            .contentShape(Rectangle())
         } else {
             cardBody
         }
