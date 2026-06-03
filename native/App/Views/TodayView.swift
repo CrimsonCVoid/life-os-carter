@@ -130,6 +130,7 @@ struct TodayView: View {
                     RecoveryDetailView(
                         result: r,
                         daily: displayEntry,
+                        history: recoveryChartHistory,
                         sleepGoalHours: settings.sleepGoalHours
                     )
                 }
@@ -208,6 +209,17 @@ struct TodayView: View {
             history: Array(history),
             priorStrain: priorStrain?.value,
             sleepGoalHours: settings.sleepGoalHours
+        )
+    }
+
+    /// Trailing window (≤21 days) up to and including the viewed day,
+    /// chronological — feeds the recovery detail sheet's "why" trend charts.
+    private var recoveryChartHistory: [DailyEntry] {
+        Array(
+            dailyRows
+                .filter { $0.date <= selectedKey }
+                .sorted { $0.date < $1.date }
+                .suffix(21)
         )
     }
 

@@ -11,6 +11,9 @@ struct RecoveryDetailView: View {
     /// The viewed day's entry — drives the personalized improvement tips
     /// (behavioral flags + actual sleep-stage values).
     let daily: DailyEntry
+    /// Trailing window of entries up to and including the viewed day,
+    /// chronological — powers the "why" trend charts.
+    let history: [DailyEntry]
     var sleepGoalHours: Double = 8
     @Environment(\.dismiss) private var dismiss
 
@@ -21,7 +24,10 @@ struct RecoveryDetailView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     hero
+                    recoveryTrendCard
                     driversCard
+                    signalsSection
+                    sleepArchitectureCard
                     improveCard
                     recommendedStrainCard
                     if isPartial { partialNote }
@@ -95,6 +101,203 @@ struct RecoveryDetailView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Why (trend charts)
+
+    private static let ymd: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
+    private func points(_ pick: (DailyEntry) -> Double?) -> [TrendPoint] {
+        history.compactMap { row in
+            guard let v = pick(row), let d = Self.ymd.date(from: row.date) else { return nil }
+            return TrendPoint(day: d, value: v)
+        }
+    }
+
+    /// mean ± 1 SD "normal range" band; nil when too few points to mean it.
+    private func band(_ pts: [TrendPoint]) -> (low: Double, high: Double)? {
+        let vals = pts.map(\.value)
+        guard vals.count >= 4 else { return nil }
+        let mean = vals.reduce(0, +) / Double(vals.count)
+        let variance = vals.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Double(vals.count)
+        let sd = variance.squareRoot()
+        guard sd > 0 else { return nil }
+        return (mean - sd, mean + sd)
+    }
+
+    /// Recovery recomputed per day across the window (prior-strain damper
+    /// omitted so the trajectory reads cleanly off the autonomic + sleep
+    /// signals). The hero shows the precise current value.
+    private var recoveryTrend: [TrendPoint] {
+        var pts: [TrendPoint] = []
+        for (i, row) in history.enumerated() {
+            let prior = Array(history[0..<i].reversed())
+            guard let r = RecoveryEngine.compute(
+                today: row, history: prior, priorStrain: nil, sleepGoalHours: sleepGoalHours
+            ), let d = Self.ymd.date(from: row.date) else { continue }
+            pts.append(TrendPoint(day: d, value: Double(r.score)))
+        }
+        return pts
+    }
+
+    @ViewBuilder
+    private var recoveryTrendCard: some View {
+        let pts = recoveryTrend
+        if pts.count >= 3 {
+            Card {
+                VStack(alignment: .leading, spacing: 10) {
+                    SectionLabel("Recovery trend")
+                    ScrubbableTrendChart(
+                        points: pts,
+                        tint: tint,
+                        showPoints: pts.count <= 21,
+                        valueFormat: { "\(Int($0.rounded()))" },
+                        yDomain: 0...100,
+                        deltaCaption: true,
+                        deltaHigherIsBetter: true
+                    )
+                    .frame(height: 120)
+                    Text("Where today sits against your recent days — drag to read any day.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(LifeOSColor.fg3)
+                }
+            }
+        }
+    }
+
+    private var signalsSection: some View {
+        VStack(spacing: 16) {
+            trendCard(
+                "Heart rate variability", unit: "ms", tint: LifeOSColor.Metric.hrv,
+                points: points { $0.hrvMs }, higherIsBetter: true, showBand: true,
+                baseline: nil, fmt: { "\(Int($0.rounded()))" },
+                footnote: "Today against your normal range (mean ± 1 SD). Above the band reads as well-recovered; below it, strained.")
+            trendCard(
+                "Resting heart rate", unit: "bpm", tint: LifeOSColor.Metric.rhr,
+                points: points { $0.restingHr }, higherIsBetter: false, showBand: true,
+                baseline: nil, fmt: { "\(Int($0.rounded()))" },
+                footnote: "Lower is better. Sitting above your normal band signals incomplete recovery, dehydration, or illness.")
+            trendCard(
+                "Sleep", unit: "h", tint: LifeOSColor.Metric.sleep,
+                points: points { $0.sleepHours }, higherIsBetter: true, showBand: false,
+                baseline: sleepGoalHours, fmt: { String(format: "%.1f", $0) },
+                footnote: "The line is nightly hours; the rule is your \(Int(sleepGoalHours))h goal.")
+        }
+    }
+
+    @ViewBuilder
+    private func trendCard(
+        _ title: String, unit: String, tint: Color,
+        points pts: [TrendPoint], higherIsBetter: Bool, showBand: Bool,
+        baseline: Double?, fmt: @escaping (Double) -> String, footnote: String
+    ) -> some View {
+        Card {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    SectionLabel(title)
+                    Spacer()
+                    if let last = pts.last?.value {
+                        Text(fmt(last))
+                            .font(.system(size: 16, weight: .bold, design: .rounded)).monospacedDigit()
+                            .foregroundStyle(tint)
+                        Text(unit).font(.system(size: 11)).foregroundStyle(LifeOSColor.fg3)
+                    }
+                }
+                if pts.count >= 3 {
+                    ScrubbableTrendChart(
+                        points: pts,
+                        tint: tint,
+                        showPoints: pts.count <= 21,
+                        valueFormat: fmt,
+                        yAxisFormat: fmt,
+                        band: showBand ? band(pts) : nil,
+                        baseline: baseline,
+                        deltaCaption: true,
+                        deltaHigherIsBetter: higherIsBetter
+                    )
+                    .frame(height: 110)
+                    Text(footnote)
+                        .font(.system(size: 11)).foregroundStyle(LifeOSColor.fg3)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text("Not enough synced history yet — a few more days fills this in.")
+                        .font(.system(size: 12)).foregroundStyle(LifeOSColor.fg3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 16)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var sleepArchitectureCard: some View {
+        if let deep = daily.sleepDeepMin, let rem = daily.sleepREMMin,
+           let light = daily.sleepLightMin {
+            let awake = daily.sleepAwakeMin ?? 0
+            let asleep = max(1, deep + rem + light)
+            let total = max(1, asleep + awake)
+            let rows: [(name: String, mins: Int, tint: Color, ideal: ClosedRange<Double>?)] = [
+                ("Deep", deep, LifeOSColor.SleepStage.deep, 0.13...0.23),
+                ("REM", rem, LifeOSColor.SleepStage.rem, 0.20...0.25),
+                ("Light", light, LifeOSColor.SleepStage.light, nil),
+                ("Awake", awake, LifeOSColor.SleepStage.awake, nil),
+            ]
+            Card {
+                VStack(alignment: .leading, spacing: 12) {
+                    SectionLabel("Last night's sleep architecture")
+                    GeometryReader { geo in
+                        HStack(spacing: 2) {
+                            ForEach(rows, id: \.name) { r in
+                                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                    .fill(r.tint)
+                                    .frame(width: max(0, geo.size.width * Double(r.mins) / Double(total) - 2))
+                            }
+                        }
+                    }
+                    .frame(height: 10)
+                    ForEach(rows, id: \.name) { r in
+                        let pct = Double(r.mins) / Double(asleep)
+                        HStack(spacing: 8) {
+                            Circle().fill(r.tint).frame(width: 8, height: 8)
+                            Text(r.name)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(LifeOSColor.fg)
+                            Spacer(minLength: 4)
+                            if let ideal = r.ideal {
+                                let inRange = ideal.contains(pct)
+                                let label = inRange ? "ideal" : (pct < ideal.lowerBound ? "low" : "high")
+                                let c = inRange ? LifeOSColor.success : LifeOSColor.warning
+                                Text(label.uppercased())
+                                    .font(.system(size: 8, weight: .heavy)).tracking(0.6)
+                                    .foregroundStyle(c)
+                                    .padding(.horizontal, 5).padding(.vertical, 1)
+                                    .background(Capsule().fill(c.opacity(0.15)))
+                            }
+                            Text("\(Int((pct * 100).rounded()))%")
+                                .font(.system(size: 12, weight: .medium).monospacedDigit())
+                                .foregroundStyle(LifeOSColor.fg3)
+                                .frame(width: 40, alignment: .trailing)
+                            Text(hm(r.mins))
+                                .font(.system(size: 13, weight: .bold).monospacedDigit())
+                                .foregroundStyle(r.tint)
+                                .frame(width: 56, alignment: .trailing)
+                        }
+                    }
+                    Text("Ideal targets — deep 13–23%, REM 20–25% of time asleep.")
+                        .font(.system(size: 11)).foregroundStyle(LifeOSColor.fg3)
+                }
+            }
+        }
+    }
+
+    private func hm(_ minutes: Int) -> String {
+        let h = minutes / 60, m = minutes % 60
+        return h > 0 ? "\(h)h \(m)m" : "\(m)m"
     }
 
     // MARK: - How to improve
