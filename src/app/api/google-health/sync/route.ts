@@ -118,6 +118,13 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Previously these per-metric fetch failures were collected and dropped
+  // silently, so a metric that broke (e.g. a changed API field path) just
+  // vanished from sync with no trace. Surface them.
+  if (errors.length) {
+    console.error("[gh-sync] fetch errors:", errors);
+  }
+
   const updates = mergeByDate(...sources);
   const syncedAtDate = new Date();
 

@@ -552,7 +552,9 @@ type RawHrvDataPoint = {
     sampleTime?: { civilTime?: CivilTimeObj | string; physicalTime?: string };
     civilTime?: CivilTimeObj | string;
     intervalMilliseconds?: number;
-    /** Alternate field names some API versions use; we try them in order. */
+    /** Alternate field names some API versions use; we try them in order.
+     * The live Fitbit/Google shape (June 2026) is the verbose RMSSD name. */
+    rootMeanSquareOfSuccessiveDifferencesMilliseconds?: number;
     rmssdMilliseconds?: number;
     millisecondsRmssd?: number;
     valueMilliseconds?: number;
@@ -563,6 +565,7 @@ function readHrvMs(p: RawHrvDataPoint): number | undefined {
   const h = p.heartRateVariability;
   if (!h) return undefined;
   return (
+    h.rootMeanSquareOfSuccessiveDifferencesMilliseconds ??
     h.rmssdMilliseconds ??
     h.millisecondsRmssd ??
     h.valueMilliseconds ??
