@@ -21,6 +21,13 @@ final class UserSettings {
     /// "manual" | "tdee_cut" | "tdee_maintain" | "tdee_bulk" — written
     /// by the (future) TDEE wizard, read-only display elsewhere.
     var nutritionTargetMethod: String = "manual"
+    /// When true, ACTIVE exercise energy is added back to the daily
+    /// calorie budget (remaining = goal − eaten + activeEnergy). Default
+    /// false: the TDEE wizard already bakes an activity multiplier into
+    /// `caloriesGoal`, so adding burn on top double-counts. Only ever
+    /// adds `DailyEntry.activeEnergyKcal` — never total (which includes
+    /// BMR) — so a sedentary day adds ~0, not ~1700.
+    var eatBackExerciseCalories: Bool = false
 
     // Daily targets
     var sleepGoalHours: Double = 8

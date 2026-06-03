@@ -558,7 +558,12 @@ struct TodayView: View {
     /// (active + resting) so it matches the Nutrition tab's "burned" ring;
     /// the caption breaks out the active (movement) portion.
     private var caloriesDelta: String {
-        guard let active = displayEntry.activeEnergyKcal else { return "—" }
+        // Only break out the active portion when the headline is actually the
+        // TOTAL. When total is missing the headline already shows the active
+        // value, so an "X active" caption would duplicate it under a
+        // misleading label.
+        guard displayEntry.totalCaloriesKcal != nil,
+              let active = displayEntry.activeEnergyKcal else { return "—" }
         return "\(Int(active)) active"
     }
 
@@ -636,11 +641,10 @@ struct TodayView: View {
                 carbsG: c, carbsGoalG: Double(settings.carbsGoal),
                 fatG: f, fatGoalG: Double(settings.fatGoal),
                 caloriesEaten: kcal,
-                // Total burned (active + resting), matching the Nutrition
-                // tab's burned ring. Previously hardcoded 0, which made
-                // Today's "calories left" math disagree with Nutrition.
-                caloriesBurned: displayEntry.totalCaloriesKcal ?? displayEntry.activeEnergyKcal ?? 0,
-                caloriesGoal: Double(settings.caloriesGoal)
+                caloriesGoal: Double(settings.caloriesGoal),
+                activeBurnedKcal: displayEntry.activeEnergyKcal,
+                totalBurnedKcal: displayEntry.totalCaloriesKcal,
+                eatBackExercise: settings.eatBackExerciseCalories
             )
         }
     }

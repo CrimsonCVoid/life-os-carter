@@ -132,6 +132,7 @@ struct GoalsEditor: View {
                     value: $settings.caloriesGoal,
                     range: 1200...5000,
                     majorEvery: 500,
+                    unit: "kcal",
                     format: { "\($0) kcal" },
                     majorLabel: { "\($0)" }
                 )
@@ -142,6 +143,7 @@ struct GoalsEditor: View {
                     value: $settings.proteinGoal,
                     range: 50...300,
                     majorEvery: 50,
+                    unit: "g",
                     format: { "\($0) g" },
                     majorLabel: { "\($0)" }
                 )
@@ -151,6 +153,7 @@ struct GoalsEditor: View {
                     value: $settings.carbsGoal,
                     range: 50...500,
                     majorEvery: 50,
+                    unit: "g",
                     format: { "\($0) g" },
                     majorLabel: { "\($0)" }
                 )
@@ -160,6 +163,7 @@ struct GoalsEditor: View {
                     value: $settings.fatGoal,
                     range: 20...200,
                     majorEvery: 25,
+                    unit: "g",
                     format: { "\($0) g" },
                     majorLabel: { "\($0)" }
                 )
@@ -176,6 +180,7 @@ struct GoalsEditor: View {
         value: Binding<Int>,
         range: ClosedRange<Int>,
         majorEvery: Int,
+        unit: String,
         format: @escaping (Int) -> String,
         majorLabel: @escaping (Int) -> String
     ) -> some View {
@@ -185,6 +190,10 @@ struct GoalsEditor: View {
                 Text(label)
                     .font(.system(size: 12, weight: .heavy)).tracking(0.4)
                     .foregroundStyle(LifeOSColor.fg2)
+                Spacer()
+                // Tap-to-type alternative — scrubbing 1200→5000 by single
+                // units is brutal for precise entry.
+                EditableNumberField(value: value, range: range, tint: tint, suffix: unit)
             }
             RulerPicker(
                 value: value,
@@ -257,8 +266,36 @@ struct GoalsEditor: View {
             VStack(spacing: 14) {
                 weightUnitToggle
                 Divider().overlay(LifeOSColor.stroke)
+                eatBackToggle
+                Divider().overlay(LifeOSColor.stroke)
                 methodLabel
             }
+        }
+    }
+
+    private var eatBackToggle: some View {
+        HStack(spacing: 12) {
+            Circle().fill(LifeOSColor.Metric.steps).frame(width: 8, height: 8)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Eat back exercise calories")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(LifeOSColor.fg)
+                Text("Adds active-workout burn to your daily budget. Off by default — your TDEE goal already accounts for activity.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(LifeOSColor.fg3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            Toggle("", isOn: Binding(
+                get: { settings.eatBackExerciseCalories },
+                set: { newVal in
+                    settings.eatBackExerciseCalories = newVal
+                    try? modelContext.save()
+                    Haptics.tick()
+                }
+            ))
+            .labelsHidden()
+            .tint(LifeOSColor.accent)
         }
     }
 
@@ -406,5 +443,79 @@ struct GoalsEditor: View {
                 .background(Circle().fill(LifeOSColor.elevated))
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// Tap-to-type numeric entry — a tappable value pill that focuses an inline
+/// number-pad field on tap, commits on submit/blur, and clamps to range. The
+/// precise-entry complement to the RulerPicker scrub. 16pt font suppresses
+/// iOS zoom-on-focus.
+private struct EditableNumberField: View {
+    @Binding var value: Int
+    let range: ClosedRange<Int>
+    let tint: Color
+    let suffix: String
+
+    @State private var editing = false
+    @State private var draft = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        Group {
+            if editing {
+                HStack(spacing: 4) {
+                    TextField("", text: $draft)
+                        .keyboardType(.numberPad)
+                        .font(.system(size: 16, weight: .bold).monospacedDigit())
+                        .foregroundStyle(tint)
+                        .frame(width: 72)
+                        .multilineTextAlignment(.center)
+                        .focused($focused)
+                        .submitLabel(.done)
+                        .onSubmit(commit)
+                    Text(suffix)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(LifeOSColor.fg3)
+                }
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(LifeOSColor.elevated))
+                .onChange(of: focused) { _, isFocused in
+                    if !isFocused { commit() }
+                }
+            } else {
+                Button {
+                    draft = "\(value)"
+                    editing = true
+                    Haptics.tap()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { focused = true }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("\(value)")
+                            .font(.system(size: 16, weight: .bold).monospacedDigit())
+                            .foregroundStyle(tint)
+                        Text(suffix)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(LifeOSColor.fg3)
+                        Image(systemName: "keyboard")
+                            .font(.system(size: 10))
+                            .foregroundStyle(LifeOSColor.fg3)
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .frame(minHeight: 44)
+                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(LifeOSColor.elevated))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func commit() {
+        if let n = Int(draft.filter(\.isNumber)) {
+            value = min(range.upperBound, max(range.lowerBound, n))
+            Haptics.tick()
+        }
+        editing = false
     }
 }

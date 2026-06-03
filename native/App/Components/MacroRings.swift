@@ -1,8 +1,15 @@
 import SwiftUI
 
-/// MyFitnessPal-style triple macro display — three concentric rings,
-/// one per macro, ordered Protein (outer) → Carbs (middle) → Fat (inner).
-/// Inside the ring stack: current/goal kcal with the deficit/surplus.
+/// Calories + macros centerpiece. A bold calorie-budget ring wraps the three
+/// macro rings (protein / carbs / fat), with a large unambiguous "left" number
+/// in the center, a 3-up macro stat row, and a context strip (eaten / goal /
+/// burned).
+///
+/// Budget model: the calorie goal already includes an activity multiplier (the
+/// TDEE wizard), so burned calories are NOT added to the budget by default —
+/// `remaining = goal − eaten`. When the user opts into eat-back, ONLY the
+/// active (exercise) component is added — never total (which includes BMR), so
+/// a sedentary day adds ~0, not ~1700. Burned is otherwise informational.
 struct MacroRingsCard: View {
     let proteinG: Double
     let proteinGoalG: Double
@@ -11,97 +18,143 @@ struct MacroRingsCard: View {
     let fatG: Double
     let fatGoalG: Double
     let caloriesEaten: Double
-    let caloriesBurned: Double
     let caloriesGoal: Double
+    /// Active (exercise) energy only — `DailyEntry.activeEnergyKcal`. The only
+    /// value eligible to be eaten back. nil when there's no health data.
+    let activeBurnedKcal: Double?
+    /// Total expenditure (active + BMR) — `DailyEntry.totalCaloriesKcal`. Shown
+    /// as "Burned" context only; never added to the budget. nil when no data.
+    let totalBurnedKcal: Double?
+    /// User setting: add `activeBurnedKcal` back into remaining.
+    let eatBackExercise: Bool
 
-    private var remaining: Double {
-        caloriesGoal - caloriesEaten + caloriesBurned
+    /// Eat-back adjustment: only the ACTIVE component, only when opted in, only
+    /// when we have a value. Never BMR.
+    private var eatBackBonus: Double {
+        guard eatBackExercise, let active = activeBurnedKcal else { return 0 }
+        return max(0, active)
+    }
+
+    private var remaining: Double { caloriesGoal - caloriesEaten + eatBackBonus }
+    private var isOver: Bool { remaining < 0 }
+
+    /// Ring fill = eaten / effective budget; the budget grows by the eat-back
+    /// bonus so the ring and the number agree.
+    private var effectiveBudget: Double { max(1, caloriesGoal + eatBackBonus) }
+    private var calorieProgress: Double { caloriesEaten / effectiveBudget }
+    private var calorieRingTint: Color { isOver ? LifeOSColor.danger : LifeOSColor.Metric.calories }
+
+    private var burnedDisplay: String {
+        guard let total = totalBurnedKcal, total > 0 else { return "—" }
+        return "\(Int(total))"
     }
 
     var body: some View {
-        Card {
-            HStack(spacing: 18) {
+        Card(tint: isOver ? LifeOSColor.danger : nil) {
+            VStack(spacing: 18) {
                 ZStack {
-                    ProgressRing(
-                        progress: proteinG / max(1, proteinGoalG),
-                        tint: LifeOSColor.Metric.protein,
-                        lineWidth: 10
-                    )
-                    ProgressRing(
-                        progress: carbsG / max(1, carbsGoalG),
-                        tint: LifeOSColor.Metric.carbs,
-                        lineWidth: 10
-                    )
-                    .padding(14)
-                    ProgressRing(
-                        progress: fatG / max(1, fatGoalG),
-                        tint: LifeOSColor.Metric.fat,
-                        lineWidth: 10
-                    )
-                    .padding(28)
+                    ProgressRing(progress: calorieProgress, tint: calorieRingTint, lineWidth: 11)
+                    ProgressRing(progress: proteinG / max(1, proteinGoalG),
+                                 tint: LifeOSColor.Metric.protein, lineWidth: 9)
+                        .padding(16)
+                    ProgressRing(progress: carbsG / max(1, carbsGoalG),
+                                 tint: LifeOSColor.Metric.carbs, lineWidth: 9)
+                        .padding(30)
+                    ProgressRing(progress: fatG / max(1, fatGoalG),
+                                 tint: LifeOSColor.Metric.fat, lineWidth: 9)
+                        .padding(44)
 
-                    VStack(spacing: 0) {
-                        Text("\(Int(remaining))")
-                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                    VStack(spacing: 1) {
+                        Text("\(Int(abs(remaining)))")
+                            .font(.system(size: 40, weight: .bold, design: .rounded))
                             .monospacedDigit()
-                            .foregroundStyle(.white)
-                        Text("LEFT")
-                            .font(.system(size: 8, weight: .semibold))
-                            .tracking(1.2)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.5)
+                            // Constrain to the inner ring's clear zone so a
+                            // 4-digit value scales down instead of overlapping
+                            // the ring strokes (minimumScaleFactor only engages
+                            // when width is actually constrained).
+                            .frame(maxWidth: 56)
+                            .foregroundStyle(isOver ? LifeOSColor.danger : LifeOSColor.fg)
+                            .contentTransition(.numericText())
+                            .animation(.snappy(duration: 0.2), value: remaining)
+                        Text(isOver ? "OVER" : "LEFT")
+                            .font(.system(size: 9, weight: .semibold))
+                            .tracking(1.6)
+                            .foregroundStyle(isOver ? LifeOSColor.danger : LifeOSColor.fg3)
+                        Text("kcal")
+                            .font(.system(size: 9, weight: .medium))
                             .foregroundStyle(LifeOSColor.fg3)
                     }
                 }
-                .frame(width: 130, height: 130)
+                .frame(width: 156, height: 156)
 
-                VStack(alignment: .leading, spacing: 10) {
-                    calorieRow(
-                        label: "Eaten",
-                        value: Int(caloriesEaten),
-                        tint: LifeOSColor.Metric.calories
-                    )
-                    calorieRow(
-                        label: "Burned",
-                        value: Int(caloriesBurned),
-                        tint: LifeOSColor.Metric.steps
-                    )
-                    calorieRow(
-                        label: "Goal",
-                        value: Int(caloriesGoal),
-                        tint: LifeOSColor.fg2
-                    )
-                    Divider().overlay(LifeOSColor.stroke).padding(.vertical, 2)
-                    macroRow("Protein", proteinG, proteinGoalG, "g", LifeOSColor.Metric.protein)
-                    macroRow("Carbs",   carbsG,   carbsGoalG,   "g", LifeOSColor.Metric.carbs)
-                    macroRow("Fat",     fatG,     fatGoalG,     "g", LifeOSColor.Metric.fat)
+                HStack(spacing: 10) {
+                    macroStat("Protein", proteinG, proteinGoalG, LifeOSColor.Metric.protein)
+                    macroStat("Carbs",   carbsG,   carbsGoalG,   LifeOSColor.Metric.carbs)
+                    macroStat("Fat",     fatG,     fatGoalG,     LifeOSColor.Metric.fat)
                 }
+
+                contextStrip
             }
         }
     }
 
-    private func calorieRow(label: String, value: Int, tint: Color) -> some View {
-        HStack {
-            Circle().fill(tint).frame(width: 6, height: 6)
-            Text(label).font(.system(size: 11)).foregroundStyle(LifeOSColor.fg3)
-            Spacer()
-            Text("\(value)")
-                .font(.system(size: 14, weight: .semibold).monospacedDigit())
-                .foregroundStyle(tint)
-        }
-    }
-
-    private func macroRow(_ name: String, _ have: Double, _ goal: Double, _ unit: String, _ tint: Color) -> some View {
-        HStack(spacing: 6) {
-            Text(name)
-                .font(.system(size: 11))
+    private func macroStat(_ name: String, _ have: Double, _ goal: Double, _ tint: Color) -> some View {
+        VStack(spacing: 6) {
+            Text(name.uppercased())
+                .font(.system(size: 9, weight: .heavy)).tracking(0.6)
                 .foregroundStyle(LifeOSColor.fg3)
-                .frame(width: 46, alignment: .leading)
+            Text("\(Int(have))")
+                .font(.system(size: 20, weight: .bold, design: .rounded).monospacedDigit())
+                .foregroundStyle(tint)
+            Text("/ \(Int(goal))g")
+                .font(.system(size: 10, weight: .medium).monospacedDigit())
+                .foregroundStyle(LifeOSColor.fg3)
             ProgressView(value: min(1, have / max(1, goal)))
                 .progressViewStyle(.linear)
                 .tint(tint)
-            Text("\(Int(have))/\(Int(goal))\(unit)")
-                .font(.system(size: 10).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.8))
-                .frame(width: 64, alignment: .trailing)
+                .scaleEffect(x: 1, y: 0.6, anchor: .center)
         }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(tint.opacity(0.07))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(tint.opacity(0.18), lineWidth: 0.5))
+        )
+    }
+
+    private var contextStrip: some View {
+        HStack(spacing: 0) {
+            contextCell("EATEN", "\(Int(caloriesEaten))", LifeOSColor.Metric.calories)
+            Divider().frame(height: 24).overlay(LifeOSColor.stroke)
+            contextCell("GOAL", "\(Int(caloriesGoal))", LifeOSColor.fg2)
+            Divider().frame(height: 24).overlay(LifeOSColor.stroke)
+            // When eat-back is on, surface the ACTIVE amount actually added to
+            // the budget (not total expenditure, which the old "(+active)"
+            // label misleadingly implied was the added number).
+            if eatBackExercise, eatBackBonus > 0 {
+                contextCell("EATEN BACK", "+\(Int(eatBackBonus))", LifeOSColor.Metric.steps)
+            } else {
+                contextCell("BURNED", burnedDisplay, LifeOSColor.Metric.steps)
+            }
+        }
+        .padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(LifeOSColor.elevated))
+    }
+
+    private func contextCell(_ label: String, _ value: String, _ tint: Color) -> some View {
+        VStack(spacing: 3) {
+            Text(label)
+                .font(.system(size: 8, weight: .heavy)).tracking(0.5)
+                .foregroundStyle(LifeOSColor.fg3)
+                .lineLimit(1).minimumScaleFactor(0.8)
+            Text(value)
+                .font(.system(size: 15, weight: .bold).monospacedDigit())
+                .foregroundStyle(value == "—" ? LifeOSColor.fg3 : tint)
+        }
+        .frame(maxWidth: .infinity)
     }
 }

@@ -81,6 +81,7 @@ struct NutritionView: View {
                         ForEach(MealType.allCases) { type in
                             mealSection(type)
                         }
+                        dayTotalFooter
                     }
                     Spacer(minLength: 80)
                 }
@@ -260,12 +261,15 @@ struct NutritionView: View {
     private var todayCarbs: Double   { todayMeals.reduce(0) { $0 + $1.carbsG   } }
     private var todayFat: Double     { todayMeals.reduce(0) { $0 + $1.fatG     } }
 
-    /// Calories burned today from the active health source — prefer total
-    /// (active + BMR), fall back to active, then 0.
-    private var todayBurnedKcal: Double {
+    /// Active (exercise) energy today — the only burn eligible for eat-back.
+    private var todayActiveBurnedKcal: Double? {
         let key = ISO8601DateFormatter.dateOnly.string(from: Date())
-        let row = dailyRows.first { $0.date == key }
-        return row?.totalCaloriesKcal ?? row?.activeEnergyKcal ?? 0
+        return dailyRows.first { $0.date == key }?.activeEnergyKcal
+    }
+    /// Total expenditure (active + BMR) today — shown as context only.
+    private var todayTotalBurnedKcal: Double? {
+        let key = ISO8601DateFormatter.dateOnly.string(from: Date())
+        return dailyRows.first { $0.date == key }?.totalCaloriesKcal
     }
 
     private var macroSummary: some View {
@@ -274,9 +278,26 @@ struct NutritionView: View {
             carbsG: todayCarbs, carbsGoalG: Double(userSettings.carbsGoal),
             fatG: todayFat, fatGoalG: Double(userSettings.fatGoal),
             caloriesEaten: todayKcal,
-            caloriesBurned: todayBurnedKcal,
-            caloriesGoal: Double(userSettings.caloriesGoal)
+            caloriesGoal: Double(userSettings.caloriesGoal),
+            activeBurnedKcal: todayActiveBurnedKcal,
+            totalBurnedKcal: todayTotalBurnedKcal,
+            eatBackExercise: userSettings.eatBackExerciseCalories
         )
+    }
+
+    /// Slim daily total under the meal list so the day's sum is visible
+    /// without scrolling back up to the rings.
+    private var dayTotalFooter: some View {
+        HStack {
+            Text("DAY TOTAL")
+                .font(.system(size: 10, weight: .heavy)).tracking(0.8)
+                .foregroundStyle(LifeOSColor.fg3)
+            Spacer()
+            Text("\(Int(todayKcal)) kcal · \(Int(todayProtein))P / \(Int(todayCarbs))C / \(Int(todayFat))F")
+                .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                .foregroundStyle(LifeOSColor.fg2)
+        }
+        .padding(.horizontal, 8).padding(.top, 4)
     }
 
     private var quickCaptureStrip: some View {
@@ -289,6 +310,9 @@ struct NutritionView: View {
             }
             quickButton(icon: "mic.fill", label: "Voice", tint: LifeOSColor.Metric.protein) {
                 activeCapture = .voice
+            }
+            quickButton(icon: "bolt.fill", label: "Quick add", tint: LifeOSColor.Metric.calories) {
+                quickAddOpen = true
             }
         }
     }
@@ -329,6 +353,8 @@ struct NutritionView: View {
                     Image(systemName: "xmark")
                         .font(.system(size: 11))
                         .foregroundStyle(LifeOSColor.fg3)
+                        .frame(width: 30, height: 30)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
