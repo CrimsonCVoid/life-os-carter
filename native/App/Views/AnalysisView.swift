@@ -28,6 +28,13 @@ struct AnalysisView: View {
     /// via .task on appear + .onChange of range / counts.
     @State private var data: AnalysisData = .empty
 
+    /// Strain↔recovery snapshot — its own cache (not part of AnalysisData)
+    /// since the engine is @MainActor and needs UserSettings, which the pure
+    /// AnalysisData.compute deliberately doesn't take. Always 30 days
+    /// regardless of the range selector (ACWR needs the 28-day chronic base).
+    @State private var srBalance: StrainRecoveryBalance = .empty
+    @State private var showSRDetail = false
+
     // Inputs for the on-device SleepQualityCard + the Insights teaser.
     private static let ymdFmt: DateFormatter = {
         let f = DateFormatter()
@@ -124,6 +131,7 @@ struct AnalysisView: View {
                         .buttonStyle(.plain)
                         .simultaneousGesture(TapGesture().onEnded { Haptics.tap() })
                     }
+                    revealCard(delay: 0.09) { strainRecoveryBalanceCardWrapped }
                     revealCard(delay: 0.10) { caloriesBurnedCard }
                     revealCard(delay: 0.12) { distanceTrendCard }
                     revealCard(delay: 0.14) { vo2MaxCard }
@@ -171,6 +179,29 @@ struct AnalysisView: View {
             sessions: sessions,
             daysBack: range.dayCount
         )
+        if let settings = settingsRows.first {
+            srBalance = StrainRecoveryEngine.compute(
+                dailies: dailies, sessions: sessions, settings: settings,
+                days: 30, asOf: Date()
+            )
+        }
+    }
+
+    /// Strain↔recovery card → opens the deep-dive sheet. A plain Button label
+    /// (not a NavigationLink push) because the detail wraps its own
+    /// NavigationStack and is presented as a sheet — and so no `.pressable()`
+    /// touches a push (the gesture-gate-timeout gotcha).
+    private var strainRecoveryBalanceCardWrapped: some View {
+        Button {
+            Haptics.tap()
+            showSRDetail = true
+        } label: {
+            StrainRecoveryBalanceCard(balance: srBalance)
+        }
+        .buttonStyle(.plain)
+        .sheet(isPresented: $showSRDetail) {
+            StrainRecoveryDetailView(balance: srBalance)
+        }
     }
 
     // MARK: - Series → TrendPoint adapters
@@ -1009,12 +1040,34 @@ struct AnalysisView: View {
                     tint: LifeOSColor.Metric.water,
                     text: "Hydration goal hit on 14/30 days. Days you hit it had +8% step count."
                 )
-                observation(
-                    icon: "figure.run",
-                    tint: LifeOSColor.Metric.strain,
-                    text: "Cardio sessions are clustered Wed/Sat. Strain spikes 18 on those days; recovery dips 6%."
-                )
+                if let obs = strainPatternObservation {
+                    observation(icon: obs.icon, tint: obs.tint, text: obs.text)
+                }
             }
+        }
+    }
+
+    /// Real strain↔recovery observation off the cached balance. nil when
+    /// there isn't enough data to say something true — we drop the row rather
+    /// than fabricate (the app prefers honest empty states). Replaces the old
+    /// hardcoded "Strain spikes 18... recovery dips 6%" placeholder.
+    private var strainPatternObservation: (icon: String, tint: Color, text: String)? {
+        if let lag = srBalance.lag, lag.isMeaningful, lag.deltaPoints < 0 {
+            let pts = Int(abs(lag.deltaPoints).rounded())
+            return ("figure.run", LifeOSColor.Metric.strain,
+                    "After your \(lag.hardDayCount) hardest training days, next-morning recovery averages \(pts) points lower — the biggest load→recovery signal in your data.")
+        }
+        switch srBalance.acwrBand {
+        case .danger, .caution:
+            let v = srBalance.acwr.map { String(format: "%.2f", $0) } ?? "high"
+            return ("chart.line.uptrend.xyaxis", LifeOSColor.Metric.strain,
+                    "Your acute:chronic load ratio is \(v) — recent training is outpacing your 28-day base. Watch for an injury spike.")
+        case .sweetSpot:
+            let v = srBalance.acwr.map { String(format: "%.2f", $0) } ?? "0.8–1.3"
+            return ("checkmark.seal.fill", LifeOSColor.Metric.strain,
+                    "Your load is ramping in the safe zone (ACWR \(v)) — building fitness without spiking injury risk.")
+        default:
+            return nil
         }
     }
 

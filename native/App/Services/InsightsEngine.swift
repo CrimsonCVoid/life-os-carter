@@ -34,6 +34,7 @@ enum InsightsEngine {
 
     // MARK: - Public API
 
+    @MainActor
     static func generate(
         daily: [DailyEntry],
         meals: [MealLog],
@@ -55,6 +56,15 @@ enum InsightsEngine {
         out += trends(days)
         out += anomalies(days, settings: settings)
         out += streaks(days, settings: settings)
+
+        // Strain ↔ recovery: load-management findings off the dedicated
+        // (main-actor) analytics engine. Built here rather than inside that
+        // engine so the strain math stays in one place and this feed just
+        // maps pre-scored findings onto cards.
+        let balance = StrainRecoveryEngine.compute(
+            dailies: daily, sessions: lifts, settings: settings
+        )
+        out += strainRecovery(balance)
 
         // Highest impact × confidence first; cap so the feed stays a
         // curated lead, not a data dump.
@@ -548,6 +558,172 @@ enum InsightsEngine {
         }
 
         return out
+    }
+
+    // MARK: - 6. Strain ↔ recovery
+    //
+    // Quantified training-load findings off StrainRecoveryEngine. Each maps a
+    // pre-scored Finding onto a card; sentiment is decided here since framing
+    // depends on direction (a depressing lagged effect is a "watch", a tight
+    // ACWR is good). Emitters early-return [] when their backing field is nil,
+    // so a thin history surfaces nothing rather than fabricating a number.
+
+    @MainActor
+    private static func strainRecovery(_ b: StrainRecoveryBalance) -> [DataInsight] {
+        var out: [DataInsight] = []
+        for f in b.findings {
+            switch f.kind {
+            case .laggedStrainRecovery: out += laggedStrainRecoveryInsight(b, f)
+            case .acwr:                 out += acwrInsight(b, f)
+            case .monotony:             out += monotonyInsight(b, f)
+            case .alignment:            out += alignmentInsight(b, f)
+            case .adherence:            out += adherenceInsight(b, f)
+            }
+        }
+        return out
+    }
+
+    private static func laggedStrainRecoveryInsight(
+        _ b: StrainRecoveryBalance, _ f: StrainRecoveryBalance.Finding
+    ) -> [DataInsight] {
+        guard f.confident, let lag = b.lag else { return [] }
+        let depresses = lag.deltaPoints < 0
+        let pts = Int(abs(lag.deltaPoints).rounded())
+        return [DataInsight(
+            kind: .correlation,
+            title: depresses
+                ? "Recovery dips \(pts) pts the day after hard training"
+                : "Your recovery holds up after hard days",
+            detail: depresses
+                ? "Across \(b.laggedPairCount) paired days, mornings after your higher-strain days scored \(pts) pts lower recovery than after easier ones. Bank sleep, protein, and hydration the night you go hard — that's what turns load into adaptation."
+                : "Across \(b.laggedPairCount) paired days, recovery the morning after your harder days is essentially unchanged — your recovery is keeping pace with the load. You've room to keep building.",
+            icon: "bolt.heart.fill",
+            tint: LifeOSColor.Metric.strain,
+            sentiment: depresses ? .watch : .positive,
+            score: f.score
+        )]
+    }
+
+    private static func acwrInsight(
+        _ b: StrainRecoveryBalance, _ f: StrainRecoveryBalance.Finding
+    ) -> [DataInsight] {
+        // Parity with the other emitters: a weak chronic base shouldn't surface
+        // authoritative injury-risk prose.
+        guard f.confident, let r = b.acwr else { return [] }
+        let ratioStr = String(format: "%.2f", r)
+        let title: String, detail: String, sentiment: DataInsight.Sentiment
+        switch b.acwrBand {
+        case .sweetSpot:
+            title = "Training load is in the sweet spot"
+            detail = "Your acute:chronic workload ratio is \(ratioStr) — your last 7 days sit right against your 28-day base. The 0.8–1.3 zone is where fitness builds with the lowest injury risk."
+            sentiment = .positive
+        case .caution:
+            title = "Load is ramping fast (ACWR \(ratioStr))"
+            detail = "Acute load is \(ratioStr)× your chronic base — just past the sweet spot. Fine as a short overload block; ease off if it persists for weeks."
+            sentiment = .watch
+        case .danger:
+            title = "Your training load is spiking"
+            detail = "Your last 7 days of strain are running \(ratioStr)× your 28-day baseline. Sharp jumps like this are associated with higher overuse-injury risk — let recovery catch up before adding more."
+            sentiment = .watch
+        case .detraining, .unknown:
+            title = "Training load has dropped off"
+            detail = "Your acute:chronic ratio is \(ratioStr) — recent load is below your baseline. Fine for a planned deload; if it wasn't planned, there's room to add work back in."
+            sentiment = .watch
+        }
+        return [DataInsight(
+            kind: .trend, title: title, detail: detail,
+            icon: "chart.line.uptrend.xyaxis",
+            tint: LifeOSColor.Metric.strain, sentiment: sentiment, score: f.score
+        )]
+    }
+
+    private static func monotonyInsight(
+        _ b: StrainRecoveryBalance, _ f: StrainRecoveryBalance.Finding
+    ) -> [DataInsight] {
+        guard let mono = b.monotony else { return [] }
+        let monoStr = String(format: "%.1f", mono)
+        // Only flag high monotony when the week actually carried load — a
+        // monotonous easy week isn't a risk (Foster: monotony × load).
+        let highRisk = mono >= 2.0 && f.confident
+        if highRisk {
+            return [DataInsight(
+                kind: .trend,
+                title: "Your training week is high and unvaried",
+                detail: "Monotony is \(monoStr) — you've trained hard most days with little easy/hard variation. Foster's research links sustained high monotony plus heavy load to overtraining and illness. Work in a genuinely easy or rest day, not just a medium one.",
+                icon: "square.stack.3d.up.fill",
+                tint: LifeOSColor.warning, sentiment: .watch, score: f.score
+            )]
+        }
+        guard mono < 1.5, (b.weeklyLoad ?? 0) >= 42 else { return [] }
+        return [DataInsight(
+            kind: .trend,
+            title: "Good hard/easy balance this week",
+            detail: "Monotony is \(monoStr) — your load varies day to day, exactly the rhythm that lets you absorb hard sessions. Keep alternating push and recover.",
+            icon: "square.stack.3d.up.fill",
+            tint: LifeOSColor.Metric.strain, sentiment: .positive, score: f.score
+        )]
+    }
+
+    private static func alignmentInsight(
+        _ b: StrainRecoveryBalance, _ f: StrainRecoveryBalance.Finding
+    ) -> [DataInsight] {
+        // The off-diagonal quadrants carry the real directional signal; the
+        // proximity-based alignmentScore is structurally insensitive, so it's
+        // only used as a presence gate, never quoted as a behavioral verdict.
+        guard b.alignmentScore != nil else { return [] }
+        switch b.dominantOffDiagonal {
+        case .drainedButPushed:
+            let n = b.quadrantCounts[.drainedButPushed] ?? 0
+            return [DataInsight(
+                kind: .correlation,
+                title: "You often push hard on low-recovery days",
+                detail: "On \(n) days you trained hard while recovery was in the red. Once in a while is fine; as a pattern it digs a hole. On red mornings, take the lighter recommended target — you'll get more out of the hard days that follow.",
+                icon: "exclamationmark.triangle.fill",
+                tint: LifeOSColor.recovery(30), sentiment: .watch, score: f.score
+            )]
+        case .primedAndRested:
+            let n = b.quadrantCounts[.primedAndRested] ?? 0
+            return [DataInsight(
+                kind: .correlation,
+                title: "You're leaving green days on the table",
+                detail: "On \(n) days recovery was primed but you kept strain low. When your body's ready, that's the day to push for a PR or a longer session — readiness like that is the whole point of the score.",
+                icon: "arrow.up.forward.circle.fill",
+                tint: LifeOSColor.recovery(80), sentiment: .neutral, score: f.score
+            )]
+        default:
+            // Praise autoregulation only with concrete evidence the user
+            // pushed on green days and didn't routinely grind on red ones —
+            // not off the proximity score. No evidence → stay silent.
+            let pushed = b.quadrantCounts[.primedAndPushed] ?? 0
+            let overreached = b.quadrantCounts[.drainedButPushed] ?? 0
+            guard pushed >= 3, pushed >= overreached else { return [] }
+            return [DataInsight(
+                kind: .correlation,
+                title: "Your effort tracks your readiness well",
+                detail: "On \(pushed) days you pushed hard while recovery was green, and you rarely ground out a hard session on a red day. Matching effort to readiness like that is textbook autoregulation — exactly what compounds into progress.",
+                icon: "checkmark.circle.fill",
+                tint: LifeOSColor.success, sentiment: .positive, score: f.score
+            )]
+        }
+    }
+
+    private static func adherenceInsight(
+        _ b: StrainRecoveryBalance, _ f: StrainRecoveryBalance.Finding
+    ) -> [DataInsight] {
+        guard f.confident, let adh = b.adherencePct else { return [] }
+        let pct = Int((adh * 100).rounded())
+        let good = adh >= 0.5
+        return [DataInsight(
+            kind: .streak,
+            title: "You hit your recommended strain band \(pct)% of days",
+            detail: good
+                ? "Over \(b.adherenceSampleDays) days your training landed inside the morning recommended-strain range \(pct)% of the time. Trusting the daily target is what compounds."
+                : "Over \(b.adherenceSampleDays) days your strain landed inside the recommended range only \(pct)% of the time. Glance at the recommended band before you train — it's tuned to that morning's recovery.",
+            icon: "target",
+            tint: good ? LifeOSColor.success : LifeOSColor.warning,
+            sentiment: good ? .positive : .neutral,
+            score: f.score
+        )]
     }
 
     // MARK: - Stats helpers
