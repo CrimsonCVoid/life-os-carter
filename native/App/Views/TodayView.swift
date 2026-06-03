@@ -96,16 +96,6 @@ struct TodayView: View {
             .refreshable {
                 await forceSync()
             }
-            .simultaneousGesture(
-                // Horizontal swipe to walk days — guarded on horizontal
-                // dominance so it never fights the vertical ScrollView.
-                DragGesture(minimumDistance: 24)
-                    .onEnded { v in
-                        guard abs(v.translation.width) > 70,
-                              abs(v.translation.width) > abs(v.translation.height) else { return }
-                        step(v.translation.width > 0 ? -1 : 1)
-                    }
-            )
             .navigationTitle("Today")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
