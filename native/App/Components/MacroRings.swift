@@ -52,42 +52,35 @@ struct MacroRingsCard: View {
     var body: some View {
         Card(tint: isOver ? LifeOSColor.danger : nil) {
             VStack(spacing: 18) {
+                // Single calorie hero ring — its full interior is the number's
+                // clear zone, so a 4-digit value reads cleanly. Per-macro
+                // progress lives in the stat tiles below (no cramped nested
+                // rings crushing the center).
                 ZStack {
-                    ProgressRing(progress: calorieProgress, tint: calorieRingTint, lineWidth: 11)
-                    ProgressRing(progress: proteinG / max(1, proteinGoalG),
-                                 tint: LifeOSColor.Metric.protein, lineWidth: 9)
-                        .padding(16)
-                    ProgressRing(progress: carbsG / max(1, carbsGoalG),
-                                 tint: LifeOSColor.Metric.carbs, lineWidth: 9)
-                        .padding(30)
-                    ProgressRing(progress: fatG / max(1, fatGoalG),
-                                 tint: LifeOSColor.Metric.fat, lineWidth: 9)
-                        .padding(44)
+                    ProgressRing(progress: calorieProgress, tint: calorieRingTint, lineWidth: 14)
 
-                    VStack(spacing: 1) {
+                    VStack(spacing: 2) {
                         Text("\(Int(abs(remaining)))")
-                            .font(.system(size: 40, weight: .bold, design: .rounded))
+                            .font(.system(size: 48, weight: .bold, design: .rounded))
                             .monospacedDigit()
                             .lineLimit(1)
                             .minimumScaleFactor(0.5)
-                            // Constrain to the inner ring's clear zone so a
-                            // 4-digit value scales down instead of overlapping
-                            // the ring strokes (minimumScaleFactor only engages
-                            // when width is actually constrained).
-                            .frame(maxWidth: 56)
+                            // Comfortably inside the ~140pt interior, so 4 digits
+                            // never truncate; scales only for extreme values.
+                            .frame(maxWidth: 128)
                             .foregroundStyle(isOver ? LifeOSColor.danger : LifeOSColor.fg)
                             .contentTransition(.numericText())
                             .animation(.snappy(duration: 0.2), value: remaining)
                         Text(isOver ? "OVER" : "LEFT")
-                            .font(.system(size: 9, weight: .semibold))
-                            .tracking(1.6)
+                            .font(.system(size: 10, weight: .semibold))
+                            .tracking(1.8)
                             .foregroundStyle(isOver ? LifeOSColor.danger : LifeOSColor.fg3)
-                        Text("kcal")
-                            .font(.system(size: 9, weight: .medium))
+                        Text("\(Int(caloriesGoal)) kcal goal")
+                            .font(.system(size: 10, weight: .medium))
                             .foregroundStyle(LifeOSColor.fg3)
                     }
                 }
-                .frame(width: 156, height: 156)
+                .frame(width: 168, height: 168)
 
                 HStack(spacing: 10) {
                     macroStat("Protein", proteinG, proteinGoalG, LifeOSColor.Metric.protein)
