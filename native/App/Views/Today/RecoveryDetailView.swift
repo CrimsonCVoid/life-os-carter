@@ -8,6 +8,10 @@ import SwiftUI
 /// full-screen cover.
 struct RecoveryDetailView: View {
     let result: RecoveryResult
+    /// The viewed day's entry — drives the personalized improvement tips
+    /// (behavioral flags + actual sleep-stage values).
+    let daily: DailyEntry
+    var sleepGoalHours: Double = 8
     @Environment(\.dismiss) private var dismiss
 
     private var tint: Color { LifeOSColor.recovery(result.score) }
@@ -18,6 +22,7 @@ struct RecoveryDetailView: View {
                 VStack(spacing: 16) {
                     hero
                     driversCard
+                    improveCard
                     recommendedStrainCard
                     if isPartial { partialNote }
                     Spacer(minLength: 40)
@@ -87,6 +92,31 @@ struct RecoveryDetailView: View {
                 SectionLabel("What's driving it")
                 ForEach(result.drivers) { driver in
                     DriverRow(driver: driver)
+                }
+            }
+        }
+    }
+
+    // MARK: - How to improve
+
+    private var improveCard: some View {
+        let tips = RecoveryAdvisor.tips(
+            result: result,
+            daily: daily,
+            sleepGoalHours: sleepGoalHours
+        )
+        return Card {
+            VStack(alignment: .leading, spacing: 6) {
+                SectionLabel("How to improve")
+                Text("Tailored to what moved your score today — most actionable first.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(LifeOSColor.fg2)
+                    .padding(.bottom, 6)
+                ForEach(Array(tips.enumerated()), id: \.element.id) { idx, tip in
+                    RecoveryTipRow(tip: tip)
+                    if idx < tips.count - 1 {
+                        Divider().overlay(LifeOSColor.stroke)
+                    }
                 }
             }
         }
@@ -169,6 +199,194 @@ struct RecoveryDetailView: View {
         }
         let labels = result.missingInputs.joined(separator: ", ")
         return "Scored from the inputs we had. Missing today: \(labels)."
+    }
+}
+
+// MARK: - Recovery improvement advisor
+
+/// One actionable recommendation with the "why" behind it.
+struct RecoveryTip: Identifiable {
+    let id = UUID()
+    let icon: String
+    let tag: String
+    let title: String
+    let detail: String
+    let tint: Color
+}
+
+/// Turns a recovery result + the day's logged context into a prioritized,
+/// personalized set of "how to improve" recommendations. Behavioral choices
+/// the user actually logged come first (direct cause→effect, highest
+/// leverage), then the weakest physiological drivers, then data gaps. Purely
+/// rule-based — instant, offline, and free, so it never depends on AI quota.
+enum RecoveryAdvisor {
+    static func tips(
+        result: RecoveryResult,
+        daily: DailyEntry,
+        sleepGoalHours: Double
+    ) -> [RecoveryTip] {
+        var tips: [RecoveryTip] = []
+
+        func driver(_ label: String) -> RecoveryResult.Driver? {
+            result.drivers.first { $0.label == label }
+        }
+        // A driver is "weak" when it pulled the score down meaningfully.
+        func isWeak(_ label: String) -> Bool { (driver(label)?.impact ?? 0) < -0.02 }
+
+        // 1) Behavioral choices logged today — direct cause→effect.
+        if daily.alcoholYesterday {
+            tips.append(RecoveryTip(
+                icon: "wineglass.fill", tag: "Habits",
+                title: "Skip the nightcap tonight",
+                detail: "Alcohol fragments REM and blunts overnight HRV for 24–48h. A dry night usually shows up as a noticeably greener score.",
+                tint: LifeOSColor.danger))
+        }
+        if daily.caffeineAfter2pm {
+            tips.append(RecoveryTip(
+                icon: "cup.and.saucer.fill", tag: "Habits",
+                title: "Cut caffeine after ~2pm",
+                detail: "Caffeine has a ~6h half-life, so an afternoon coffee keeps your nervous system elevated at night and trims deep sleep and HRV.",
+                tint: LifeOSColor.warning))
+        }
+        if daily.lateEating {
+            tips.append(RecoveryTip(
+                icon: "fork.knife", tag: "Habits",
+                title: "Finish eating earlier",
+                detail: "Late meals raise core body temperature and keep digestion running overnight, which suppresses deep sleep. Aim for 2–3h before bed.",
+                tint: LifeOSColor.warning))
+        }
+        if daily.screenBeforeBed {
+            tips.append(RecoveryTip(
+                icon: "iphone", tag: "Habits",
+                title: "Screens off 30–60 min before bed",
+                detail: "Blue light and late stimulation delay melatonin and push back sleep onset. A real wind-down improves both duration and stage quality.",
+                tint: LifeOSColor.Metric.sleep))
+        }
+        if let stress = daily.stressLevel, stress >= 4 {
+            tips.append(RecoveryTip(
+                icon: "wind", tag: "Stress",
+                title: "Downshift before bed",
+                detail: "Sustained stress keeps you sympathetic-dominant — the single biggest drag on HRV. Five minutes of slow breathing (in 4 / out 6) flips you into recovery mode.",
+                tint: LifeOSColor.Metric.hrv))
+        }
+
+        // 2) Weakest physiological drivers.
+        if isWeak("HRV") || result.missingInputs.contains("HRV") {
+            tips.append(RecoveryTip(
+                icon: "waveform.path.ecg", tag: "HRV",
+                title: "Protect your HRV",
+                detail: "HRV is your dominant recovery signal. Consistent sleep and wake times, good hydration, limiting alcohol, and easy-day training all nudge it up over 1–2 weeks.",
+                tint: LifeOSColor.Metric.hrv))
+        }
+        if isWeak("Resting HR") {
+            tips.append(RecoveryTip(
+                icon: "heart.fill", tag: "Resting HR",
+                title: "Bring resting HR down",
+                detail: "An elevated resting HR points to incomplete recovery, dehydration, or oncoming illness. Hydrate well, ease intensity, and watch alcohol and late caffeine.",
+                tint: LifeOSColor.Metric.rhr))
+        }
+
+        // 3) Sleep — duration, stage architecture, multi-night debt.
+        if let hours = daily.sleepHours, hours < sleepGoalHours - 0.5 {
+            tips.append(RecoveryTip(
+                icon: "bed.double.fill", tag: "Sleep",
+                title: "Bank more sleep",
+                detail: String(
+                    format: "You slept %.1fh — about %.1fh under your %.0fh goal. An earlier bedtime is the fastest lever; even 30 minutes compounds.",
+                    hours, sleepGoalHours - hours, sleepGoalHours),
+                tint: LifeOSColor.Metric.sleep))
+        }
+        if let deep = daily.sleepDeepMin, let rem = daily.sleepREMMin,
+           let light = daily.sleepLightMin {
+            let asleep = max(1, deep + rem + light)
+            if Double(deep) / Double(asleep) < 0.13 {
+                tips.append(RecoveryTip(
+                    icon: "moon.stars.fill", tag: "Deep sleep",
+                    title: "Chase more deep sleep",
+                    detail: "Deep sleep ran low — it's when your body physically repairs. A cool (~65°F), dark room, no late alcohol, and a consistent bedtime all increase it.",
+                    tint: LifeOSColor.SleepStage.deep))
+            }
+            if Double(rem) / Double(asleep) < 0.18 {
+                tips.append(RecoveryTip(
+                    icon: "brain.head.profile", tag: "REM",
+                    title: "Support REM sleep",
+                    detail: "REM (mental recovery) was light. It concentrates in the back half of the night, so full duration and skipping the nightcap protect it most.",
+                    tint: LifeOSColor.SleepStage.rem))
+            }
+        }
+        if isWeak("Sleep debt") {
+            tips.append(RecoveryTip(
+                icon: "calendar", tag: "Sleep debt",
+                title: "Pay down sleep debt",
+                detail: "Several short nights have stacked up. One long sleep won't fully clear it — aim for a few consistent nights at or above goal.",
+                tint: LifeOSColor.Metric.sleep))
+        }
+
+        // 4) Yesterday's load.
+        if isWeak("Prior strain") {
+            tips.append(RecoveryTip(
+                icon: "figure.cooldown", tag: "Load",
+                title: "Recover from yesterday's load",
+                detail: "Yesterday was demanding. Prioritize protein, hydration, and an easy or active-recovery day so the adaptation actually sticks.",
+                tint: LifeOSColor.Metric.strain))
+        }
+
+        // 5) Stage-data gap (HRV gap already covered above).
+        if result.missingInputs.contains("Sleep stages") {
+            tips.append(RecoveryTip(
+                icon: "applewatch", tag: "Data",
+                title: "Wear your tracker overnight",
+                detail: "No stage breakdown came through for last night. Sleeping with your watch or band lets the score weigh deep and REM quality, not just hours.",
+                tint: LifeOSColor.fg2))
+        }
+
+        // 6) Everything's in a good place — reinforce the routine.
+        if tips.isEmpty {
+            tips.append(RecoveryTip(
+                icon: "checkmark.seal.fill", tag: "On track",
+                title: "Keep doing what you're doing",
+                detail: "Your inputs are all in a good place. Hold your sleep schedule, stay hydrated, and you can confidently take on today's strain target.",
+                tint: LifeOSColor.success))
+        }
+
+        return tips
+    }
+}
+
+/// One recommendation row: an icon chip, the action, a category tag, and the
+/// physiological "why" behind it.
+private struct RecoveryTipRow: View {
+    let tip: RecoveryTip
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            ZStack {
+                Circle().fill(tip.tint.opacity(0.16))
+                Image(systemName: tip.icon)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(tip.tint)
+            }
+            .frame(width: 38, height: 38)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(tip.title)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(LifeOSColor.fg)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 4)
+                    Text(tip.tag.uppercased())
+                        .font(.system(size: 8, weight: .heavy)).tracking(0.8)
+                        .foregroundStyle(tip.tint)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Capsule().fill(tip.tint.opacity(0.14)))
+                }
+                Text(tip.detail)
+                    .font(.system(size: 12))
+                    .foregroundStyle(LifeOSColor.fg2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.vertical, 4)
     }
 }
 

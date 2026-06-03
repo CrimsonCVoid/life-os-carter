@@ -127,7 +127,11 @@ struct TodayView: View {
             }
             .sheet(isPresented: $showRecoveryDetail) {
                 if let r = recoveryScore {
-                    RecoveryDetailView(result: r)
+                    RecoveryDetailView(
+                        result: r,
+                        daily: displayEntry,
+                        sleepGoalHours: settings.sleepGoalHours
+                    )
                 }
             }
         }
