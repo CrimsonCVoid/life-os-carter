@@ -9,18 +9,78 @@ cd ~/Downloads/life-os-hbrady && ./scripts/handoff-native.sh
 
 ---
 
-## State (2026-05-28)
+## State (2026-06-03)
 
-- **Branch:** `native` at `7a344f4`
+- **Branch:** `native` at `acff39d`
 - **Working tree:** clean
-- **Pushed to:** `origin/native`, `life-os-dev/native`, `carter/native:main` — all at `7a344f4`
-- **TestFlight:** 1.1 (2) is bumped in `project.yml`. **Multiple iOS-only changes since the last archive** — needs a re-archive to ship the session's app-side work to TestFlight (background sync, light/dark, charts overhaul, manual calorie targets, onboarding ruler, HR graph, etc.).
-- **Project version on disk:** MARKETING_VERSION `1.1`, CURRENT_PROJECT_VERSION `2`. Bump CURRENT_PROJECT_VERSION before the next archive.
-- **Vercel:** production deploy is the tip of `main` and is healthy.
+- **Pushed to:** `origin/native`, `life-os-dev/native`, `carter/native:main` — all at `acff39d`
+- **Builds:** iOS `xcodebuild` **BUILD SUCCEEDED**; web `npm run build` clean. Both verified green this session.
+- **Big delta since last archive** — lots of iOS-side work (see below) needs a **re-archive** for TestFlight. Bump `CURRENT_PROJECT_VERSION` first (widget `CFBundleVersion` too if Xcode complains).
+- **Gemini key:** the previously-leaked `GEMINI_API_KEY` has been **rotated and is live** (verified: Coach + food-photo return 200). The old handoff's "revoked" note is stale.
+- **App Store:** v1.0 was **rejected** (Guideline 2.1(b)) — the app references a "subscription" (a "Restore Purchases" menu item) with no IAP product submitted. NOT addressed this session (user said a screenshot/message was for a different context). To pass: either remove the Restore-Purchases/subscription references or submit the IAP. Files to grep: anything with "Restore Purchases" / StoreKit.
+- **Vercel:** production (`carter/native:main` → `life-os-carter.vercel.app`) is healthy and current.
 
 ---
 
-## What this session shipped (since 2026-05-26)
+## What this session shipped (2026-06-03) — 21 commits, `c9140c9`→`acff39d`
+
+### Big feature overhaul (`c9140c9`, `89c8bdc`)
+- **WHOOP-style recovery rebuild** (`RecoveryCalculator.swift` → `RecoveryEngine`): learns HRV/RHR baselines from a trailing 30-day window (not a stored field); **missing inputs re-normalize the weights and are reported in `missingInputs`** rather than faking a neutral 50; primary-driver breakdown + recommended-strain band + `baselineReady`. `RecoveryDetailView` is the tap-in sheet. HRV/RHR **carry forward up to 2 days** over a sparse gap night (`3473604`).
+- **Sleep hypnogram**: new `SleepNight` SwiftData model (timed stage segments JSON blob; in `LifeOSApp` Schema) + server `fetchSleepSegments` + `POST /api/google-health/sleep` + `SleepClient.swift`.
+- **HRV/RHR interactive charts** + `ScrubbableTrendChart` gained opt-in `band`/`baseline`/`deltaCaption`/`animateOnAppear` (back-compatible).
+- **Glass UI**: `AmbientBackground` renders a user photo behind heavy blur+scrim (Settings → Appearance → `BackgroundPicker`/`BackgroundStore`); `UserSettings.backgroundStyle/backgroundImageFilename/backgroundIntensity`.
+- **Calorie disassociation fix**: Today's macro rings pass real total-burned (was hardcoded 0).
+
+### Gemini reliability (`4528129`)
+- Root cause of "voice/image won't work" was Gemini **503 UNAVAILABLE** ("high demand") with **no retry**. `withGeminiRetry` now does bounded exponential backoff for transient 503/500; wrapped all single-attempt routes (food-photo, voice-journal/meal/workout, correlations, patterns, weekly-review, nutrition-insights). Free-tier **daily quota (429)** is a real ceiling — a paid tier / AI Gateway is the only fix for heavy days.
+
+### Previous-day navigation (`4d8b55d`)
+- Today screen is date-aware: ‹ › arrows + a "Yesterday / N days ago" label. Every card reads the viewed day; recovery/strain recompute for it; create-on-write editing for any day; HealthKit water-mirroring + passive sync stay pinned to **actual** today. (Day-**swipe** gesture was removed — it conflicted with nav pushes.)
+
+### Google Health (Fitbit) data fixes — the big debugging arc
+- **HRV** wasn't syncing: the live Fitbit shape uses `rootMeanSquareOfSuccessiveDifferencesMilliseconds` (RMSSD); `readHrvMs` only tried older names (`6c42c6d`).
+- **Sleep stages** came through as 0: the live Fitbit shape is `sleep.stages[] = [{ type, startTime, endTime }]` but the parser read `stage.stage` + `stage.interval.startTime` (both undefined) → every segment dropped. Total sleep still worked (top-level `interval`). Fixed in **both** `summarizeStages` (aggregate minutes) and `fetchSleepSegments` (hypnogram) (`a49e7dd`).
+- Per-metric sync errors were **silently swallowed** in `/api/google-health/sync` — now logged (`6c42c6d`). (Temp `[gh-debug]`/`[gh-sleepshape]` logging was added then removed.)
+- **Apple Health hypnogram** was empty by design (it only hit the Google endpoint): `SleepClient.loadNight` is now source-aware — Apple reads HealthKit `.sleepAnalysis` timed samples via new `HealthKitManager.fetchSleepSegments`; Google uses the endpoint (`93698d9`).
+
+### Sleep screen freeze fixes (it froze hard for a while)
+- Removed the day-swipe gesture (`718b4d3`), removed `.pressable()` from the nav-pushing sleep card (`0d906b6`), switched the hypnogram from a **NavigationStack push to a `.fullScreenCover`** (`f79a21f`), then **redrew the hypnogram with a Canvas** because Swift Charts' ordinal-Y + mixed Rectangle/Line marks **hung the main thread** (`507ebb4`). Added gradient step-connectors between stage cells (`5c0a1d8`). **Lesson: never use an ordinal/array y-domain mixed with RectangleMark+LineMark in Swift Charts — use Canvas for timelines.**
+
+### Recovery sheet depth (`cc01c04`, `51860ff`)
+- "How to improve" personalized tips (`RecoveryAdvisor`) — behavioral flags first, then weak drivers, with the physiological "why".
+- "Why your recovery is what it is" charts: recovery trend, HRV/RHR vs learned baseline band, sleep vs goal, last-night architecture vs ideal ranges.
+
+### On-device insights overhaul (`d1bc646`, `e0f8a3b`) — ran via a multi-agent **Workflow** (map→design→implement); design phase stubbed out so units were designed by hand from the maps
+- 5 deterministic offline engines + premium surfaces, all wired: **InsightsEngine** (correlations/lagged/trends/anomalies/streaks → `InsightsView` feed, reached from Analysis), **NutritionInsightsEngine** (`NutritionIntelligenceCard` in Nutrition), **BehaviorInsightsEngine** (`BehaviorInsightsCard`/`View` in Habits), **SleepQualityEngine** (`SleepQualityCard` in Analysis), **WeeklyReviewEngine** (`WeeklyReviewCard`/`View` in Analysis). NB: the engine's insight type is `DataInsight` (renamed to avoid clashing with the existing AI nutrition `Insight`).
+
+### Hero labels + comprehensive strain (`acff39d`)
+- `RecoveryStrainHero` chips now read **RECOVERY/STRAIN** (band advice moved into the sheets); strain side is tappable.
+- New `StrainDetailView` mirrors recovery: cardio-vs-mechanical split, 21-day strain trend, week-over-week load, band guidance, managing-strain tips. `StrainCalculator` extended **additively** (`Score.components` + `daySeries(...)`; existing `compute` API unchanged).
+
+---
+
+## Open items (2026-06-03, priority order)
+
+1. **App Store rejection (2.1(b)):** remove the "Restore Purchases" / subscription references OR submit the IAP product. Blocks release.
+2. **Re-archive for TestFlight** — bump `CURRENT_PROJECT_VERSION` first. Huge iOS delta this session.
+3. **Verify on real device:** the whole Fitbit chain (HRV + sleep stages now parse), the Canvas hypnogram (no longer freezes), previous-day nav, the new insight cards, and the strain detail. Most were build-verified only, not run by the agent.
+4. **Gemini paid tier / AI Gateway** if voice/photo reliability matters — free-tier 429 daily quota is a hard ceiling (retry only fixes transient 503s).
+5. New insight engines need a few days of synced history to be meaningful (they show "not enough data" empty states until then).
+6. Still placeholder: Body screen, APNs/push, recipe builder, Apple Watch companion, light-mode literal-color sweep.
+7. Revert the raw-SQL Drizzle bypasses once Neon schema is confirmed (unchanged from prior handoff).
+
+## New gotchas (2026-06-03)
+
+1. **Swift Charts hangs the main thread** with an ordinal/array y-domain (`.chartYScale(domain: [3,2,1,0])`) mixed with `RectangleMark` + `LineMark`. The sleep hypnogram froze on this. Use a **Canvas** for stage-timeline / lane charts; keep Swift Charts to continuous line/area only.
+2. **Don't put `.pressable()` (a `minimumDistance:0` DragGesture) on a view that triggers a NavigationStack push** — it times out the gesture gate and hangs the push half-open ("System gesture gate timed out"). Prefer `.sheet`/`.fullScreenCover` for detail screens (that's why recovery/strain/sleep details are sheets/covers).
+3. **Live Fitbit/Google Health shapes (June 2026):** HRV value = `rootMeanSquareOfSuccessiveDifferencesMilliseconds`; sleep stages = `sleep.stages[] = [{ type, startTime, endTime }]` (NOT `stage`/`interval`). The API shifted after its May breaking-change window — watch for more drift. `[gh-sync] fetch errors` now logs swallowed per-metric failures.
+4. **`vercel logs <url>` is a tiny snapshot, not a stream** — to capture a specific request's logs, log it as the *last* line of the handler or tail while firing the request.
+5. **macOS `sed` has no `\b`** — use `perl -i -pe` for word-boundary renames.
+6. Two top-level `Insight` types would clash — the on-device engine's is `DataInsight`; the AI nutrition one stays `Insight`.
+
+---
+
+## What the prior session shipped (since 2026-05-26)
 
 ### Auth & Google Health (server) — fully fixed end-to-end
 The full Google login + Google Health connect + sync chain was broken in multiple places. Now working:
