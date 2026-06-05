@@ -149,7 +149,6 @@ struct AnalysisView: View {
                 .padding(.horizontal, 14)
                 .padding(.top, 8)
             }
-            .background(LifeOSColor.base.ignoresSafeArea())
             .navigationTitle("Analysis")
             .navigationBarTitleDisplayMode(.large)
             .onAppear {
@@ -474,10 +473,10 @@ struct AnalysisView: View {
                 }
             }
             .chartForegroundStyleScale([
-                "Deep":  Color(hex: 0x1E40AF),
-                "Core":  Color(hex: 0x60A5FA),
-                "REM":   Color(hex: 0xA78BFA),
-                "Awake": Color(hex: 0xF43F5E),
+                "Deep":  LifeOSColor.SleepStage.deep,
+                "Core":  LifeOSColor.SleepStage.light,
+                "REM":   LifeOSColor.SleepStage.rem,
+                "Awake": LifeOSColor.SleepStage.awake,
             ])
             .chartLegend(position: .bottom, alignment: .center, spacing: 8)
             .chartYAxis {

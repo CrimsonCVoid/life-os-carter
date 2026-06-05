@@ -38,7 +38,7 @@ struct EmptyStateCard<Trailing: View>: View {
             VStack(spacing: 4) {
                 Text(title)
                     .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(LifeOSColor.fg)
                     .multilineTextAlignment(.center)
                 Text(subtitle)
                     .font(.system(size: 12))

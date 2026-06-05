@@ -26,7 +26,7 @@ struct SettingsView: View {
             .padding(.horizontal, 16)
             .padding(.top, 8)
         }
-        .background(LifeOSColor.base.ignoresSafeArea())
+        .background(AmbientBackground().ignoresSafeArea())
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
     }

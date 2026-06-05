@@ -88,7 +88,6 @@ struct NutritionView: View {
                 .padding(.horizontal, 14)
                 .padding(.top, 8)
             }
-            .background(LifeOSColor.base.ignoresSafeArea())
             .navigationTitle("Nutrition")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {

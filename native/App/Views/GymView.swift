@@ -43,7 +43,6 @@ struct GymView: View {
                 .padding(.horizontal, 14)
                 .padding(.top, 8)
             }
-            .background(LifeOSColor.base.ignoresSafeArea())
             .onAppear {
                 if !revealed { revealed = true }
                 refreshRollup()
