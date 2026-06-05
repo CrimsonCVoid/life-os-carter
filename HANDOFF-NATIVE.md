@@ -9,16 +9,52 @@ cd ~/Downloads/life-os-hbrady && ./scripts/handoff-native.sh
 
 ---
 
-## State (2026-06-03)
+## State (2026-06-04)
 
-- **Branch:** `native` at `acff39d`
-- **Working tree:** clean
-- **Pushed to:** `origin/native`, `life-os-dev/native`, `carter/native:main` — all at `acff39d`
-- **Builds:** iOS `xcodebuild` **BUILD SUCCEEDED**; web `npm run build` clean. Both verified green this session.
-- **Big delta since last archive** — lots of iOS-side work (see below) needs a **re-archive** for TestFlight. Bump `CURRENT_PROJECT_VERSION` first (widget `CFBundleVersion` too if Xcode complains).
-- **Gemini key:** the previously-leaked `GEMINI_API_KEY` has been **rotated and is live** (verified: Coach + food-photo return 200). The old handoff's "revoked" note is stale.
-- **App Store:** v1.0 was **rejected** (Guideline 2.1(b)) — the app references a "subscription" (a "Restore Purchases" menu item) with no IAP product submitted. NOT addressed this session (user said a screenshot/message was for a different context). To pass: either remove the Restore-Purchases/subscription references or submit the IAP. Files to grep: anything with "Restore Purchases" / StoreKit.
-- **Vercel:** production (`carter/native:main` → `life-os-carter.vercel.app`) is healthy and current.
+- **Branch:** `native` at `e780df2`
+- **Working tree:** clean (`.env.local` has an untracked, gitignored `USDA_FDC_API_KEY` — see below)
+- **Pushed to:** `origin/native`, `life-os-dev/native`, `carter/native:main` — all at `e780df2`. (3 refs only — NEVER also push `carter native`; same Vercel project, doubles the build.)
+- **Builds:** iOS `xcodebuild` **BUILD SUCCEEDED** (verified green after every commit this session). Web not touched this session.
+- **Big delta since last archive** — large iOS-side work needs a **re-archive** for TestFlight. Bump `CURRENT_PROJECT_VERSION` first (widget `CFBundleVersion` too if Xcode complains).
+- **Gemini key:** rotated and live (Coach + food-photo 200). Unchanged this session.
+- **App Store:** v1.0 still **rejected** (Guideline 2.1(b)) — "Restore Purchases"/subscription reference with no IAP. NOT addressed. Blocks release: remove the reference or submit the IAP.
+- **USDA FoodData Central key** (for the planned food-DB wave): the user provided it; it's stashed in gitignored `.env.local` as `USDA_FDC_API_KEY`. When the food-search wave lands, it must be proxied SERVER-SIDE via a new `/api/food-search` Vercel route (never ship the key in the app binary) and added to Vercel env as `USDA_FDC_API_KEY`.
+- **Vercel:** production (`carter/native:main` → `life-os-carter.vercel.app`) healthy and current.
+
+---
+
+## "Make it amazing" overhaul program (started 2026-06-04)
+
+User asked to add more data/insights/graphs, completely overhaul the UI/UX, and add more integrations. Via AskUserQuestion they chose: **whole-app visual refresh; ALL 4 integrations** (deeper HealthKit, richer food DB, Apple Watch, Strava/Oura/Weather); **ALL 4 insight domains** (cross-domain correlation engine, nutrition intelligence, recovery/readiness forecast, body/training periodization). Runs as **WAVES**, each a green `xcodebuild` + commit/push to the 3 refs. Design specs for each wave were produced by parallel sub-agent workflows and live in `/tmp/overhaul2/` (visual) and `/tmp/overhaul3/` (insights) — **these are scratch and may be gone; the committed code is the source of truth.**
+
+**Wave status (2026-06-04):**
+
+| Wave | Status |
+|---|---|
+| 1 — Design system | 🟡 **Foundation shipped** (`054998d`): removed the opaque `.background(LifeOSColor.base)` overrides on the 5 tab screens so the `AmbientBackground` mesh shows through the glass (Settings is pushed → gets its own `AmbientBackground`); premium `ScoreRing`/`ProgressRing` (new `LifeOSGradient.ring` sweep + cap glow + adaptive `.fg` center text); sleep-stage inline-hex → `LifeOSColor.SleepStage`. New `App/Theme/LifeOSGradient.swift`. **Deferred:** the deeper primitive system (StatTile/Controls/Card variants/SectionHeader unification) + per-screen restyle from `/tmp/overhaul2/B,C,D` — held for device check. |
+| 2 — Insights + graphs | ✅ **Shipped** — `4325139` "Your levers" (`LeversEngine`+`LeversCard`, `InsightStats.swift`, weekly story, 3-night debt→mood lag); `e8386cd` readiness forecast (`ReadinessForecastEngine`+card+`ReadinessCalendarStrip`); `08cb3fe` nutrition intelligence (`NutritionIntelligenceEngine`+`NutritionDeepDiveView`+4 charts, feed emitters); `e780df2` Body screen (`BodyCompositionEngine`+`BodyView`, `UserSettings.goalWeightLb`). **Deferred:** forecast detail-view trajectory/debt charts + its feed emitters (spec `/tmp/overhaul3/C-forecast.md` §3.2/3.3/5/6); training **periodization** engine + tape **measurements** `@Model` + HealthKit body-fat/lean (spec `/tmp/overhaul3/D-body-training.md` PART 2/3/4). |
+| 3 — Deeper HealthKit | ⬜ Queued (auto-detect workouts, mindfulness, SpO₂/resp rate, HR zones). No external deps. |
+| 4 — Food DB + recipes | ⬜ Queued. **USDA key ready** (`.env.local`). Build `/api/food-search` proxy + Swift client + searchable DB + recipe builder. |
+| 5 — Apple Watch | ⬜ Queued. Separate watchOS target; needs user signing to run on device. |
+| 6 — Strava/Oura/Weather | ⬜ Queued. **Needs user credentials** (Strava API app, Oura token, Apple WeatherKit entitlement) — build scaffolding + routes, dormant until keys. |
+| **L — LiDAR body scan** | ⬜ **Planned (see dedicated section below).** Auto-feeds the Body screen's measurements + a 3D-mesh-over-time view. iPhone **12 Pro and up only** (LiDAR-gated). |
+
+**Discipline:** elevate the existing dark/glass aesthetic, don't replace it. Build green every commit. Visual quality NEEDS the user's eyes on a device between waves — agent can't judge aesthetics blind. Insight cards show "learning"/empty states until ~1–2 weeks of synced history exist.
+
+---
+
+## Wave L — LiDAR body scan (planned; iPhone 12 Pro+)
+
+User wants objective, **fully-local** body scans via the phone's built-in LiDAR, feeding the Body screen. Honest scoping decided 2026-06-04:
+
+- **Hardware gate:** LiDAR is on **Pro / Pro Max only — iPhone 12 Pro and later** (NOT the base/Plus 12s). Must detect `ARWorldTrackingConfiguration.supportsSceneReconstruction` / device capability and show a graceful "Pro-device required" state on everything else. This is a Pro-only feature by hardware necessity.
+- **This is a BETTER LiDAR use case than the rejected food-volume one** — bodies are large, smooth, convex; circumference extraction is far more tractable than irregular food volume. (The handoff "do NOT add LiDAR to Nutrition" rule still stands — that was about FOOD. Body is different and is user-requested.)
+- **Pipeline (recommended):** Apple **Object Capture / RealityKit** (photogrammetry + LiDAR for scale) — runs **on-device since iOS 17**. LiDAR alone is too low-res; Object Capture is the real path. Output = a USDZ mesh.
+- **Hard part is capture UX, not the tech:** you can't orbit yourself. Needs a guided "rotate in front of a mirror" or "hand to a friend / use a tripod" flow.
+- **Measurement extraction:** slice the mesh at waist/chest/hip/arm/thigh heights → compute each cross-section perimeter → objective tape measurements (~±1–2 cm achievable; sensitive to clothing/pose). Geometry work, doable.
+- **Storage = 100% local:** the USDZ mesh is a blob (Application Support / IDB-equivalent), only the derived measurements + the blob key persist in SwiftData; **mesh blobs never sync to Neon** (mirrors the existing audio/photo/meal-photo blob pattern).
+- **Build plan when the wave runs:** (1) ship the deferred `BodyMeasurement` `@Model` (register in `LifeOSApp` Schema) so scans + manual entries share one store; (2) `BodyScanManager` (RealityKit Object Capture); (3) guided capture flow + mesh→circumference extraction; (4) a mesh-over-time compare view on the Body screen; (5) Pro-device capability gate + non-Pro fallback (manual tape entry, already designed in spec D PART 6.3 `AddMeasurementSheet`).
+- **CANNOT be verified building-blind** — needs a real LiDAR device (sim has no LiDAR/Object Capture). So unlike the other waves, this one requires on-device testing at each step. Design it fully before coding.
 
 ---
 
