@@ -27,6 +27,7 @@ struct NutritionView: View {
     @State private var manualOpen = false
     @State private var quickAddOpen = false
     @State private var searchOpen = false
+    @State private var recipesOpen = false
     @State private var savingFavorite: MealLog?
     @State private var editingMeal: MealLog?
     @State private var lookupError: String?
@@ -109,6 +110,12 @@ struct NutritionView: View {
                         }
                         Button {
                             Haptics.tap()
+                            recipesOpen = true
+                        } label: {
+                            Label("Recipes", systemImage: "list.bullet.rectangle.portrait")
+                        }
+                        Button {
+                            Haptics.tap()
                             manualOpen = true
                         } label: {
                             Label("Full entry", systemImage: "square.and.pencil")
@@ -135,6 +142,9 @@ struct NutritionView: View {
             }
             .sheet(isPresented: $searchOpen) {
                 FoodSearchSheet()
+            }
+            .sheet(isPresented: $recipesOpen) {
+                RecipesView()
             }
             .sheet(item: $savingFavorite) { meal in
                 SaveAsFavoriteSheet(meal: meal)

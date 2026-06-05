@@ -7,6 +7,10 @@ import SwiftData
 /// NavigationStack); the portion editor is a nested sheet so no push-gesture
 /// gotcha applies.
 struct FoodSearchSheet: View {
+    /// When set, picking a food + portion calls this with (item, grams) instead
+    /// of logging a MealLog — used by the recipe builder to add an ingredient.
+    var onPick: ((FoodSearchItem, Double) -> Void)? = nil
+
     @Environment(\.modelContext) private var ctx
     @Environment(\.dismiss) private var dismiss
 
@@ -31,7 +35,7 @@ struct FoodSearchSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
             }
             .sheet(item: $selected) { item in
-                PortionEntrySheet(item: item) { dismiss() }
+                PortionEntrySheet(item: item, onPick: onPick) { dismiss() }
             }
         }
     }
@@ -149,14 +153,16 @@ struct FoodSearchSheet: View {
 /// logs a MealLog scaled from the per-100g basis on confirm.
 private struct PortionEntrySheet: View {
     let item: FoodSearchItem
+    var onPick: ((FoodSearchItem, Double) -> Void)?
     var onLogged: () -> Void
 
     @Environment(\.modelContext) private var ctx
     @Environment(\.dismiss) private var dismiss
     @State private var grams: Double
 
-    init(item: FoodSearchItem, onLogged: @escaping () -> Void) {
+    init(item: FoodSearchItem, onPick: ((FoodSearchItem, Double) -> Void)? = nil, onLogged: @escaping () -> Void) {
         self.item = item
+        self.onPick = onPick
         self.onLogged = onLogged
         _grams = State(initialValue: item.serving.size.flatMap { $0 > 0 ? $0 : nil } ?? 100)
     }
@@ -177,9 +183,20 @@ private struct PortionEntrySheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("Add") { log() } }
+                ToolbarItem(placement: .confirmationAction) { Button("Add") { add() } }
             }
             .presentationDetents([.medium, .large])
+        }
+    }
+
+    private func add() {
+        if let onPick {
+            onPick(item, grams)
+            Haptics.success()
+            dismiss()
+            onLogged()
+        } else {
+            log()
         }
     }
 

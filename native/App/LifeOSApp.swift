@@ -30,6 +30,7 @@ struct LifeOSApp: App {
             HRDaySeries.self,
             SleepNight.self,
             BodyMeasurement.self,
+            Recipe.self,
         ])
         let configuration = ModelConfiguration(
             schema: schema,
