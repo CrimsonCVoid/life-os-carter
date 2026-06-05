@@ -36,6 +36,7 @@ struct AnalysisView: View {
     @State private var srBalance: StrainRecoveryBalance = .empty
     @State private var showSRDetail = false
     @State private var levers: [LeversBoard] = []
+    @State private var forecast: ReadinessForecast = .empty
 
     // Inputs for the on-device SleepQualityCard + the Insights teaser.
     private static let ymdFmt: DateFormatter = {
@@ -137,6 +138,7 @@ struct AnalysisView: View {
                         .simultaneousGesture(TapGesture().onEnded { Haptics.tap() })
                     }
                     revealCard(delay: 0.09) { strainRecoveryBalanceCardWrapped }
+                    revealCard(delay: 0.095) { ReadinessForecastCard(forecast: forecast) }
                     revealCard(delay: 0.10) { caloriesBurnedCard }
                     revealCard(delay: 0.12) { distanceTrendCard }
                     revealCard(delay: 0.14) { vo2MaxCard }
@@ -189,6 +191,8 @@ struct AnalysisView: View {
                 days: 30, asOf: Date()
             )
             levers = InsightsEngine.levers(daily: dailies, meals: meals, lifts: sessions, settings: settings)
+            forecast = ReadinessForecastEngine.compute(
+                dailies: dailies, sessions: sessions, settings: settings, asOf: Date())
         }
     }
 
