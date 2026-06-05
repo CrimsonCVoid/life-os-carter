@@ -35,6 +35,8 @@ final class HealthKitManager {
             .heartRateVariabilitySDNN,
             .activeEnergyBurned,
             .bodyMass,
+            .bodyFatPercentage,
+            .leanBodyMass,
             .dietaryWater,
         ] {
             if let t = HKObjectType.quantityType(forIdentifier: id) {
@@ -312,6 +314,21 @@ final class HealthKitManager {
         return kg / 0.45359237
     }
 
+    /// Latest body-fat fraction (0…1) within `hours`, or nil. Smart-scale data.
+    func fetchLatestBodyFat(within hours: Int = 24 * 30) async -> Double? {
+        await fetchLatestSample(of: .bodyFatPercentage, unit: .percent(), within: hours)
+    }
+
+    /// Latest lean body mass in lb within `hours`, or nil.
+    func fetchLatestLeanMassLb(within hours: Int = 24 * 30) async -> Double? {
+        guard let kg = await fetchLatestSample(
+            of: .leanBodyMass,
+            unit: HKUnit.gramUnit(with: .kilo),
+            within: hours
+        ) else { return nil }
+        return kg / 0.45359237
+    }
+
     private func fetchLatestSample(
         of id: HKQuantityTypeIdentifier,
         unit: HKUnit,
@@ -390,6 +407,8 @@ final class HealthKitManager {
         async let hrv = fetchLatestHRV()
         async let rhr = fetchLatestRHR()
         async let weight = fetchLatestWeightLb()
+        async let bodyFat = fetchLatestBodyFat()
+        async let leanMass = fetchLatestLeanMassLb()
         async let stepsD = fetchSum(of: .stepCount, in: HKUnit.count(), from: dayStart)
         async let waterOz = fetchSum(of: .dietaryWater, in: .fluidOunceUS(), from: dayStart)
         async let hrvBase = fetchBaseline(of: .heartRateVariabilitySDNN,
@@ -397,8 +416,8 @@ final class HealthKitManager {
         async let rhrBase = fetchBaseline(of: .restingHeartRate,
                                           unit: HKUnit.count().unitDivided(by: .minute()), days: 14)
 
-        let (sleepBd, hrvV, rhrV, weightV, stepsV, waterV, hrvBaseV, rhrBaseV) =
-            await (sleepBreakdown, hrv, rhr, weight, stepsD, waterOz, hrvBase, rhrBase)
+        let (sleepBd, hrvV, rhrV, weightV, bodyFatV, leanV, stepsV, waterV, hrvBaseV, rhrBaseV) =
+            await (sleepBreakdown, hrv, rhr, weight, bodyFat, leanMass, stepsD, waterOz, hrvBase, rhrBase)
 
         await MainActor.run {
             // Locate (or create) today's DailyEntry row.
@@ -419,6 +438,8 @@ final class HealthKitManager {
             row.hrvMs = hrvV
             row.restingHr = rhrV
             row.weightLb = weightV ?? row.weightLb
+            row.bodyFatPct = bodyFatV ?? row.bodyFatPct
+            row.leanMassLb = leanV ?? row.leanMassLb
             row.steps = stepsV > 0 ? Int(stepsV) : row.steps
             // HealthKit water > 0 wins; otherwise preserve any in-app log.
             if waterV > 0 { row.waterOz = waterV }

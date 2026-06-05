@@ -20,6 +20,14 @@ enum WeightUnit: String {
         }
     }
 
+    /// Display value in the chosen unit → pounds (round-trips `display`).
+    func lb(fromDisplay v: Double) -> Double {
+        switch self {
+        case .lb: return v
+        case .kg: return v / 0.45359237
+        }
+    }
+
     /// Format a pound value as "182 lb" or "82.6 kg" — single integer
     /// digit for lb (whole pounds), single decimal for kg (more
     /// granular). Mirrors how Apple Health and Whoop render weights.

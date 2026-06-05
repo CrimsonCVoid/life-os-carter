@@ -54,6 +54,11 @@ final class DailyEntry {
     var distanceMeters: Double?
     var floors: Int?
     var vo2Max: Double?
+    /// Body composition from HealthKit (.bodyFatPercentage as 0…1 fraction,
+    /// .leanBodyMass in lb). nil = not synced. Additive optionals →
+    /// lightweight migration on existing rows.
+    var bodyFatPct: Double?
+    var leanMassLb: Double?
 
     init(
         date: String,

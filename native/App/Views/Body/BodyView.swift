@@ -2,17 +2,21 @@ import SwiftUI
 import SwiftData
 import Charts
 
-/// The Body screen — body-composition trajectory. Reached as a drill-in push
-/// from AnalysisView's body-composition card. Computes its own snapshot off
-/// @Query data and caches it; recompute on appear + on weigh-in count changes.
-/// (Tape measurements + HealthKit body-fat/lean are a planned follow-up.)
+/// The Body screen — body-composition trajectory + tape measurements. Reached
+/// as a drill-in push from AnalysisView's body-composition card. Computes its
+/// own snapshot off @Query data and caches it; recompute on appear + on
+/// weigh-in / measurement count changes. Body-fat / lean cards stay empty until
+/// a smart scale syncs to HealthKit.
 struct BodyView: View {
     @Environment(\.modelContext) private var ctx
     @Query private var dailies: [DailyEntry]
+    @Query(sort: \BodyMeasurement.loggedAt, order: .reverse) private var measurements: [BodyMeasurement]
     @Query private var settingsRows: [UserSettings]
 
     @State private var snapshot: BodyCompositionResult = .empty
     @State private var scrubWeight: TrendPoint?
+    @State private var scrubBF: TrendPoint?
+    @State private var showAddMeasurement = false
 
     private var unit: WeightUnit { WeightUnit.from(settingsRows.first?.weightUnit ?? "lb") }
     private var goalLb: Double? { settingsRows.first?.goalWeightLb }
@@ -31,8 +35,10 @@ struct BodyView: View {
                     trajectoryCard
                     if let g = snapshot.goal { goalStrip(g) }
                     if snapshot.bmi != nil { bmiCard }
-                    bodyFatEmpty
+                    bodyFatCard
+                    if !snapshot.leanMassTrend.isEmpty { leanMassCard }
                 }
+                measurementsCard          // always shown — its own empty state
                 Spacer(minLength: 60)
             }
             .padding(.horizontal, 14).padding(.top, 8)
@@ -42,12 +48,26 @@ struct BodyView: View {
         .navigationBarTitleDisplayMode(.large)
         .onAppear { refresh() }
         .onChange(of: dailies.count) { _, _ in refresh() }
+        .onChange(of: measurements.count) { _, _ in refresh() }
         .onChange(of: goalLb) { _, _ in refresh() }
+        .sheet(isPresented: $showAddMeasurement) {
+            AddMeasurementSheet(unit: unit)
+        }
     }
 
     private func refresh() {
         snapshot = BodyCompositionEngine.compute(
-            dailies: dailies, goalWeightLb: goalLb, heightCm: settingsRows.first?.heightCm)
+            dailies: dailies,
+            goalWeightLb: goalLb,
+            heightCm: settingsRows.first?.heightCm,
+            bodyFatSeries: dailies.compactMap { d in
+                guard let v = d.bodyFatPct, let dt = Self.ymd.date(from: d.date) else { return nil }
+                return (Calendar.current.startOfDay(for: dt), v * 100)   // fraction → %
+            }.sorted { $0.0 < $1.0 },
+            leanMassSeries: dailies.compactMap { d in
+                guard let v = d.leanMassLb, let dt = Self.ymd.date(from: d.date) else { return nil }
+                return (Calendar.current.startOfDay(for: dt), v)
+            }.sorted { $0.0 < $1.0 })
     }
 
     // MARK: Hero
@@ -205,12 +225,96 @@ struct BodyView: View {
         }
     }
 
-    private var bodyFatEmpty: some View {
-        EmptyStateCard(
-            icon: "percent",
-            title: "Body-fat tracking",
-            subtitle: "Sync a smart scale to Apple Health and your body-fat % and lean-mass trends land here.",
-            tint: LifeOSColor.Metric.fat)
+    @ViewBuilder private var bodyFatCard: some View {
+        let pts = snapshot.bodyFatTrend.map { TrendPoint(day: $0.day, value: $0.ema) }
+        if pts.count < 2 {
+            EmptyStateCard(
+                icon: "percent",
+                title: "No body-fat data",
+                subtitle: "Sync a smart scale to Apple Health and your body-fat % trend lands here.",
+                tint: LifeOSColor.Metric.fat)
+        } else {
+            Card {
+                VStack(alignment: .leading, spacing: 12) {
+                    cardHeader("COMPOSITION", "Body fat %", LifeOSColor.Metric.fat)
+                    ScrubbableTrendChart(
+                        points: pts, tint: LifeOSColor.Metric.fat,
+                        average: pts.map(\.value).reduce(0, +) / Double(pts.count),
+                        showArea: true, showPoints: pts.count <= 45,
+                        valueFormat: { String(format: "%.1f%%", $0) },
+                        yAxisFormat: { String(format: "%.0f", $0) },
+                        onScrub: { scrubBF = $0 })
+                    .frame(height: 150)
+                    HStack(spacing: 12) {
+                        stat("CURRENT", snapshot.latestBodyFatPct.map { String(format: "%.1f%%", $0) } ?? "—", LifeOSColor.Metric.fat)
+                        stat("RATE", snapshot.bodyFatRatePctPerMonth.map { String(format: "%+.1f%%/mo", $0) } ?? "—",
+                             (snapshot.bodyFatRatePctPerMonth ?? 0) <= 0 ? LifeOSColor.success : LifeOSColor.warning)
+                    }
+                }
+            }
+        }
+    }
+
+    private var leanMassCard: some View {
+        let pts = snapshot.leanMassTrend.map { TrendPoint(day: $0.day, value: unit.display(fromLb: $0.ema)) }
+        return Card {
+            VStack(alignment: .leading, spacing: 12) {
+                cardHeader("COMPOSITION", "Lean body mass", LifeOSColor.Metric.peak)
+                ScrubbableTrendChart(
+                    points: pts, tint: LifeOSColor.Metric.peak,
+                    average: nil, showArea: false, showPoints: pts.count <= 45,
+                    valueFormat: { String(format: "%.1f \(unit.label)", $0) },
+                    yAxisFormat: { String(format: "%.0f", $0) })
+                .frame(height: 140)
+                stat("CURRENT", snapshot.latestLeanMassLb.map { unit.formatted(fromLb: $0) } ?? "—", LifeOSColor.Metric.peak)
+            }
+        }
+    }
+
+    private var measurementsCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    cardHeader("MEASUREMENTS", "Tape log", LifeOSColor.accent)
+                    Spacer()
+                    Button { Haptics.tap(); showAddMeasurement = true } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus.circle.fill").font(.system(size: 13, weight: .semibold))
+                            Text("Log").font(.system(size: 12, weight: .semibold))
+                        }.foregroundStyle(LifeOSColor.accent)
+                    }.buttonStyle(.plain)
+                }
+                if let latest = measurements.first {
+                    let prior = measurements.dropFirst().first
+                    ForEach(latest.presentSites, id: \.label) { site in
+                        measurementRow(site, prior: prior)
+                    }
+                    Text("Last logged \(Self.shortDate(latest.loggedAt))")
+                        .font(.system(size: 10)).foregroundStyle(LifeOSColor.fg3)
+                } else {
+                    Text("No measurements yet. Tap Log to record waist, chest, arms, and more — we'll track the deltas.")
+                        .font(.system(size: 12)).foregroundStyle(LifeOSColor.fg2)
+                }
+            }
+        }
+    }
+
+    private func measurementRow(_ site: (label: String, cm: Double), prior: BodyMeasurement?) -> some View {
+        let imperial = unit == .lb
+        func fmt(_ cm: Double) -> String { imperial ? String(format: "%.1f in", cm / 2.54) : String(format: "%.1f cm", cm) }
+        let priorCm = prior?.presentSites.first { $0.label == site.label }?.cm
+        let delta = priorCm.map { site.cm - $0 }
+        return HStack {
+            Text(site.label).font(.system(size: 13, weight: .semibold)).foregroundStyle(LifeOSColor.fg)
+            Spacer()
+            Text(fmt(site.cm)).font(.system(size: 14, weight: .bold).monospacedDigit()).foregroundStyle(LifeOSColor.fg)
+            if let d = delta, abs(d) > 0.05 {
+                Text("\(d < 0 ? "−" : "+")\(fmt(abs(d)))")
+                    .font(.system(size: 10, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(d < 0 ? LifeOSColor.success : LifeOSColor.warning)
+                    .frame(width: 64, alignment: .trailing)
+            }
+        }
     }
 
     // MARK: Shared
@@ -237,4 +341,7 @@ struct BodyView: View {
         }
     }
     private static func shortDate(_ d: Date) -> String { let f = DateFormatter(); f.dateFormat = "MMM d"; return f.string(from: d) }
+    private static let ymd: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.locale = Locale(identifier: "en_US_POSIX"); return f
+    }()
 }

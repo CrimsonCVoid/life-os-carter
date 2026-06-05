@@ -257,7 +257,49 @@ struct GoalsEditor: View {
                 doubleRow(label: "Water", unit: "oz",
                           tint: LifeOSColor.Metric.water,
                           value: $settings.waterGoalOz, step: 8, range: 16...256)
+                Divider().overlay(LifeOSColor.stroke)
+                goalWeightRow
             }
+        }
+    }
+
+    /// Optional target body weight. nil → "Add goal weight" affordance; set →
+    /// stepper in the user's display unit (stored as lb) with a clear button.
+    /// Drives the Body screen's goal ring + ETA projection.
+    @ViewBuilder private var goalWeightRow: some View {
+        let unit = WeightUnit.from(settings.weightUnit)
+        if let lb = settings.goalWeightLb {
+            let display = Binding<Double>(
+                get: { unit.display(fromLb: settings.goalWeightLb ?? lb) },
+                set: { settings.goalWeightLb = unit.lb(fromDisplay: $0); try? modelContext.save() })
+            HStack(spacing: 8) {
+                doubleRow(label: "Goal weight", unit: unit.label,
+                          tint: LifeOSColor.Metric.weight,
+                          value: display,
+                          step: unit == .lb ? 1 : 0.5,
+                          range: unit == .lb ? 80...400 : 36...180)
+                Button {
+                    settings.goalWeightLb = nil; try? modelContext.save(); Haptics.tick()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 18)).foregroundStyle(LifeOSColor.fg3)
+                }.buttonStyle(.plain)
+            }
+        } else {
+            Button {
+                settings.goalWeightLb = 160; try? modelContext.save(); Haptics.tap()
+            } label: {
+                HStack(spacing: 12) {
+                    Circle().fill(LifeOSColor.Metric.weight).frame(width: 8, height: 8)
+                    Text("Goal weight")
+                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(LifeOSColor.fg)
+                    Spacer()
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus.circle.fill").font(.system(size: 13, weight: .semibold))
+                        Text("Add").font(.system(size: 12, weight: .semibold))
+                    }.foregroundStyle(LifeOSColor.accent)
+                }
+            }.buttonStyle(.plain)
         }
     }
 
