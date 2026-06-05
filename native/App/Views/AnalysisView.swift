@@ -12,6 +12,7 @@ struct AnalysisView: View {
     @Query private var dailies: [DailyEntry]
     @Query private var sessions: [LiftSessionEntry]
     @Query private var meals: [MealLog]
+    @Query private var prRows: [PersonalRecord]
     @Query private var settingsRows: [UserSettings]
     @State private var range: TimeRange = .month
     @State private var cardsVisible = false
@@ -37,6 +38,8 @@ struct AnalysisView: View {
     @State private var showSRDetail = false
     @State private var levers: [LeversBoard] = []
     @State private var forecast: ReadinessForecast = .empty
+    @State private var period: PeriodizationSnapshot = .empty
+    @State private var showPeriodDetail = false
 
     // Inputs for the on-device SleepQualityCard + the Insights teaser.
     private static let ymdFmt: DateFormatter = {
@@ -144,6 +147,7 @@ struct AnalysisView: View {
                     revealCard(delay: 0.14) { vo2MaxCard }
                     revealCard(delay: 0.16) { hrvSleepCorrelation }
                     revealCard(delay: 0.20) { workoutConsistency }
+                    revealCard(delay: 0.22) { periodizationCard }
                     revealCard(delay: 0.24) {
                         drillIn(destination: stepsDetail) { activityByDayOfWeek }
                     }
@@ -193,6 +197,9 @@ struct AnalysisView: View {
             levers = InsightsEngine.levers(daily: dailies, meals: meals, lifts: sessions, settings: settings)
             forecast = ReadinessForecastEngine.compute(
                 dailies: dailies, sessions: sessions, settings: settings, asOf: Date())
+            period = PeriodizationEngine.compute(
+                sessions: sessions, prs: prRows,
+                acwr: srBalance.acwr, monotony: srBalance.monotony)
         }
     }
 
@@ -211,6 +218,96 @@ struct AnalysisView: View {
         .sheet(isPresented: $showSRDetail) {
             StrainRecoveryDetailView(balance: srBalance)
         }
+    }
+
+    /// Periodization summary → opens the full detail sheet (own NavigationStack).
+    private var periodizationCard: some View {
+        Button {
+            Haptics.tap()
+            showPeriodDetail = true
+        } label: {
+            analysisCard(
+                kicker: "PERIODIZATION",
+                title: "Where you are in your training cycle",
+                tint: period.phase.tint,
+                accessory: AnyView(
+                    HStack(spacing: 3) {
+                        Text("DETAIL").font(.system(size: 9, weight: .bold)).tracking(0.8)
+                        Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold))
+                    }.foregroundStyle(period.phase.tint)
+                )
+            ) {
+                if period.weeklyVolume.filter({ $0.total > 0 }).count < 2 {
+                    metricEmptyState(
+                        icon: "dumbbell.fill", tint: period.phase.tint,
+                        message: "Log a couple of training weeks and your phase, weekly volume, and progression land here.")
+                } else {
+                    HStack(spacing: 8) {
+                        Image(systemName: period.phase.icon).font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(period.phase.tint)
+                        Text(period.phase.rawValue).font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(LifeOSColor.fg)
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .background(period.phase.tint.opacity(0.12), in: Capsule())
+
+                    Text(period.phaseRationale).font(.system(size: 12)).foregroundStyle(LifeOSColor.fg2)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    periodWeeklyVolumeChart
+
+                    if let d = period.deload {
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "bed.double.fill").font(.system(size: 12))
+                                .foregroundStyle(LifeOSColor.warning)
+                            Text(d.reason).font(.system(size: 12)).foregroundStyle(LifeOSColor.fg)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(10)
+                        .background(LifeOSColor.warning.opacity(0.10), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .sheet(isPresented: $showPeriodDetail) {
+            PeriodizationDetailView(snapshot: period)
+        }
+    }
+
+    /// Compact stacked weekly-volume chart for the summary card. Continuous
+    /// Date x + Double y; muscle drives COLOR only (string-keyed scale), never
+    /// the axis — the sanctioned safe pattern.
+    private var periodWeeklyVolumeChart: some View {
+        struct Row: Identifiable { let id = UUID(); let week: Date; let muscle: String; let vol: Double }
+        var totals: [ExerciseCatalogItem.Muscle: Double] = [:]
+        for wv in period.weeklyVolume { for mv in wv.byMuscle { totals[mv.muscle, default: 0] += mv.volume } }
+        let ordered = totals.sorted { $0.value > $1.value }.map(\.key)
+        let domain = ordered.map(\.displayName)
+        let colors = ordered.map(\.chartTint)
+        let rows: [Row] = period.weeklyVolume.flatMap { wv in
+            wv.byMuscle.map { Row(week: wv.weekStart, muscle: $0.muscle.displayName, vol: $0.volume) }
+        }
+        return Chart(rows) { r in
+            BarMark(x: .value("Week", r.week, unit: .weekOfYear), y: .value("Volume", r.vol))
+                .foregroundStyle(by: .value("Muscle", r.muscle))
+                .cornerRadius(2)
+        }
+        .chartForegroundStyleScale(domain: domain, range: colors)
+        .chartLegend(position: .bottom, spacing: 6)
+        .chartYAxis {
+            AxisMarks(position: .leading) { _ in
+                AxisValueLabel().foregroundStyle(LifeOSColor.fg3)
+                AxisGridLine().foregroundStyle(LifeOSColor.stroke)
+            }
+        }
+        .chartXAxis {
+            AxisMarks(values: .stride(by: .weekOfYear)) { _ in
+                AxisValueLabel(format: .dateTime.month(.abbreviated).day())
+                    .foregroundStyle(LifeOSColor.fg3)
+            }
+        }
+        .frame(height: 160)
     }
 
     // MARK: - Series → TrendPoint adapters

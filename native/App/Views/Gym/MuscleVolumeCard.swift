@@ -46,7 +46,7 @@ struct MuscleVolumeCard: View {
         return HStack(spacing: 10) {
             Image(systemName: entry.muscle.icon)
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(tint(for: entry.muscle))
+                .foregroundStyle(entry.muscle.chartTint)
                 .frame(width: 18)
             Text(entry.muscle.displayName)
                 .font(.system(size: 12, weight: .semibold))
@@ -55,9 +55,9 @@ struct MuscleVolumeCard: View {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(tint(for: entry.muscle).opacity(0.15))
+                        .fill(entry.muscle.chartTint.opacity(0.15))
                     RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(tint(for: entry.muscle))
+                        .fill(entry.muscle.chartTint)
                         .frame(width: max(6, geo.size.width * fraction))
                 }
             }
@@ -69,16 +69,4 @@ struct MuscleVolumeCard: View {
         }
     }
 
-    private func tint(for muscle: ExerciseCatalogItem.Muscle) -> Color {
-        switch muscle {
-        case .chest:     return LifeOSColor.Metric.protein
-        case .back:      return LifeOSColor.Metric.sleep
-        case .shoulders: return LifeOSColor.warning
-        case .arms:      return LifeOSColor.Metric.peak
-        case .legs:      return LifeOSColor.success
-        case .glutes:    return LifeOSColor.Metric.calories
-        case .core:      return LifeOSColor.Metric.water
-        case .cardio:    return LifeOSColor.danger
-        }
-    }
 }

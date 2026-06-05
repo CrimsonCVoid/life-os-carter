@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 /// Resolves a freeform exercise name (logged in a LiftSessionEntry) to
 /// one of ExerciseCatalogItem.Muscle.* by checking the curated catalog
@@ -100,6 +101,21 @@ extension ExerciseCatalogItem.Muscle {
         case .glutes:    return "Glutes"
         case .core:      return "Core"
         case .cardio:    return "Cardio"
+        }
+    }
+
+    /// Single source of truth for the per-muscle chart color, shared by
+    /// MuscleVolumeCard and the periodization weekly-volume chart.
+    var chartTint: Color {
+        switch self {
+        case .chest:     return LifeOSColor.Metric.protein
+        case .back:      return LifeOSColor.Metric.sleep
+        case .shoulders: return LifeOSColor.warning
+        case .arms:      return LifeOSColor.Metric.peak
+        case .legs:      return LifeOSColor.success
+        case .glutes:    return LifeOSColor.Metric.calories
+        case .core:      return LifeOSColor.Metric.water
+        case .cardio:    return LifeOSColor.danger
         }
     }
 
