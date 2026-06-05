@@ -11,14 +11,14 @@ cd ~/Downloads/life-os-hbrady && ./scripts/handoff-native.sh
 
 ## State (2026-06-04)
 
-- **Branch:** `native` at `e780df2`
+- **Branch:** `native` at `1dd15f0` (session 2 added 7 commits `3a6f369`→`1dd15f0`)
 - **Working tree:** clean (`.env.local` has an untracked, gitignored `USDA_FDC_API_KEY` — see below)
-- **Pushed to:** `origin/native`, `life-os-dev/native`, `carter/native:main` — all at `e780df2`. (3 refs only — NEVER also push `carter native`; same Vercel project, doubles the build.)
-- **Builds:** iOS `xcodebuild` **BUILD SUCCEEDED** (verified green after every commit this session). Web not touched this session.
-- **Big delta since last archive** — large iOS-side work needs a **re-archive** for TestFlight. Bump `CURRENT_PROJECT_VERSION` first (widget `CFBundleVersion` too if Xcode complains).
+- **Pushed to:** `origin/native`, `life-os-dev/native`, `carter/native:main` — all at `1dd15f0`. (3 refs only — NEVER also push `carter native`; same Vercel project, doubles the build.)
+- **Builds:** iOS `xcodebuild` **BUILD SUCCEEDED** (verified green after every session-2 commit). Web: `/api/food-search` added, `tsc --noEmit` clean, route verified against live USDA.
+- **Version:** now `1.1 (3)` — `CURRENT_PROJECT_VERSION` bumped to `3` for the re-archive (`1dd15f0`). Widget Info.plist still hardcodes `1`/`1.0` (see session-2 gotcha 4).
 - **Gemini key:** rotated and live (Coach + food-photo 200). Unchanged this session.
-- **App Store:** v1.0 still **rejected** (Guideline 2.1(b)) — "Restore Purchases"/subscription reference with no IAP. NOT addressed. Blocks release: remove the reference or submit the IAP.
-- **USDA FoodData Central key** (for the planned food-DB wave): the user provided it; it's stashed in gitignored `.env.local` as `USDA_FDC_API_KEY`. When the food-search wave lands, it must be proxied SERVER-SIDE via a new `/api/food-search` Vercel route (never ship the key in the app binary) and added to Vercel env as `USDA_FDC_API_KEY`.
+- **App Store:** v1.0 still **rejected** (Guideline 2.1(b)). Session-2 finding: the "Restore Purchases"/subscription reference is **NOT in the codebase** — it's in App Store Connect metadata. Edit the listing on Apple; no code change.
+- **⚠️ USDA_FDC_API_KEY must be added to Vercel env** (Prod+Preview) for food-search to work in production — returns 503 until then. Key is in gitignored `.env.local`. The server proxy (`/api/food-search`) shipped this session and never ships the key in the app binary.
 - **Vercel:** production (`carter/native:main` → `life-os-carter.vercel.app`) healthy and current.
 
 ---
@@ -27,14 +27,14 @@ cd ~/Downloads/life-os-hbrady && ./scripts/handoff-native.sh
 
 User asked to add more data/insights/graphs, completely overhaul the UI/UX, and add more integrations. Via AskUserQuestion they chose: **whole-app visual refresh; ALL 4 integrations** (deeper HealthKit, richer food DB, Apple Watch, Strava/Oura/Weather); **ALL 4 insight domains** (cross-domain correlation engine, nutrition intelligence, recovery/readiness forecast, body/training periodization). Runs as **WAVES**, each a green `xcodebuild` + commit/push to the 3 refs. Design specs for each wave were produced by parallel sub-agent workflows and live in `/tmp/overhaul2/` (visual) and `/tmp/overhaul3/` (insights) — **these are scratch and may be gone; the committed code is the source of truth.**
 
-**Wave status (2026-06-04):**
+**Wave status (updated 2026-06-04, session 2 — build is now `1.1 (3)`):**
 
 | Wave | Status |
 |---|---|
 | 1 — Design system | 🟡 **Foundation shipped** (`054998d`): removed the opaque `.background(LifeOSColor.base)` overrides on the 5 tab screens so the `AmbientBackground` mesh shows through the glass (Settings is pushed → gets its own `AmbientBackground`); premium `ScoreRing`/`ProgressRing` (new `LifeOSGradient.ring` sweep + cap glow + adaptive `.fg` center text); sleep-stage inline-hex → `LifeOSColor.SleepStage`. New `App/Theme/LifeOSGradient.swift`. **Deferred:** the deeper primitive system (StatTile/Controls/Card variants/SectionHeader unification) + per-screen restyle from `/tmp/overhaul2/B,C,D` — held for device check. |
-| 2 — Insights + graphs | ✅ **Shipped** — `4325139` "Your levers" (`LeversEngine`+`LeversCard`, `InsightStats.swift`, weekly story, 3-night debt→mood lag); `e8386cd` readiness forecast (`ReadinessForecastEngine`+card+`ReadinessCalendarStrip`); `08cb3fe` nutrition intelligence (`NutritionIntelligenceEngine`+`NutritionDeepDiveView`+4 charts, feed emitters); `e780df2` Body screen (`BodyCompositionEngine`+`BodyView`, `UserSettings.goalWeightLb`). **Deferred:** forecast detail-view trajectory/debt charts + its feed emitters (spec `/tmp/overhaul3/C-forecast.md` §3.2/3.3/5/6); training **periodization** engine + tape **measurements** `@Model` + HealthKit body-fat/lean (spec `/tmp/overhaul3/D-body-training.md` PART 2/3/4). |
-| 3 — Deeper HealthKit | ⬜ Queued (auto-detect workouts, mindfulness, SpO₂/resp rate, HR zones). No external deps. |
-| 4 — Food DB + recipes | ⬜ Queued. **USDA key ready** (`.env.local`). Build `/api/food-search` proxy + Swift client + searchable DB + recipe builder. |
+| 2 — Insights + graphs | ✅ **FULLY SHIPPED.** Original session: `4325139` levers, `e8386cd` readiness forecast, `08cb3fe` nutrition intelligence, `e780df2` Body screen. Session 2 closed the deferred items: `3a6f369` body-composition completion (`BodyMeasurement` `@Model` + Schema, `AddMeasurementSheet`, HK body-fat/lean fields+fetch+sync, real body-fat/lean cards, goal-weight setter in GoalsEditor, `WeightUnit.lb(fromDisplay:)`); `9d65ec0` `PeriodizationEngine`+card+`PeriodizationDetailView`+shared `Muscle.chartTint`; `0f3bebb` `ReadinessForecastDetailView` (trajectory cones + debt curve + driver bars) + tappable card + `InsightsEngine.readinessForecast` feed emitter. |
+| 3 — Deeper HealthKit | 🟡 **Slice shipped** (`b088568`): SpO₂ + respiratory-rate vitals — `DailyEntry.spo2Pct/respiratoryRate`, `.oxygenSaturation`/`.respiratoryRate` read types + fetch + sync, `Metric.spo2/respiratory` tokens, gated Today vital row (only shows once synced). **Remaining (device-verification-heavy):** HKWorkout auto-detect import, time-in-HR-zone breakdown, mindfulness minutes. |
+| 4 — Food DB + recipes | 🟡 **Search shipped** (`250e3b3` + `29c2891`): `/api/food-search` USDA proxy (bearer-gated, per-100g normalize, Branded-first, GET+POST) verified against live USDA; `FoodSearchClient` + `FoodSearchSheet` (debounced search → grams portion editor → logs scaled `MealLog`, source "search"); entry point = Nutrition "+" menu. **⚠️ Needs `USDA_FDC_API_KEY` in Vercel env (Prod+Preview) — returns 503 until then.** **Remaining:** recipe builder. |
 | 5 — Apple Watch | ⬜ Queued. Separate watchOS target; needs user signing to run on device. |
 | 6 — Strava/Oura/Weather | ⬜ Queued. **Needs user credentials** (Strava API app, Oura token, Apple WeatherKit entitlement) — build scaffolding + routes, dormant until keys. |
 | **L — LiDAR body scan** | ⬜ **Planned (see dedicated section below).** Auto-feeds the Body screen's measurements + a 3D-mesh-over-time view. iPhone **12 Pro and up only** (LiDAR-gated). |
@@ -95,10 +95,24 @@ User wants objective, **fully-local** body scans via the phone's built-in LiDAR,
 
 ---
 
+## Session 2 (2026-06-04 cont.) — what shipped + immediate follow-ups
+
+Shipped 7 commits (`3a6f369`→`1dd15f0`), each a green `xcodebuild`, pushed to the 3 refs. Closed all of Wave 2's deferred work, plus a Wave 3 slice and the Wave 4 search half. See the wave table above for the per-commit breakdown.
+
+**Two new required user actions (BLOCKERS for the new features to work in prod):**
+1. **Add `USDA_FDC_API_KEY` to Vercel env** (Production + Preview), then redeploy. The food-search route returns 503 until then. Key value is in gitignored `.env.local`. Run on the user's terminal: `vercel env add USDA_FDC_API_KEY production` (paste at prompt), repeat for `preview`.
+2. **App Store 2.1(b) "Restore Purchases" reference is NOT in the codebase** — grepped the whole `native/` tree, no `restore purchas`/`subscription`/`StoreKit`/`in-app purchase` string anywhere. The flagged reference must be in **App Store Connect metadata** (app description / promo text), which is server-side on Apple. Edit it there; nothing to change in code.
+
+**Session-2 gotchas (add to the running list):**
+1. **`@State private var a = "", b = ""` does NOT compile** — "Property wrapper can only apply to a single variable." Split every property-wrapped var onto its own line. (The overhaul3 spec D had this; fixed in `AddMeasurementSheet`.)
+2. **USDA FDC `/foods/search` returns a TRUNCATED `foodNutrients` for many Foundation/SR Legacy foods** — the core macros (203/204/205/208) are simply absent (only fatty-acid sub-rows present). **Branded** foods carry full macros. The route drops zero-macro rows, so search is Branded-dominated. Full generic-food macros would need a second per-`fdcId` `/food/{id}` detail call.
+3. **`APIClient.baseURL.appendingPathComponent(path)` URL-encodes `?`** — you cannot pass a GET query string through the shared client. The food-search route therefore also accepts a JSON-body POST (`{query,pageSize}`), which `FoodSearchClient` uses.
+4. **Widget `CFBundleVersion`/`CFBundleShortVersionString` are hardcoded `1`/`1.0` in `WidgetExtension/Info.plist`** and don't pick up the project-level `CURRENT_PROJECT_VERSION` (now `3`). xcodegen reverts manual edits to that file. If Xcode flags an app-vs-widget version mismatch at archive, set the widget version in Xcode target settings.
+
 ## Open items (2026-06-03, priority order)
 
-1. **App Store rejection (2.1(b)):** remove the "Restore Purchases" / subscription references OR submit the IAP product. Blocks release.
-2. **Re-archive for TestFlight** — bump `CURRENT_PROJECT_VERSION` first. Huge iOS delta this session.
+1. **App Store rejection (2.1(b)):** the reference is in **App Store Connect metadata, not code** (see Session 2 note). Edit the listing on Apple.
+2. **Re-archive for TestFlight** — `CURRENT_PROJECT_VERSION` already bumped to `3` (`1dd15f0`). Watch the widget version (gotcha 4 above). Large iOS delta across two sessions.
 3. **Verify on real device:** the whole Fitbit chain (HRV + sleep stages now parse), the Canvas hypnogram (no longer freezes), previous-day nav, the new insight cards, and the strain detail. Most were build-verified only, not run by the agent.
 4. **Gemini paid tier / AI Gateway** if voice/photo reliability matters — free-tier 429 daily quota is a hard ceiling (retry only fixes transient 503s).
 5. New insight engines need a few days of synced history to be meaningful (they show "not enough data" empty states until then).
