@@ -16,6 +16,7 @@ struct NutritionIntelligenceCard: View {
     @Query private var daily: [DailyEntry]
     @Query private var settingsRows: [UserSettings]
     @Environment(\.modelContext) private var modelContext
+    @State private var showDeepDive = false
 
     private var settings: UserSettings {
         settingsRows.first ?? UserSettings.loadOrCreate(in: modelContext)
@@ -55,9 +56,33 @@ struct NutritionIntelligenceCard: View {
                             insightRow(insight)
                         }
                     }
+                    Divider().overlay(LifeOSColor.stroke)
+                    deepDiveRow
                 }
             }
+            .sheet(isPresented: $showDeepDive) { NutritionDeepDiveView() }
         }
+    }
+
+    private var deepDiveRow: some View {
+        Button {
+            Haptics.tap(); showDeepDive = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "chart.xyaxis.line")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(LifeOSColor.accent)
+                Text("TDEE, protein g/kg, macro split & eating window")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(LifeOSColor.fg)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(LifeOSColor.fg3)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Header

@@ -56,6 +56,7 @@ enum InsightsEngine {
         out += trends(days)
         out += anomalies(days, settings: settings)
         out += streaks(days, settings: settings)
+        out += NutritionIntelligenceEngine.dataInsights(meals: meals, daily: daily, settings: settings)
 
         // Strain ↔ recovery: load-management findings off the dedicated
         // (main-actor) analytics engine. Built here rather than inside that
