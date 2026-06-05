@@ -491,6 +491,8 @@ struct TodayView: View {
         let rhr = mostRecentVital { $0.restingHr }
         let hrv = mostRecentVital { $0.hrvMs }
         let weight = mostRecentVital { $0.weightLb }
+        let spo2 = mostRecentVital { $0.spo2Pct }
+        let respRate = mostRecentVital { $0.respiratoryRate }
         return VStack(spacing: 10) {
             SectionLabel("Vitals")
             HStack(spacing: 10) {
@@ -549,6 +551,29 @@ struct TodayView: View {
                     trend: [],
                     delta: "—"
                 )
+            }
+            // Overnight recovery vitals — only surfaced when a compatible sensor
+            // has actually synced them (most devices have no SpO2), so we don't
+            // show a permanent dead "—/—" row.
+            if spo2 != nil || respRate != nil {
+                HStack(spacing: 10) {
+                    VitalTile(
+                        icon: "lungs.fill", label: "Blood O₂",
+                        value: spo2.map { "\(Int($0.value.rounded()))" } ?? "—",
+                        unit: "%",
+                        tint: LifeOSColor.Metric.spo2,
+                        trend: [],
+                        delta: spo2.map { $0.isToday ? "—" : asOfCaption($0.date) } ?? "—"
+                    )
+                    VitalTile(
+                        icon: "wind", label: "Resp rate",
+                        value: respRate.map { String(format: "%.0f", $0.value) } ?? "—",
+                        unit: "br/min",
+                        tint: LifeOSColor.Metric.respiratory,
+                        trend: [],
+                        delta: respRate.map { $0.isToday ? "—" : asOfCaption($0.date) } ?? "—"
+                    )
+                }
             }
         }
     }

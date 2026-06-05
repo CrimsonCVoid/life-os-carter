@@ -59,6 +59,11 @@ final class DailyEntry {
     /// lightweight migration on existing rows.
     var bodyFatPct: Double?
     var leanMassLb: Double?
+    /// Overnight recovery vitals from HealthKit. spo2Pct is a 0…100 percent
+    /// (blood-oxygen saturation); respiratoryRate is breaths/min. nil = not
+    /// synced. Additive optionals → lightweight migration.
+    var spo2Pct: Double?
+    var respiratoryRate: Double?
 
     init(
         date: String,

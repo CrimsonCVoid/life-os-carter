@@ -59,6 +59,8 @@ enum LifeOSColor {
         static let peak     = dyn(light: 0x0D9488, dark: 0x5EEAD4)
         static let hrv      = dyn(light: 0x6366F1, dark: 0x818CF8)
         static let rhr      = dyn(light: 0xDC2626, dark: 0xF87171)
+        static let spo2     = dyn(light: 0x0D9488, dark: 0x2DD4BF)
+        static let respiratory = dyn(light: 0x2563EB, dark: 0x60A5FA)
     }
 
     /// Sleep-stage palette — shared by SleepCard, the Analysis sleep
