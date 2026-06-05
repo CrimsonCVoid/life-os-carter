@@ -84,13 +84,28 @@ function normalize(food: FdcFood): FoodSearchItem {
 export async function GET(req: Request) {
   const auth = await requireUser();
   if (auth instanceof NextResponse) return auth;
-
   const { searchParams } = new URL(req.url);
-  const query = (searchParams.get("q") ?? "").trim();
+  return search(searchParams.get("q") ?? "", Number(searchParams.get("pageSize")));
+}
+
+export async function POST(req: Request) {
+  const auth = await requireUser();
+  if (auth instanceof NextResponse) return auth;
+  let body: { query?: string; pageSize?: number } = {};
+  try {
+    body = (await req.json()) as { query?: string; pageSize?: number };
+  } catch {
+    return NextResponse.json({ error: "invalid body" }, { status: 400 });
+  }
+  return search(body.query ?? "", body.pageSize);
+}
+
+async function search(rawQuery: string, rawPageSize: number | undefined): Promise<NextResponse> {
+  const query = rawQuery.trim();
   if (!query) {
     return NextResponse.json({ error: "missing query" }, { status: 400 });
   }
-  const pageSize = Math.min(50, Math.max(1, Number(searchParams.get("pageSize")) || 25));
+  const pageSize = Math.min(50, Math.max(1, rawPageSize || 25));
 
   const apiKey = process.env.USDA_FDC_API_KEY?.trim();
   if (!apiKey) {
