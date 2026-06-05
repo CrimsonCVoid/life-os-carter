@@ -240,18 +240,29 @@ struct SleepHypnogramView: View {
             let laneH = geo.size.height / 4
 
             Canvas { ctx, size in
+                let laneColors: [Color] = [
+                    stageColor(.awake), stageColor(.rem), stageColor(.light), stageColor(.deep),
+                ]
+
+                // Frosted lane tracks — each lane is a faint tinted-glass rail so
+                // the luminous cells read as sitting *on* glass.
+                for l in 0..<4 {
+                    let track = CGRect(x: 0, y: CGFloat(l) * laneH + laneH * 0.14,
+                                       width: size.width, height: laneH * 0.72)
+                    ctx.fill(Path(roundedRect: track, cornerRadius: laneH * 0.36),
+                             with: .color(laneColors[l].opacity(0.06)))
+                }
+                // Whisper-thin lane separators.
                 for l in 0...4 {
                     let y = CGFloat(l) * laneH
                     var sep = Path()
                     sep.move(to: CGPoint(x: 0, y: y))
                     sep.addLine(to: CGPoint(x: size.width, y: y))
-                    ctx.stroke(sep, with: .color(LifeOSColor.stroke.opacity(0.45)), lineWidth: 0.5)
+                    ctx.stroke(sep, with: .color(LifeOSColor.stroke.opacity(0.22)), lineWidth: 0.5)
                 }
 
-                // Connecting verticals at each stage transition — a thin
-                // gradient line from one lane's center to the next, the
-                // classic hypnogram silhouette. Drawn before the bars so it
-                // tucks under them and only the inter-lane bridge shows.
+                // Connecting bridges between stage transitions — glassy gradient
+                // verticals tucked under the cells (the classic silhouette).
                 if segments.count > 1 {
                     for i in 0..<(segments.count - 1) {
                         let a = segments[i], b = segments[i + 1]
@@ -265,43 +276,78 @@ struct SleepHypnogramView: View {
                         ctx.stroke(
                             link,
                             with: .linearGradient(
-                                Gradient(colors: [stageColor(a.stage), stageColor(b.stage)]),
+                                Gradient(colors: [stageColor(a.stage).opacity(0.65),
+                                                  stageColor(b.stage).opacity(0.65)]),
                                 startPoint: CGPoint(x: x, y: yA),
                                 endPoint: CGPoint(x: x, y: yB)
                             ),
-                            lineWidth: 1.5
+                            lineWidth: 2
                         )
                     }
                 }
 
+                // Liquid-glass stage cells: a soft colored glow, a translucent
+                // vertical-gradient body, a luminous rim, and a specular sheen
+                // along the top — wet-glass lozenges rather than flat bars.
                 for seg in segments {
                     let x0 = xPixel(seg.start, width: w)
                     let x1 = xPixel(seg.end, width: w)
                     let lane = CGFloat(seg.stage.lane)
-                    let rect = CGRect(
-                        x: x0,
-                        y: lane * laneH + laneH * 0.2,
-                        width: max(2, x1 - x0),
-                        height: laneH * 0.6
-                    )
-                    ctx.fill(
-                        Path(roundedRect: rect, cornerRadius: 3),
-                        with: .color(stageColor(seg.stage))
-                    )
+                    let barH = laneH * 0.6
+                    let rect = CGRect(x: x0, y: lane * laneH + (laneH - barH) / 2,
+                                      width: max(4, x1 - x0), height: barH)
+                    let color = stageColor(seg.stage)
+                    let radius = min(barH / 2, max(4, rect.width / 2))
+                    let shape = Path(roundedRect: rect, cornerRadius: radius)
+
+                    // Glow + glassy body, scoped to a shadowed layer.
+                    ctx.drawLayer { g in
+                        g.addFilter(.shadow(color: color.opacity(0.45), radius: 5, x: 0, y: 1.5))
+                        g.fill(shape, with: .linearGradient(
+                            Gradient(stops: [
+                                .init(color: color.opacity(0.95), location: 0),
+                                .init(color: color.opacity(0.60), location: 0.55),
+                                .init(color: color.opacity(0.80), location: 1),
+                            ]),
+                            startPoint: CGPoint(x: rect.midX, y: rect.minY),
+                            endPoint: CGPoint(x: rect.midX, y: rect.maxY)))
+                    }
+                    // Luminous glass rim.
+                    ctx.stroke(shape, with: .linearGradient(
+                        Gradient(colors: [.white.opacity(0.38), .white.opacity(0.05)]),
+                        startPoint: CGPoint(x: rect.midX, y: rect.minY),
+                        endPoint: CGPoint(x: rect.midX, y: rect.maxY)),
+                        lineWidth: 0.75)
+                    // Specular top sheen.
+                    if rect.width > 7 {
+                        let hiH = barH * 0.34
+                        let hi = CGRect(x: rect.minX + radius * 0.5, y: rect.minY + 1.5,
+                                        width: rect.width - radius, height: hiH)
+                        ctx.fill(Path(roundedRect: hi, cornerRadius: hiH / 2),
+                                 with: .linearGradient(
+                                    Gradient(colors: [.white.opacity(0.50), .white.opacity(0.0)]),
+                                    startPoint: CGPoint(x: hi.midX, y: hi.minY),
+                                    endPoint: CGPoint(x: hi.midX, y: hi.maxY)))
+                    }
                 }
 
+                // Scrub indicator — a bright guide line + a haloed glass bead.
                 if let d = scrubDate {
                     let x = xPixel(d, width: w)
                     var line = Path()
                     line.move(to: CGPoint(x: x, y: 0))
                     line.addLine(to: CGPoint(x: x, y: size.height))
-                    ctx.stroke(line, with: .color(LifeOSColor.fg2.opacity(0.6)), lineWidth: 1)
+                    ctx.stroke(line, with: .color(.white.opacity(0.5)), lineWidth: 1)
                     if let seg = segment(at: d) {
                         let cy = CGFloat(seg.stage.lane) * laneH + laneH * 0.5
-                        ctx.fill(
-                            Path(ellipseIn: CGRect(x: x - 5, y: cy - 5, width: 10, height: 10)),
-                            with: .color(stageColor(seg.stage))
-                        )
+                        let c = stageColor(seg.stage)
+                        ctx.drawLayer { g in
+                            g.addFilter(.shadow(color: c.opacity(0.9), radius: 6))
+                            g.fill(Path(ellipseIn: CGRect(x: x - 6, y: cy - 6, width: 12, height: 12)),
+                                   with: .color(c))
+                        }
+                        ctx.fill(Path(ellipseIn: CGRect(x: x - 2.5, y: cy - 2.5, width: 5, height: 5)),
+                                 with: .color(.white.opacity(0.9)))
                     }
                 }
             }
@@ -417,18 +463,33 @@ struct SleepHypnogramView: View {
                     .font(.system(size: 10, weight: .heavy)).tracking(1.4)
                     .foregroundStyle(LifeOSColor.Metric.sleep)
 
-                // Single stacked proportion bar across all four stages.
+                // Single stacked proportion bar across all four stages — glassy
+                // segments with a vertical gradient + a top specular sheen.
                 GeometryReader { geo in
-                    HStack(spacing: 2) {
+                    HStack(spacing: 3) {
                         ForEach(rows, id: \.stage) { row in
                             let frac = Double(row.mins) / Double(grand)
-                            RoundedRectangle(cornerRadius: 3, style: .continuous)
-                                .fill(stageColor(row.stage))
-                                .frame(width: max(0, geo.size.width * frac - 2))
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(LinearGradient(
+                                    colors: [stageColor(row.stage), stageColor(row.stage).opacity(0.6)],
+                                    startPoint: .top, endPoint: .bottom))
+                                .overlay(alignment: .top) {
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .fill(LinearGradient(
+                                            colors: [.white.opacity(0.45), .clear],
+                                            startPoint: .top, endPoint: .bottom))
+                                        .padding(.horizontal, 1.5).padding(.top, 1)
+                                        .frame(height: 6)
+                                }
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .strokeBorder(.white.opacity(0.18), lineWidth: 0.5))
+                                .frame(width: max(0, geo.size.width * frac - 3))
+                                .shadow(color: stageColor(row.stage).opacity(0.4), radius: 3, y: 1)
                         }
                     }
                 }
-                .frame(height: 10)
+                .frame(height: 14)
 
                 ForEach(rows, id: \.stage) { row in
                     let frac = Double(row.mins) / Double(grand)
