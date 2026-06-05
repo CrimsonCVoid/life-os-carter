@@ -24,6 +24,11 @@ const PUBLIC_PATHS = [
   // Google. The handler verifies the query bearer (or the web session
   // cookie) itself and 401s if neither is valid.
   "/api/google-health/auth/start",
+  // Strava's OAuth callback arrives as a browser redirect with no
+  // Authorization header — same shape as the Google Health callback. It
+  // authenticates via the signed `state` JWT inside the handler, so let it
+  // through the gate here.
+  "/api/strava/callback",
   // Vercel's cron scheduler hits this with no session cookie — it has
   // its own bearer-token auth via CRON_SECRET, enforced inside the
   // route handler. Without this whitelist the cron pings get bounced
