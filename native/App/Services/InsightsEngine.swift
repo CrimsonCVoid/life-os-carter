@@ -67,6 +67,14 @@ enum InsightsEngine {
         )
         out += strainRecovery(balance)
 
+        // Readiness forecast: pre-scored projection findings (declining/rising
+        // trajectory, deepening sleep debt, low readiness ahead) mapped onto
+        // feed cards. Same shape as strainRecovery — the engine owns the math.
+        let forecast = ReadinessForecastEngine.compute(
+            dailies: daily, sessions: lifts, settings: settings
+        )
+        out += readinessForecast(forecast)
+
         // Multi-day lag: 3-night cumulative sleep debt → mood.
         out += rollingDebtLag(days, settings: settings)
 
@@ -595,6 +603,47 @@ enum InsightsEngine {
             case .monotony:             out += monotonyInsight(b, f)
             case .alignment:            out += alignmentInsight(b, f)
             case .adherence:            out += adherenceInsight(b, f)
+            }
+        }
+        return out
+    }
+
+    @MainActor
+    private static func readinessForecast(_ f: ReadinessForecast) -> [DataInsight] {
+        var out: [DataInsight] = []
+        for finding in f.findings {
+            switch finding.kind {
+            case .decliningTrajectory:
+                guard finding.confident, let h = f.hrvTrajectory ?? f.rhrTrajectory else { break }
+                out.append(DataInsight(
+                    kind: .trend,
+                    title: "Your readiness signals are trending down",
+                    detail: "Over your last \(h.history.count) days, the trend points lower. If it holds, your projected readiness keeps slipping — a deliberate easy block or an extra night of sleep is the usual circuit-breaker.",
+                    icon: "chart.line.downtrend.xyaxis",
+                    tint: LifeOSColor.warning, sentiment: .watch, score: finding.score))
+            case .risingTrajectory:
+                out.append(DataInsight(
+                    kind: .trend,
+                    title: "Your recovery trend is climbing",
+                    detail: "Your HRV/resting-HR trajectory is improving — projected readiness is drifting up. Whatever you've been doing, it's compounding.",
+                    icon: "chart.line.uptrend.xyaxis",
+                    tint: LifeOSColor.success, sentiment: .positive, score: finding.score))
+            case .deepeningDebt:
+                guard let d = f.sleepDebt, let n = d.nightsToClear else { break }
+                out.append(DataInsight(
+                    kind: .trend,
+                    title: "Sleep debt is building",
+                    detail: "You're carrying about \(String(format: "%.1f", d.currentDebtHours))h of sleep debt and it's been growing. At roughly an hour over goal a night, it'd take ~\(n) night\(n == 1 ? "" : "s") to clear — and that debt is quietly capping your recovery ceiling.",
+                    icon: "bed.double.fill",
+                    tint: LifeOSColor.Metric.sleep, sentiment: .watch, score: finding.score))
+            case .lowReadinessAhead:
+                guard finding.confident, let t = f.tomorrow else { break }
+                out.append(DataInsight(
+                    kind: .anomaly,
+                    title: "Tomorrow projects low — plan accordingly",
+                    detail: "Today's load and your recent trend point to a likely \(Int(t.low.rounded()))–\(Int(t.high.rounded())) recovery tomorrow. It's a projection, not a verdict — but it's a good night to bank sleep and keep tomorrow's plan flexible.",
+                    icon: "moon.zzz.fill",
+                    tint: LifeOSColor.recovery(30), sentiment: .watch, score: finding.score))
             }
         }
         return out

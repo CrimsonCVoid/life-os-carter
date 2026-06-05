@@ -40,6 +40,7 @@ struct AnalysisView: View {
     @State private var forecast: ReadinessForecast = .empty
     @State private var period: PeriodizationSnapshot = .empty
     @State private var showPeriodDetail = false
+    @State private var showForecastDetail = false
 
     // Inputs for the on-device SleepQualityCard + the Insights teaser.
     private static let ymdFmt: DateFormatter = {
@@ -141,7 +142,7 @@ struct AnalysisView: View {
                         .simultaneousGesture(TapGesture().onEnded { Haptics.tap() })
                     }
                     revealCard(delay: 0.09) { strainRecoveryBalanceCardWrapped }
-                    revealCard(delay: 0.095) { ReadinessForecastCard(forecast: forecast) }
+                    revealCard(delay: 0.095) { readinessForecastCardWrapped }
                     revealCard(delay: 0.10) { caloriesBurnedCard }
                     revealCard(delay: 0.12) { distanceTrendCard }
                     revealCard(delay: 0.14) { vo2MaxCard }
@@ -217,6 +218,18 @@ struct AnalysisView: View {
         .buttonStyle(.plain)
         .sheet(isPresented: $showSRDetail) {
             StrainRecoveryDetailView(balance: srBalance)
+        }
+    }
+
+    /// Readiness forecast card → opens the deep-dive sheet (own NavigationStack).
+    /// Button-label-not-push, same pattern as the strain↔recovery card.
+    private var readinessForecastCardWrapped: some View {
+        Button { Haptics.tap(); showForecastDetail = true } label: {
+            ReadinessForecastCard(forecast: forecast)
+        }
+        .buttonStyle(.plain)
+        .sheet(isPresented: $showForecastDetail) {
+            ReadinessForecastDetailView(forecast: forecast)
         }
     }
 
