@@ -66,9 +66,25 @@ enum InsightsEngine {
         )
         out += strainRecovery(balance)
 
+        // Multi-day lag: 3-night cumulative sleep debt → mood.
+        out += rollingDebtLag(days, settings: settings)
+
         // Highest impact × confidence first; cap so the feed stays a
         // curated lead, not a data dump.
-        return out.sorted { $0.score > $1.score }
+        let ranked = out.sorted { $0.score > $1.score }
+
+        // Weekly "story" lead: a synthesis of the 2-3 biggest signals + the
+        // single strongest controllable lever. Composes already-ranked
+        // findings (no new claim), pinned to the top of the feed.
+        let boards = LeversEngine.boards(
+            daily: daily, proteinByDate: proteinByDate(meals),
+            recoveryByDate: recoveryByDate(daily: daily, lifts: lifts, settings: settings),
+            settings: settings
+        )
+        if let story = weeklyStory(ranked: ranked, boards: boards) {
+            return [story] + ranked
+        }
+        return ranked
     }
 
     // MARK: - 1. Behavior correlations
@@ -724,6 +740,105 @@ enum InsightsEngine {
             sentiment: good ? .positive : .neutral,
             score: f.score
         )]
+    }
+
+    // MARK: - 7. Your levers + weekly story
+
+    /// Driver boards for the "Your levers" card. Same recovery path as the hero.
+    @MainActor
+    static func levers(
+        daily: [DailyEntry], meals: [MealLog], lifts: [LiftSessionEntry], settings: UserSettings
+    ) -> [LeversBoard] {
+        LeversEngine.boards(
+            daily: daily,
+            proteinByDate: proteinByDate(meals),
+            recoveryByDate: recoveryByDate(daily: daily, lifts: lifts, settings: settings),
+            settings: settings
+        )
+    }
+
+    private static func proteinByDate(_ meals: [MealLog]) -> [String: Double] {
+        Dictionary(grouping: meals, by: \.date).mapValues { $0.reduce(0) { $0 + $1.proteinG } }
+    }
+
+    /// Per-day recovery map, computed with the SAME RecoveryEngine path the
+    /// hero + StrainRecoveryEngine use, so the levers agree with the rest of
+    /// the app.
+    @MainActor
+    private static func recoveryByDate(
+        daily: [DailyEntry], lifts: [LiftSessionEntry], settings: UserSettings
+    ) -> [String: Int] {
+        let sorted = daily.sorted { $0.date < $1.date }
+        guard !sorted.isEmpty else { return [:] }
+        let strain = StrainCalculator.daySeries(
+            sessions: lifts, dailies: sorted, days: max(60, sorted.count), asOf: Date())
+        let strainByKey = Dictionary(
+            strain.map { (parser.string(from: $0.day), $0.value) }, uniquingKeysWith: { a, _ in a })
+        var out: [String: Int] = [:]
+        for (i, day) in sorted.enumerated() {
+            let history = Array(sorted[..<i].reversed().prefix(30))
+            let prior: Double? = i > 0 ? strainByKey[sorted[i - 1].date] : nil
+            if let r = RecoveryEngine.compute(
+                today: day, history: history, priorStrain: prior, sleepGoalHours: settings.sleepGoalHours) {
+                out[day.date] = r.score
+            }
+        }
+        return out
+    }
+
+    /// One synthesis card: the 2-3 highest-signal findings of the week phrased
+    /// as a coach's lead, plus the single strongest controllable lever. nil
+    /// when there's too little substance (<2 substantive findings).
+    private static func weeklyStory(ranked: [DataInsight], boards: [LeversBoard]) -> DataInsight? {
+        let substantive = ranked.filter {
+            $0.kind == .correlation || $0.kind == .trend || $0.kind == .anomaly
+        }
+        guard substantive.count >= 2 else { return nil }
+        let top = Array(substantive.prefix(3))
+        let watches = top.filter { $0.sentiment == .watch }.count
+        let sentiment: DataInsight.Sentiment = watches >= 2 ? .watch : (watches == 1 ? .neutral : .positive)
+
+        var leverLine = ""
+        if let board = boards.first, let l = board.levers.first {
+            let verb = l.effect >= 0 ? "is lifting" : "is dragging down"
+            leverLine = " Your biggest lever right now: \(l.label.lowercased()) \(verb) your \(board.outcome.label.lowercased())."
+        }
+        let bullets = top.map { "• \($0.title)" }.joined(separator: "\n")
+        return DataInsight(
+            kind: .tip,
+            title: "This week in your data",
+            detail: "\(bullets)\(leverLine)",
+            icon: "text.book.closed.fill",
+            tint: LifeOSColor.accent,
+            sentiment: sentiment,
+            score: 1000   // always leads the feed
+        )
+    }
+
+    /// 3-night cumulative sleep debt → same-day mood. Negated-input form so
+    /// bucketedComparison's sentiment reads correctly (high input = low debt).
+    private static func rollingDebtLag(_ days: [DailyEntry], settings: UserSettings) -> [DataInsight] {
+        let goal = settings.sleepGoalHours
+        guard goal > 0, days.count >= 5 else { return [] }
+        var pairs: [(inp: Double, out: Double)] = []
+        for i in 2..<days.count {
+            guard isConsecutive(days[i - 2], days[i - 1]), isConsecutive(days[i - 1], days[i]) else { continue }
+            guard let s0 = days[i - 2].sleepHours, let s1 = days[i - 1].sleepHours,
+                  let s2 = days[i].sleepHours, let mood = days[i].moodScore else { continue }
+            let debt = max(0, goal - s0) + max(0, goal - s1) + max(0, goal - s2)
+            pairs.append((-debt, Double(mood)))   // negate: high input == low debt
+        }
+        guard let insight = bucketedComparison(
+            pairs, icon: "zzz", tint: LifeOSColor.Metric.mood, kind: .correlation,
+            higherIsBetter: true,
+            phrase: { loDebtMood, hiDebtMood in   // hi-input == low-debt
+                let gap = loDebtMood - hiDebtMood
+                return gap > 0
+                    ? "Your mood runs \(fmtDelta(gap)) lower after 3 nights of accumulated sleep debt."
+                    : "Short stretches of sleep debt aren't denting your mood — your baseline is resilient."
+            }
+        ) else { return [] }
+        return [insight]
     }
 
     // MARK: - Stats helpers

@@ -11,6 +11,7 @@ import Charts
 struct AnalysisView: View {
     @Query private var dailies: [DailyEntry]
     @Query private var sessions: [LiftSessionEntry]
+    @Query private var meals: [MealLog]
     @Query private var settingsRows: [UserSettings]
     @State private var range: TimeRange = .month
     @State private var cardsVisible = false
@@ -34,6 +35,7 @@ struct AnalysisView: View {
     /// regardless of the range selector (ACWR needs the 28-day chronic base).
     @State private var srBalance: StrainRecoveryBalance = .empty
     @State private var showSRDetail = false
+    @State private var levers: [LeversBoard] = []
 
     // Inputs for the on-device SleepQualityCard + the Insights teaser.
     private static let ymdFmt: DateFormatter = {
@@ -109,6 +111,9 @@ struct AnalysisView: View {
                     revealCard(delay: 0.015) {
                         drillIn(destination: InsightsView()) { insightsTeaserCard }
                     }
+                    revealCard(delay: 0.018) {
+                        if !levers.isEmpty { LeversCard(boards: levers) }
+                    }
                     revealCard(delay: 0.02) {
                         drillIn(destination: performanceDetail) { performanceHero }
                     }
@@ -183,6 +188,7 @@ struct AnalysisView: View {
                 dailies: dailies, sessions: sessions, settings: settings,
                 days: 30, asOf: Date()
             )
+            levers = InsightsEngine.levers(daily: dailies, meals: meals, lifts: sessions, settings: settings)
         }
     }
 

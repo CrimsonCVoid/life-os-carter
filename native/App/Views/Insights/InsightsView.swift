@@ -17,6 +17,7 @@ struct InsightsView: View {
     @Query private var settingsRows: [UserSettings]
 
     @State private var insights: [DataInsight] = []
+    @State private var levers: [LeversBoard] = []
     @State private var cardsVisible = false
 
     private var settings: UserSettings? { settingsRows.first }
@@ -29,7 +30,11 @@ struct InsightsView: View {
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 14) {
-                if insights.isEmpty {
+                if !levers.isEmpty {
+                    LeversCard(boards: levers)
+                        .cascadeReveal(index: 0, visible: cardsVisible)
+                }
+                if insights.isEmpty && levers.isEmpty {
                     emptyState
                 } else {
                     feed
@@ -55,7 +60,7 @@ struct InsightsView: View {
     }
 
     private func recompute() {
-        guard let settings else { insights = []; return }
+        guard let settings else { insights = []; levers = []; return }
         insights = InsightsEngine.generate(
             daily: dailies,
             meals: meals,
@@ -63,6 +68,7 @@ struct InsightsView: View {
             habits: habits,
             settings: settings
         )
+        levers = InsightsEngine.levers(daily: dailies, meals: meals, lifts: lifts, settings: settings)
     }
 
     // MARK: - Feed
