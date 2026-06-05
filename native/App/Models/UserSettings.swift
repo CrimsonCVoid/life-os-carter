@@ -40,6 +40,10 @@ final class UserSettings {
     var birthYear: Int?
     var biologicalSex: String?            // "male" | "female" | "other"
     var activityLevel: String = "moderate" // sedentary | light | moderate | active | very_active
+    /// Target body weight in lb. nil = no goal set → the Body screen hides the
+    /// goal ring + ETA and shows a plain weight hero. Additive optional →
+    /// lightweight migration.
+    var goalWeightLb: Double?
 
     // Recovery baselines — populated by HealthKitManager.syncDay() so
     // the score is computed against rolling averages instead of raw

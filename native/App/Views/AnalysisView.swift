@@ -148,7 +148,7 @@ struct AnalysisView: View {
                         drillIn(destination: stepsDetail) { activityByDayOfWeek }
                     }
                     revealCard(delay: 0.28) {
-                        drillIn(destination: weightDetail) { bodyCompositionCard }
+                        drillIn(destination: BodyView()) { bodyCompositionCard }
                     }
                     revealCard(delay: 0.36) { patternsCard }
                     Spacer(minLength: 80)
